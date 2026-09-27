@@ -67,8 +67,9 @@ function scanFat(data: Uint8Array): ScanResult {
  * go out in parallel), then split into pages. Concurrent requests that need the same page share
  * one in-flight fetch, so a page is never fetched twice at once. Eviction only affects the shared
  * cache; a call's own pages stay reachable (via `got`) even if fetching them overflows the cap.
+ * Exported only so tests can construct one directly and use `debugBufferSizes`.
  */
-class PageCache {
+export class PageCache {
   private readonly pages = new Map<number, Uint8Array>(); // insertion/access order: oldest (LRU) first
   private readonly pending = new Map<number, Promise<Map<number, Uint8Array>>>();
 
@@ -125,6 +126,13 @@ class PageCache {
     return opos === length ? out : out.subarray(0, opos);
   }
 
+  /** Test-only: the byte length of the backing `ArrayBuffer` for each currently cached page.
+   *  Pages are stored as copies (see `doFetch`), so this should never exceed `PAGE_SIZE` — a
+   *  `subarray` view into a multi-page fetched run would report that whole run's length instead. */
+  debugBufferSizes(): number[] {
+    return [...this.pages.values()].map((p) => p.buffer.byteLength);
+  }
+
   private touch(p: number): void {
     const v = this.pages.get(p);
     if (v === undefined) return;
@@ -133,9 +141,14 @@ class PageCache {
   }
 
   /** Fetches pages `[first, last]` with one `src.read` call, sharing the resulting promise with
-   *  any concurrent caller that asks for one of the same pages before it resolves. */
+   *  any concurrent caller that asks for one of the same pages before it resolves. `pending` is
+   *  cleared for these pages once the fetch settles, whether it succeeds or fails, so a rejected
+   *  read doesn't wedge those pages: the next `read()` call for one just retries with a fresh
+   *  fetch instead of replaying the same stale rejection forever. */
   private fetchRun(first: number, last: number): Promise<Map<number, Uint8Array>> {
-    const promise = this.doFetch(first, last);
+    const promise = this.doFetch(first, last).finally(() => {
+      for (let p = first; p <= last; p++) this.pending.delete(p);
+    });
     for (let p = first; p <= last; p++) this.pending.set(p, promise);
     return promise;
   }
@@ -146,9 +159,10 @@ class PageCache {
     const fetched = new Map<number, Uint8Array>();
     for (let p = first; p <= last; p++) {
       const off = (p - first) * PAGE_SIZE;
-      const page = off < bytes.length ? bytes.subarray(off, Math.min(bytes.length, off + PAGE_SIZE)) : new Uint8Array(0);
+      // Copy (not a subarray view) so an evicted-elsewhere page doesn't keep the whole run's
+      // backing buffer alive: the cap then really bounds memory to about cap * PAGE_SIZE.
+      const page = off < bytes.length ? bytes.slice(off, Math.min(bytes.length, off + PAGE_SIZE)) : new Uint8Array(0);
       fetched.set(p, page);
-      this.pending.delete(p);
       this.pages.set(p, page);
       if (this.pages.size > this.cap) this.pages.delete(this.pages.keys().next().value!);
     }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { ImgError } from '../src/img/bytes';
-import { ImgContainer, PAGE_SIZE } from '../src/img/container';
+import { ImgContainer, PAGE_SIZE, PageCache } from '../src/img/container';
 import { BlobSource } from '../src/img/source';
 import type { ByteSource } from '../src/img/source';
 import { buildImg, bytesOf } from './helpers/builders';
@@ -17,6 +17,26 @@ class CountingSource implements ByteSource {
   }
   async read(offset: number, length: number): Promise<Uint8Array> {
     this.calls.push([offset, length]);
+    return this.inner.read(offset, length);
+  }
+}
+
+/** Wraps a ByteSource so a single armed call rejects; the next call after that (and every call
+ *  before arming) is delegated normally. Lets a test fail exactly one fetch on demand. */
+class FlakySource implements ByteSource {
+  private armed = false;
+  constructor(private readonly inner: ByteSource) {}
+  get size(): number {
+    return this.inner.size;
+  }
+  armFailure(): void {
+    this.armed = true;
+  }
+  async read(offset: number, length: number): Promise<Uint8Array> {
+    if (this.armed) {
+      this.armed = false;
+      throw new Error('injected read failure');
+    }
     return this.inner.read(offset, length);
   }
 }
@@ -146,6 +166,32 @@ describe('ImgContainer page cache', () => {
     const { img } = await openCounting(truncated);
     await expect(img.read('A.RGN')).rejects.toThrow(ImgError);
     await expect(img.read('A.RGN')).rejects.toThrow(/truncated/);
+  });
+
+  test('a rejected in-flight fetch does not poison its pages forever', async () => {
+    const data = Uint8Array.from({ length: 3 * PAGE_SIZE }, (_, i) => i % 256);
+    const raw = buildImg({ 'A.RGN': data }, 512);
+    const flaky = new FlakySource(new BlobSource(new Blob([new Uint8Array(raw)])));
+    const img = await ImgContainer.open(flaky); // FAT scan happens before arming: unaffected
+
+    flaky.armFailure();
+    await expect(img.read('A.RGN', 100, 10)).rejects.toThrow(/injected read failure/);
+
+    // The failed page must not be stuck "pending" forever: a fresh read retries and succeeds.
+    const again = await img.read('A.RGN', 100, 10);
+    expect(again).toEqual(data.subarray(100, 110));
+  });
+
+  test('cached pages are independent copies, not views into a shared run buffer', async () => {
+    // A single read spanning several pages issues one src.read() call covering all of them; if
+    // pages were stored as subarray views into that one run buffer, every page's `.buffer` would
+    // report the whole run's byte length instead of just its own PAGE_SIZE-or-smaller slice.
+    const data = Uint8Array.from({ length: 6 * PAGE_SIZE }, (_, i) => i % 256);
+    const cache = new PageCache(new BlobSource(new Blob([new Uint8Array(data)])), 100);
+    await cache.read(0, data.length);
+    const sizes = cache.debugBufferSizes();
+    expect(sizes.length).toBe(6);
+    for (const size of sizes) expect(size).toBeLessThanOrEqual(PAGE_SIZE);
   });
 });
 
