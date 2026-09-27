@@ -54,10 +54,8 @@ def parse_tre(tre, rgn):
     if rgn[2:12] != b"GARMIN RGN":
         raise ImgError("RGN: bad signature")
     hlen = u16(tre, 0)
-    if hlen >= 0xAE and any(tre[0x9A:0xAE]):
-        raise ImgError("TRE is encrypted (non-zero key); locked maps are not supported")
     if tre[0x0D] & 0x80:
-        raise ImgError("TRE is marked locked; locked maps are not supported")
+        raise ImgError("TRE is locked/encrypted (header flag 0x80); locked maps are not supported")
 
     lo, ls = u32(tre, 0x21), u32(tre, 0x25)
     levels = [Level(tre[lo + i] & 0x0F, tre[lo + i + 1], bool(tre[lo + i] & 0x80), u16(tre, lo + i + 2))

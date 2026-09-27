@@ -37,10 +37,11 @@ def test_ext_offsets():
     assert subs[0].has_data and subs[1].has_data
 
 
-def test_encrypted_tre_is_rejected():
-    tre = make_tre(LEVELS, [(0, 0, 0, 0)] * 3, key=b"\x01\x02")
-    with pytest.raises(ImgError, match="encrypted"):
-        parse_tre(tre, make_rgn_header(10))
+def test_locked_tre_is_rejected():
+    tre = bytearray(make_tre(LEVELS, [(0, 0, 0, 0)] * 3))
+    tre[0x0D] = 0x80
+    with pytest.raises(ImgError, match="locked"):
+        parse_tre(bytes(tre), make_rgn_header(10))
 
 
 @pytest.mark.realdata

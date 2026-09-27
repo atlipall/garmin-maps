@@ -15,7 +15,7 @@ def make_rgn_header(data_len, ext=((0, 0), (0, 0), (0, 0)), hlen=0x7D):
     return h
 
 
-def make_tre(levels, subdivs, ext_records=None, hlen=0xBC, bounds=(1000, 1000, -1000, -1000), key=b""):
+def make_tre(levels, subdivs, ext_records=None, hlen=0xBC, bounds=(1000, 1000, -1000, -1000)):
     """levels: [(number, bits, inherited, count)]; subdivs: [(rgn_offset, kinds, cx, cy)] in level order;
     ext_records: [(poly2, line2, point2)] offsets (one per subdivision + sentinel)."""
     h = bytearray(hlen)
@@ -23,8 +23,6 @@ def make_tre(levels, subdivs, ext_records=None, hlen=0xBC, bounds=(1000, 1000, -
     h[2:12] = b"GARMIN TRE"
     n, e, s, w = bounds
     h[0x15:0x18], h[0x18:0x1B], h[0x1B:0x1E], h[0x1E:0x21] = pack_s24(n), pack_s24(e), pack_s24(s), pack_s24(w)
-    if key:
-        h[0x9A:0x9A + len(key)] = key
     lv = b"".join(bytes([num | (0x80 if inh else 0), bits]) + struct.pack("<H", cnt)
                   for num, bits, inh, cnt in levels)
     sd = bytearray()
