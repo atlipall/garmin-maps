@@ -1,6 +1,6 @@
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { emptyTyp, parseTyp } from './img/typ';
+import { emptyTyp, parseTyp, type Typ } from './img/typ';
 import { buildStyle } from './style/buildStyle';
 import { preloadImages } from './ui/images';
 import { PerfStats } from './ui/perf';
@@ -22,18 +22,32 @@ declare global {
 
 const $ = (id: string) => document.getElementById(id)!;
 
+/** Touch devices tend to have many cores but weaker per-core performance and tighter memory, so
+ *  they get a small fixed worker count; other devices scale with `hardwareConcurrency` (leaving
+ *  one core for the main thread, capped so we don't over-subscribe). */
+function tileWorkerCount(): number {
+  if (navigator.maxTouchPoints > 0) return 2;
+  return Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
+}
+
 async function start(file: File): Promise<void> {
-  const pool = new TilePool(file, Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1)));
+  const pool = new TilePool(file, tileWorkerCount());
   const meta = await pool.open();
   const perf = new PerfStats($('perf'));
-  maplibregl.addProtocol('garmin', async (params) => {
+  maplibregl.addProtocol('garmin', async (params, abortController) => {
     const m = /^garmin:\/\/(\d+)\/(\d+)\/(\d+)/.exec(params.url);
     if (!m) throw new Error(`bad tile url ${params.url}`);
-    const r = await pool.tile(Number(m[1]), Number(m[2]), Number(m[3]));
+    const r = await pool.tile(Number(m[1]), Number(m[2]), Number(m[3]), abortController.signal);
     perf.record(r.ms, r.badSections, r.features);
     return { data: r.data };
   });
-  const typ = meta.typ ? parseTyp(meta.typ) : emptyTyp();
+  let typ: Typ;
+  try {
+    typ = meta.typ ? parseTyp(meta.typ) : emptyTyp();
+  } catch (err) {
+    console.warn('failed to parse TYP style file, falling back to default styling', err);
+    typ = emptyTyp();
+  }
   const glyphs = new URL('fonts/', document.baseURI).href + '{fontstack}/{range}.pbf';
   const { style, images } = buildStyle(typ, { tiles: 'garmin://{z}/{x}/{y}', glyphs });
   const [w, s, e, n] = meta.bounds;

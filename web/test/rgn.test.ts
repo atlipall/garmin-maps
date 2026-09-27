@@ -51,6 +51,15 @@ describe('decodeSubdivision', () => {
     expect(s.badSections).toBe(1);
   });
 
+  test('a malformed section offset table counts as a bad section instead of throwing', () => {
+    // rgnStart is past the end of the chunk's bytes, so reading the 2-byte offset-table entry for
+    // the second section overruns the chunk before any section body is even attempted.
+    const s = stats();
+    const objs = decodeSubdivision(whole([]), sub(100, 110, KIND_POINTS | KIND_LINES), s);
+    expect(objs).toEqual([]);
+    expect(s).toEqual({ sections: 1, badSections: 1 });
+  });
+
   test('chunks with a non-zero base address absolute offsets', () => {
     const line = [0x16, 0, 0, 0, 0, 0, 0, 0, 0x01, 0x00, 0x95];
     const c: Chunk = { bytes: Uint8Array.from(line), base: 5000 };

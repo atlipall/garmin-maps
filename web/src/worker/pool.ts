@@ -11,7 +11,7 @@ export interface TileResult {
   features: number;
 }
 
-type Pending = { worker: Worker; resolve: (v: any) => void; reject: (e: Error) => void };
+type Pending = { worker: Worker; resolve: (v: any) => void; reject: (e: Error | DOMException) => void };
 
 /** Caps respawn attempts per slot so a worker that dies immediately on construction (e.g. a
  * broken build) can't respawn forever; past this it's left dead and routed around. */
@@ -75,10 +75,29 @@ export class TilePool {
     }
   }
 
-  private call(w: Worker, msg: Record<string, unknown>): Promise<any> {
+  private call(w: Worker, msg: Record<string, unknown>, signal?: AbortSignal): Promise<any> {
+    if (signal?.aborted) return Promise.reject(new DOMException('aborted', 'AbortError'));
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { worker: w, resolve, reject });
+      if (!signal) {
+        this.pending.set(id, { worker: w, resolve, reject });
+        w.postMessage({ ...msg, id });
+        return;
+      }
+      // Wrap resolve/reject so a normal completion (via onMessage or rejectPendingFor) detaches
+      // the abort listener too — otherwise an abort that fires after the call already settled
+      // would still try to postMessage a 'cancel' for an id the worker (and we) are done with.
+      const settle = <T,>(fn: (v: T) => void) => (v: T) => {
+        signal.removeEventListener('abort', onAbort);
+        fn(v);
+      };
+      const onAbort = () => {
+        if (!this.pending.delete(id)) return; // already settled: nothing to cancel or leak
+        w.postMessage({ type: 'cancel', id });
+        reject(new DOMException('aborted', 'AbortError'));
+      };
+      this.pending.set(id, { worker: w, resolve: settle(resolve), reject: settle(reject) });
+      signal.addEventListener('abort', onAbort, { once: true });
       w.postMessage({ ...msg, id });
     });
   }
@@ -104,11 +123,14 @@ export class TilePool {
     return { bounds, typ, tileIds };
   }
 
-  /** Neighbouring tiles go to the same worker so its subdivision cache is reused. */
-  tile(z: number, x: number, y: number): Promise<TileResult> {
+  /** Neighbouring tiles go to the same worker so its subdivision cache is reused. `signal`, when
+   *  given, cancels the request: an already-aborted signal rejects immediately without posting
+   *  anything to the worker, and an abort mid-flight posts `{type: 'cancel', id}` to that worker
+   *  and rejects with an `AbortError`. */
+  tile(z: number, x: number, y: number, signal?: AbortSignal): Promise<TileResult> {
     const live = this.live();
     if (!live.length) return Promise.reject(new Error('no workers available'));
     const w = live[((x >> 1) + (y >> 1) * 7) % live.length];
-    return this.call(w, { type: 'tile', z, x, y });
+    return this.call(w, { type: 'tile', z, x, y }, signal);
   }
 }

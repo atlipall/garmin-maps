@@ -2,6 +2,9 @@ import { ascii, ImgError, u16, u32 } from './bytes';
 import type { ByteSource } from './source';
 
 const FAT_ENTRY = 512;
+/** Hard cap on how much of the file the FAT/header scan will read, however large the header
+ *  claims to be — a malformed or hostile header shouldn't turn `open()` into a multi-GB read. */
+const MAX_HEADER_BYTES = 16 * 1024 * 1024;
 
 /** Fixed page size for `PageCache`. */
 export const PAGE_SIZE = 65536;
@@ -186,9 +189,12 @@ export class ImgContainer {
     if (ascii(head, 0x10, 0x16) !== 'DSKIMG') throw new ImgError('not a Garmin IMG file (missing DSKIMG signature)');
     const blockSize = 2 ** (head[0x61] + head[0x62]);
     let scan = scanFat(head);
+    if (scan.headerEnd !== null && scan.headerEnd > MAX_HEADER_BYTES) {
+      throw new ImgError(`header claims an implausible size (${scan.headerEnd} bytes)`);
+    }
     const want = scan.headerEnd ?? Math.min(src.size, 4 * 1024 * 1024);
     if (want > head.length) {
-      head = await src.read(0, Math.min(src.size, want));
+      head = await src.read(0, Math.min(src.size, want, MAX_HEADER_BYTES));
       scan = scanFat(head);
     }
     if (scan.parts.size === 0) throw new ImgError('no subfiles found in the IMG FAT');
@@ -196,7 +202,11 @@ export class ImgContainer {
     for (const [key, entry] of scan.parts) {
       const nums = [...entry.parts.keys()].sort((a, b) => a - b);
       if (nums.some((n, i) => n !== i)) throw new ImgError(`${key}: FAT parts [${nums}] are not contiguous from 0`);
-      subfiles.set(key, { size: entry.size, blocks: nums.flatMap((n) => entry.parts.get(n)!) });
+      const blocks = nums.flatMap((n) => entry.parts.get(n)!);
+      if (entry.size > blocks.length * blockSize) {
+        throw new ImgError(`${key}: declared size ${entry.size} exceeds its ${blocks.length} block(s) of ${blockSize} bytes`);
+      }
+      subfiles.set(key, { size: entry.size, blocks });
     }
     return new ImgContainer(new PageCache(src, cachePages), blockSize, subfiles);
   }

@@ -84,4 +84,65 @@ describe.skipIf(!ready)('golden: TypeScript decoder vs Python imgconv', () => {
     rl.close();
     expect(i).toBe(5000);
   }, 300_000);
+
+  test('every 97th feature across the whole file matches exactly (wide golden check)', async () => {
+    const STRIDE = 97;
+    const t0 = performance.now();
+
+    // Collect our every-97th kept feature during one full decodeAll pass, instead of materialising
+    // all ~2M features. `ours.length` ends up around 1,989,249 / 97 ≈ 20.5k items.
+    const ours: Array<{ t: number; name?: string; coords: number[][]; kind: string }> = [];
+    let kept = 0;
+    await decodeAll(map, (tile, _sd, obj) => {
+      const coords = pyLike(obj);
+      if (!coords) return;
+      kept += 1;
+      if (kept % STRIDE === 0) {
+        const name = objectName(tile, obj);
+        ours.push({ t: obj.type, ...(name ? { name } : {}), coords, kind: obj.kind });
+      }
+    });
+    const decodeMs = performance.now() - t0;
+
+    const pyStats = JSON.parse(readFileSync(PY_OUT + 'decode-stats.json', 'utf8'));
+    expect(kept).toBe(pyStats.features); // 1,989,249: same pyLike filter/order as the Python side
+
+    // Stream the file in lockstep with `ours`: line N (1-indexed) is Python's Nth kept feature, so
+    // it lines up 1:1 with our own Nth kept feature — compare only every 97th line, in order,
+    // without ever holding the whole file (or the whole `ours` array beyond its ~20.5k samples).
+    const byKind: Record<string, number> = {};
+    const extendedByKind: Record<string, number> = {};
+    const rl = createInterface({ input: createReadStream(PY_OUT + 'features.geojsonseq') });
+    let line = 0;
+    let sampleIdx = 0;
+    for await (const raw of rl) {
+      line++;
+      if (line % STRIDE !== 0) continue;
+      const sample = ours[sampleIdx++];
+      const f = JSON.parse(raw);
+      const g = f.geometry;
+      const pyCoords: number[][] = g.type === 'Point' ? [g.coordinates] : g.type === 'LineString' ? g.coordinates : g.coordinates[0];
+      expect({ t: sample.t, name: sample.name }).toEqual({ t: f.properties.t, name: f.properties.name });
+      expect(sample.coords.length).toBe(pyCoords.length);
+      sample.coords.forEach(([x, y], k) => {
+        expect(Math.abs(x - pyCoords[k][0])).toBeLessThan(1e-6);
+        expect(Math.abs(y - pyCoords[k][1])).toBeLessThan(1e-6);
+      });
+      byKind[sample.kind] = (byKind[sample.kind] ?? 0) + 1;
+      if (sample.t & 0x10000) extendedByKind[sample.kind] = (extendedByKind[sample.kind] ?? 0) + 1;
+    }
+    rl.close();
+    const wallMs = performance.now() - t0;
+
+    expect(line).toBe(pyStats.features);
+    expect(sampleIdx).toBe(ours.length);
+
+    const totalCompared = Object.values(byKind).reduce((a, b) => a + b, 0);
+    console.log(
+      `\nwide golden check: decodeAll ${decodeMs.toFixed(0)}ms, full wall (incl. file stream) ${wallMs.toFixed(0)}ms\n` +
+        `compared ${totalCompared} of ${line} features (every ${STRIDE}th)\n` +
+        `by kind: ${JSON.stringify(byKind)}\n` +
+        `extended (poly2/line2/point2) by kind: ${JSON.stringify(extendedByKind)}`,
+    );
+  }, 900_000);
 });

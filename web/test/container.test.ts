@@ -90,6 +90,25 @@ describe('ImgContainer', () => {
     expect(await (await open(raw)).read('A.RGN')).toEqual(data);
   });
 
+  test('rejects a header claiming an implausibly large size', async () => {
+    // The header-description FAT entry (empty name+ext, at absolute 0x200 — see scanFat/buildImg)
+    // carries the header size in its `size` field (offset 0x0c within the entry); a corrupt or
+    // hostile image can claim an enormous one to force a huge read.
+    const raw = buildImg({ 'A.TRE': filled(10, 'a') });
+    new DataView(raw.buffer, raw.byteOffset, raw.byteLength).setUint32(0x200 + 0x0c, 100 * 1024 * 1024, true);
+    await expect(open(raw)).rejects.toThrow(ImgError);
+    await expect(open(raw)).rejects.toThrow(/implausible/);
+  });
+
+  test('rejects a subfile whose declared size exceeds its block list', async () => {
+    // A single 512-byte block can hold at most 512 bytes; claim far more in the FAT entry's size
+    // field (the first per-subfile FAT entry sits at absolute 0x400 — see buildImg).
+    const raw = buildImg({ 'A.RGN': filled(512, 'a') }, 512);
+    new DataView(raw.buffer, raw.byteOffset, raw.byteLength).setUint32(0x400 + 0x0c, 10_000, true);
+    await expect(open(raw)).rejects.toThrow(ImgError);
+    await expect(open(raw)).rejects.toThrow(/A\.RGN/);
+  });
+
   test('skips a zeroed FAT slot between entries', async () => {
     const raw = buildImg({ 'A.TRE': filled(10, 'a'), 'B.TRE': filled(10, 'b'), 'C.TRE': filled(10, 'c') });
     raw.fill(0, 0x600, 0x800);

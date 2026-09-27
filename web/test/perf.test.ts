@@ -26,7 +26,9 @@ const CASES: Record<string, ReadonlyArray<readonly [number, number, number]>> = 
 async function timeCases(map: GarminMap): Promise<string[]> {
   const rows: string[] = [];
   for (const [label, tiles] of Object.entries(CASES)) {
-    const cache = new SubdivisionCache(1500);
+    // Default budget: this benchmark measures warm-cache reuse across the 3x3 neighbourhood, which
+    // a tiny point budget would defeat by evicting subdivisions before the next tile reuses them.
+    const cache = new SubdivisionCache();
     const ms: number[] = [];
     for (const [z, x, y] of tiles) {
       const t0 = performance.now();

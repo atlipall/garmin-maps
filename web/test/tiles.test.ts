@@ -1,6 +1,7 @@
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import type { RawObject } from '../src/img/rgn';
 import { shiftOf, subdivisionBounds } from '../src/img/tre';
 import { decodeAll } from '../src/map/decodeAll';
 import { GarminMap } from '../src/map/garminMap';
@@ -18,6 +19,50 @@ describe('tile math', () => {
     const [tw, ts] = tileBounds(15, 14387, 7890);
     expect(lonToTileX(tw + 1e-9, 15)).toBe(14387);
     expect(latToTileY(ts + 1e-9, 15)).toBe(7890);
+  });
+});
+
+describe('SubdivisionCache', () => {
+  const objs = (n: number): RawObject[] => [
+    { kind: 'line', type: 0, label: 0, labelSrc: 'lbl', coords: Array.from({ length: n }, () => [0, 0]) },
+  ];
+
+  test('evicts least-recently-used entries once the total point budget is exceeded', async () => {
+    const cache = new SubdivisionCache(10);
+    const calls: Record<string, number> = {};
+    const load = (key: string, n: number) => async () => {
+      calls[key] = (calls[key] ?? 0) + 1;
+      return objs(n);
+    };
+    await cache.get('a', load('a', 6));
+    await cache.get('b', load('b', 6)); // total 12 > budget 10: evicts the LRU entry ('a')
+    await cache.get('a', load('a', 6)); // must reload: was evicted
+    expect(calls).toEqual({ a: 2, b: 1 });
+  });
+
+  test('concurrent get() of the same key shares one in-flight decode', async () => {
+    const cache = new SubdivisionCache();
+    let decodeCalls = 0;
+    const load = async () => {
+      decodeCalls++;
+      await Promise.resolve(); // force a microtask gap, like a real fetch+decode would
+      return objs(3);
+    };
+    const [r1, r2] = await Promise.all([cache.get('x', load), cache.get('x', load)]);
+    expect(decodeCalls).toBe(1);
+    expect(r1).toBe(r2); // one decode, its result shared by both callers
+  });
+
+  test('a rejected decode is not cached', async () => {
+    const cache = new SubdivisionCache();
+    let calls = 0;
+    const failing = async () => {
+      calls++;
+      throw new Error('boom');
+    };
+    await expect(cache.get('x', failing)).rejects.toThrow('boom');
+    await expect(cache.get('x', failing)).rejects.toThrow('boom');
+    expect(calls).toBe(2); // not cached: the second get() retried instead of replaying the rejection
   });
 });
 
@@ -111,7 +156,9 @@ describe.skipIf(!hasRealData)('buildTile on real data', () => {
     for (const [label, tiles] of Object.entries(cases)) {
       // Fresh cache per case: the first build is a genuine cold (cache-empty) build, not the
       // fastest of the batch. The shared GarminMap stays open (opening it is a once-per-app cost).
-      const cache = new SubdivisionCache(1500);
+      // Default budget: this measures warm-cache reuse across the 3x3 neighbourhood, which a
+      // tiny point budget would defeat by evicting subdivisions before the next tile reuses them.
+      const cache = new SubdivisionCache();
       const ms: number[] = [];
       for (const [z, x, y] of tiles) {
         const t0 = performance.now();

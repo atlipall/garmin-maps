@@ -165,13 +165,27 @@ export function decodeSubdivision(bytes: SubdivisionBytes, sd: Subdivision, stat
   const c = bytes.main;
   const present = SECTIONS.filter((k) => sd.kinds & k);
   if (present.length && sd.rgnEnd > sd.rgnStart) {
-    const starts = [sd.rgnStart + 2 * (present.length - 1)];
-    for (let i = 0; i < present.length - 1; i++) starts.push(sd.rgnStart + b16(c, sd.rgnStart + 2 * i));
-    const ends = [...starts.slice(1), sd.rgnEnd];
-    present.forEach((kind, i) => {
-      if (kind === KIND_POINTS || kind === KIND_IDX_POINTS) run(stats, out, starts[i], ends[i], (o) => point(c, o, sd));
-      else run(stats, out, starts[i], ends[i], (o) => poly(c, o, sd, kind === KIND_LINES));
-    });
+    // The section offset table itself (not just each section's body) can run past the chunk on a
+    // malformed subdivision; treat that the same as a bad section instead of throwing out of
+    // decodeSubdivision (see `run`'s own RangeError handling below).
+    let starts: number[] | null = null;
+    try {
+      starts = [sd.rgnStart + 2 * (present.length - 1)];
+      for (let i = 0; i < present.length - 1; i++) starts.push(sd.rgnStart + b16(c, sd.rgnStart + 2 * i));
+    } catch (err) {
+      if (!(err instanceof RangeError)) throw err;
+      stats.sections += 1;
+      stats.badSections += 1;
+      starts = null;
+    }
+    if (starts) {
+      const resolvedStarts = starts;
+      const ends = [...resolvedStarts.slice(1), sd.rgnEnd];
+      present.forEach((kind, i) => {
+        if (kind === KIND_POINTS || kind === KIND_IDX_POINTS) run(stats, out, resolvedStarts[i], ends[i], (o) => point(c, o, sd));
+        else run(stats, out, resolvedStarts[i], ends[i], (o) => poly(c, o, sd, kind === KIND_LINES));
+      });
+    }
   }
   const [[pgA, pgE], [lnA, lnE], [ptA, ptE]] = sd.ext;
   if (pgE > pgA) run(stats, out, pgA, pgE, (o) => poly2(bytes.ext[0], o, sd, false));

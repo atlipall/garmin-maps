@@ -26,22 +26,65 @@ interface TileFeature {
   tags: Record<string, string | number>;
 }
 
-export class SubdivisionCache {
-  private readonly map = new Map<string, RawObject[]>();
-  constructor(private readonly max: number) {}
+interface CacheEntry {
+  promise: Promise<RawObject[]>;
+  /** Total `coords.length` across the resolved objects, or `null` while still in flight (an
+   *  in-flight entry is never evicted: its size isn't known yet, and other callers may be
+   *  awaiting the same promise). */
+  points: number | null;
+}
 
-  get(key: string): RawObject[] | undefined {
-    const v = this.map.get(key);
-    if (v) {
-      this.map.delete(key);
-      this.map.set(key, v);
+/**
+ * Caches decoded subdivisions by key, bounded by total point count rather than entry count (a
+ * fixed entry cap let level-24 data - many points per subdivision - use unbounded memory: see the
+ * Plan 1 review). Concurrent `get()` calls for the same key before the load settles share one
+ * in-flight promise, so two `buildTile` calls in the same worker that both need a subdivision
+ * decode it once. A rejected load is not cached, so the next `get()` retries it.
+ */
+export class SubdivisionCache {
+  private readonly entries = new Map<string, CacheEntry>();
+  private totalPoints = 0;
+
+  constructor(private readonly maxPoints: number = 500_000) {}
+
+  get(key: string, load: () => Promise<RawObject[]>): Promise<RawObject[]> {
+    const existing = this.entries.get(key);
+    if (existing) {
+      // Touch: move to the end so eviction below stays least-recently-used.
+      this.entries.delete(key);
+      this.entries.set(key, existing);
+      return existing.promise;
     }
-    return v;
+    const entry = { points: null } as CacheEntry;
+    entry.promise = load().then(
+      (objs) => {
+        entry.points = objs.reduce((n, o) => n + o.coords.length, 0);
+        this.totalPoints += entry.points;
+        this.evict();
+        return objs;
+      },
+      (err) => {
+        this.entries.delete(key);
+        throw err;
+      },
+    );
+    this.entries.set(key, entry);
+    return entry.promise;
   }
 
-  set(key: string, value: RawObject[]): void {
-    this.map.set(key, value);
-    if (this.map.size > this.max) this.map.delete(this.map.keys().next().value!);
+  /** Drops every cached (and in-flight) entry, e.g. when a worker opens a different file. */
+  clear(): void {
+    this.entries.clear();
+    this.totalPoints = 0;
+  }
+
+  private evict(): void {
+    for (const [key, e] of this.entries) {
+      if (this.totalPoints <= this.maxPoints) break;
+      if (e.points === null) continue; // in-flight: unknown size, and may still be awaited elsewhere
+      this.entries.delete(key);
+      this.totalPoints -= e.points;
+    }
   }
 }
 
@@ -98,10 +141,10 @@ export async function buildTile(
     };
     const clip: BBox = [-BUFFER, -BUFFER, EXTENT + BUFFER, EXTENT + BUFFER];
 
-    // Collect every subdivision that intersects the tile first, split into cache hits and misses,
-    // then read+decode all misses in parallel (one readSubdivision per subdivision, all subdivisions
-    // at once) instead of awaiting them one at a time. Output is identical either way: `resolved`
-    // ends up holding the same objects for the same keys, just fetched concurrently.
+    // Collect every subdivision that intersects the tile first, then resolve them all in parallel
+    // via the cache: a cache hit (resolved or already in flight from a concurrent buildTile call)
+    // resolves immediately/shares that promise, and a miss reads+decodes once. Output is
+    // identical either way: `resolved` ends up holding the same objects for the same keys.
     interface Entry { tile: MapTile; sd: Subdivision; key: string }
     const entries: Entry[] = [];
     for (const tile of map.tiles) {
@@ -111,23 +154,16 @@ export async function buildTile(
       }
     }
     const resolved = new Map<string, RawObject[]>();
-    const misses: Entry[] = [];
-    for (const e of entries) {
-      const objs = cache.get(e.key);
-      if (objs) resolved.set(e.key, objs);
-      else misses.push(e);
-    }
-    if (misses.length) {
-      const bytesList = await Promise.all(misses.map((e) => map.readSubdivision(e.tile, e.sd)));
-      for (let i = 0; i < misses.length; i++) {
-        const e = misses[i];
+    await Promise.all(entries.map(async (e) => {
+      const objs = await cache.get(e.key, async () => {
+        const bytes = await map.readSubdivision(e.tile, e.sd);
         const stats = { sections: 0, badSections: 0 };
-        const objs = decodeSubdivision(bytesList[i], e.sd, stats);
+        const decoded = decodeSubdivision(bytes, e.sd, stats);
         badSections += stats.badSections;
-        cache.set(e.key, objs);
-        resolved.set(e.key, objs);
-      }
-    }
+        return decoded;
+      });
+      resolved.set(e.key, objs);
+    }));
 
     for (const { tile, key } of entries) {
       const objs = resolved.get(key)!;
