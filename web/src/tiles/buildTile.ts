@@ -1,12 +1,20 @@
 import { fromGeojsonVt } from '@maplibre/vt-pbf';
 import { clipPolygon, clipPolyline } from 'lineclip';
 import { decodeSubdivision, type RawObject } from '../img/rgn';
-import { subdivisionBounds } from '../img/tre';
+import { shiftOf, subdivisionBounds, type Subdivision } from '../img/tre';
 import { objectName, type GarminMap } from '../map/garminMap';
 import { tileBounds } from './tileMath';
 
 export const EXTENT = 4096;
 export const BUFFER = 64;
+/**
+ * Margin applied to each subdivision's declared bounds before the intersection pre-filter, as a
+ * fraction of that subdivision's half-extent (per axis). The declared boxes in the real Iceland
+ * "Detailed" map exactly bound their objects (measured max overshoot fraction: 0 at every level
+ * bits — see test/tiles.test.ts), so this is headroom rather than a correction for observed
+ * overshoot. Never goes below 0.
+ */
+export const SD_MARGIN = 0.05;
 const UNITS_PER_DEG = 16777216 / 360;
 const LAYER = { point: 'points', line: 'lines', polygon: 'polygons' } as const;
 
@@ -39,7 +47,16 @@ export class SubdivisionCache {
 
 const intersects = (a: BBox, b: BBox) => a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
 
-function coordsBounds(coords: Array<[number, number]>): BBox {
+/** `subdivisionBounds(sd)` padded by `SD_MARGIN` times the subdivision's half-extent, per axis. */
+export function paddedSubdivisionBounds(sd: Subdivision): BBox {
+  const [w, s, e, n] = subdivisionBounds(sd);
+  const k = 2 ** shiftOf(sd);
+  const padX = sd.halfWidth * k * SD_MARGIN;
+  const padY = sd.halfHeight * k * SD_MARGIN;
+  return [w - padX, s - padY, e + padX, n + padY];
+}
+
+export function coordsBounds(coords: Array<[number, number]>): BBox {
   let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
   for (const [x, y] of coords) {
     if (x < w) w = x;
@@ -83,7 +100,7 @@ export async function buildTile(
 
     for (const tile of map.tiles) {
       for (const sd of tile.byLevel.get(bits) ?? []) {
-        if (!intersects(subdivisionBounds(sd), query)) continue;
+        if (!intersects(paddedSubdivisionBounds(sd), query)) continue;
         const key = `${tile.id}:${sd.index}`;
         let objs = cache.get(key);
         if (!objs) {

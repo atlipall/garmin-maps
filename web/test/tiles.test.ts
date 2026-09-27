@@ -1,8 +1,10 @@
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { shiftOf, subdivisionBounds } from '../src/img/tre';
+import { decodeAll } from '../src/map/decodeAll';
 import { GarminMap } from '../src/map/garminMap';
-import { buildTile, SubdivisionCache } from '../src/tiles/buildTile';
+import { buildTile, coordsBounds, paddedSubdivisionBounds, SubdivisionCache } from '../src/tiles/buildTile';
 import { latToTileY, lonToTileX, tileBounds } from '../src/tiles/tileMath';
 import { nodeSource } from './helpers/nodeSource';
 import { DETAILED, hasRealData } from './helpers/paths';
@@ -63,8 +65,37 @@ describe.skipIf(!hasRealData)('buildTile on real data', () => {
     expect(features).toBe(0);
   });
 
+  test('subdivision pre-filter margin covers every decoded object (real data)', async () => {
+    // Evidence for SD_MARGIN: for every decoded object, how far does its bounding box extend
+    // beyond its subdivision's declared bounds, as a fraction of that subdivision's half-extent
+    // (per axis)? Track the max per level bits, then confirm every object's box still falls
+    // within paddedSubdivisionBounds (the pre-filter's actual margin), proving the margin covers
+    // the real data.
+    const overshootByLevel = new Map<number, number>();
+    let violations = 0;
+    await decodeAll(map, (_tile, sd, obj) => {
+      const k = 2 ** shiftOf(sd);
+      const halfW = sd.halfWidth * k;
+      const halfH = sd.halfHeight * k;
+      const [sw, ss, se, sn] = subdivisionBounds(sd);
+      const [objW, objS, objE, objN] = coordsBounds(obj.coords);
+      const overX = Math.max(0, sw - objW, objE - se);
+      const overY = Math.max(0, ss - objS, objN - sn);
+      const fracX = halfW > 0 ? overX / halfW : overX > 0 ? Infinity : 0;
+      const fracY = halfH > 0 ? overY / halfH : overY > 0 ? Infinity : 0;
+      overshootByLevel.set(sd.level.bits, Math.max(overshootByLevel.get(sd.level.bits) ?? 0, fracX, fracY));
+
+      const [pw, ps, pe, pn] = paddedSubdivisionBounds(sd);
+      if (objW < pw || objE > pe || objS < ps || objN > pn) violations++;
+    });
+    const rows = [...overshootByLevel]
+      .sort((a, b) => a[0] - b[0])
+      .map(([bits, frac]) => `  level ${bits}: ${frac.toFixed(4)}`);
+    console.log('\nmax overshoot fraction of half-extent, per level bits:\n' + rows.join('\n'));
+    expect(violations).toBe(0);
+  }, 120_000);
+
   test('timings (spike measurement)', async () => {
-    const cache = new SubdivisionCache(1500);
     const around = (lon: number, lat: number, z: number) => {
       const [cx, cy] = [lonToTileX(lon, z), latToTileY(lat, z)];
       return [-1, 0, 1].flatMap((dx) => [-1, 0, 1].map((dy) => [z, cx + dx, cy + dy] as const));
@@ -78,15 +109,21 @@ describe.skipIf(!hasRealData)('buildTile on real data', () => {
     };
     const rows: string[] = [];
     for (const [label, tiles] of Object.entries(cases)) {
+      // Fresh cache per case: the first build is a genuine cold (cache-empty) build, not the
+      // fastest of the batch. The shared GarminMap stays open (opening it is a once-per-app cost).
+      const cache = new SubdivisionCache(1500);
       const ms: number[] = [];
       for (const [z, x, y] of tiles) {
         const t0 = performance.now();
         await buildTile(map, cache, z, x, y);
         ms.push(performance.now() - t0);
       }
-      ms.sort((a, b) => a - b);
-      rows.push(`${label.padEnd(22)} first ${ms[0].toFixed(0).padStart(5)}  p50 ${ms[4].toFixed(0).padStart(5)}  max ${ms[8].toFixed(0).padStart(5)} ms`);
-      expect(ms[8]).toBeLessThan(5000);
+      const cold = ms[0];
+      const sorted = [...ms].sort((a, b) => a - b);
+      const p50 = sorted[4];
+      const max = sorted[8];
+      rows.push(`${label.padEnd(22)} cold ${cold.toFixed(0).padStart(5)}  p50 ${p50.toFixed(0).padStart(5)}  max ${max.toFixed(0).padStart(5)} ms`);
+      expect(max).toBeLessThan(5000);
     }
     console.log('\n' + rows.join('\n'));
   }, 300_000);
