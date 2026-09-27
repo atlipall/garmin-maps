@@ -124,8 +124,14 @@ export async function startViewer(stored: Stored): Promise<void> {
       app.search = (q) => index.search(q);
       app.placesReady = true;
       wireSearch(map, index);
+      const input = $<HTMLInputElement>('search');
+      input.placeholder = 'Search places';
+      input.disabled = false;
     })
-    .catch((err) => console.error('search index', err));
+    .catch((err) => {
+      console.error('search index', err);
+      $<HTMLInputElement>('search').placeholder = 'Search unavailable';
+    });
 }
 
 /** Compact on-disk form of a `Place`: [name, lon, lat, kindCode, type]. */

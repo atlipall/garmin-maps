@@ -38,10 +38,10 @@
   <body>
     <div id="map"></div>
     <div id="topbar" class="panel" hidden>
-      <input id="search" type="search" placeholder="Search places" autocomplete="off" enterkeyhint="search" />
+      <input id="search" type="search" placeholder="Loading places…" aria-label="Search places" disabled autocomplete="off" enterkeyhint="search" />
       <ul id="results"></ul>
     </div>
-    <div id="badge" class="panel" hidden></div>
+    <div id="badge" class="panel" role="status" aria-live="polite" hidden></div>
     <button id="replace" class="panel" hidden>Load another map</button>
     <div id="perf" class="panel" hidden></div>
     <section id="import" hidden>
@@ -49,9 +49,9 @@
         <h2>Load your map</h2>
         <p>Pick the Garmin <code>.img</code> map file. Add the <code>.hgt</code> elevation files for hillshading (optional). They are stored on this device only.</p>
         <label for="img-file">Map (.img)</label>
-        <input id="img-file" type="file" accept=".img" />
+        <input id="img-file" type="file" />
         <label for="hgt-files">Elevation (.hgt, select all)</label>
-        <input id="hgt-files" type="file" accept=".hgt" multiple />
+        <input id="hgt-files" type="file" multiple />
         <div><button id="import-button">Import</button></div>
         <div id="import-progress"></div>
         <div id="import-error"></div>
