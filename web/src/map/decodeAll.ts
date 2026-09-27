@@ -1,0 +1,21 @@
+import { decodeSubdivision, type DecodeStats, type RawObject } from '../img/rgn';
+import type { Subdivision } from '../img/tre';
+import type { GarminMap, MapTile } from './garminMap';
+
+/** Visit every object of every subdivision that has data at a level with a zoom band, in file order. */
+export async function decodeAll(
+  map: GarminMap,
+  visit: (tile: MapTile, sd: Subdivision, obj: RawObject) => void | false,
+): Promise<DecodeStats> {
+  const stats: DecodeStats = { sections: 0, badSections: 0 };
+  for (const tile of map.tiles) {
+    const wanted = new Set([...tile.byLevel].filter(([bits]) => map.bands.has(bits)).flatMap(([, sds]) => sds));
+    for (const sd of tile.tre.subdivisions) {
+      if (!wanted.has(sd)) continue;
+      for (const obj of decodeSubdivision(await map.readSubdivision(tile, sd), sd, stats)) {
+        if (visit(tile, sd, obj) === false) return stats;
+      }
+    }
+  }
+  return stats;
+}
