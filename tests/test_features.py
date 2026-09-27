@@ -1,7 +1,26 @@
-from imgconv.features import contour_label, in_bounds, to_feature, zoom_bands
+import struct
+
+import pytest
+
+from imgconv.errors import ImgError
+from imgconv.features import contour_label, decode_img, in_bounds, to_feature, zoom_bands
 from imgconv.rgn import RawObject
+from tests.builders import build_img, make_rgn_header, make_tre
 
 U = 2**24 / 360  # map units per degree
+
+
+def _make_lbl():
+    """A minimal but valid LBL subfile with no label strings."""
+    hlen = 0xAC
+    h = bytearray(hlen)
+    struct.pack_into("<H", h, 0, hlen)
+    h[2:12] = b"GARMIN LBL"
+    h[0x1E] = 9
+    struct.pack_into("<II", h, 0x15, hlen, 1)
+    struct.pack_into("<II", h, 0x57, hlen + 1, 0)
+    struct.pack_into("<H", h, 0xAA, 1252)
+    return bytes(h) + b"\0"
 
 
 def test_zoom_bands_start_coarsest_at_4():
@@ -41,3 +60,23 @@ def test_contour_label_feet_to_metres():
 def test_in_bounds():
     assert in_bounds({"type": "Point", "coordinates": [-20.0, 64.0]})
     assert not in_bounds({"type": "Point", "coordinates": [10.0, 64.0]})
+
+
+def test_decode_img_cleans_up_part_files_on_worker_error(tmp_path):
+    """One tile decodes fine (and gets a real part file); the other has a corrupt TRE and makes
+    the worker raise ImgError. decode_img must not leave any part-*.geojsonseq files behind."""
+    files = {
+        "00000001.TRE": make_tre([], []),
+        "00000001.RGN": make_rgn_header(0),
+        "00000001.LBL": _make_lbl(),
+        "00000002.TRE": b"\x00" * 20,  # fails the "GARMIN TRE" signature check inside the worker
+        "00000002.RGN": make_rgn_header(0),
+    }
+    img_path = tmp_path / "test.img"
+    img_path.write_bytes(build_img(files))
+    out_dir = tmp_path / "out"
+
+    with pytest.raises(ImgError):
+        decode_img(img_path, out_dir, workers=2)
+
+    assert list(out_dir.iterdir()) == []

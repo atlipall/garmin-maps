@@ -76,7 +76,11 @@ def decode_tile(img_path, tile_id, out_path):
     rgn = img.get(f"{tile_id}.RGN")
     tre = parse_tre(img.get(f"{tile_id}.TRE"), rgn)
     labels = LabelTable(img.get(f"{tile_id}.LBL"), img.get(f"{tile_id}.NET"))
-    bands = zoom_bands([sd.level.bits for sd in tre.subdivisions if sd.has_data])
+    level_bits = [sd.level.bits for sd in tre.subdivisions if sd.has_data]
+    bands = zoom_bands(level_bits)
+    missing = set(level_bits) - bands.keys()
+    if missing:
+        print(f"  tile {tile_id}: warning: levels {sorted(missing)} get no zoom band and are skipped")
     stats = DecodeStats()
     types = {layer: Counter() for layer in LAYERS.values()}
     with open(out_path, "w", encoding="utf-8") as f:
@@ -107,19 +111,24 @@ def decode_img(img_path, out_dir, workers=os.cpu_count()):
     total = DecodeStats()
     types = {layer: Counter() for layer in LAYERS.values()}
     parts = [out_dir / f"part-{tid}.geojsonseq" for tid in tile_ids]
-    with ProcessPoolExecutor(max_workers=min(workers, len(tile_ids))) as pool:
-        for tile_id, stats, tile_types in pool.map(decode_tile, [img_path] * len(tile_ids), tile_ids, parts):
-            print(f"  tile {tile_id}: {stats.features} features, "
-                  f"{stats.bad_sections}/{stats.sections} bad sections, {stats.out_of_bounds} out of bounds")
-            total.add(stats)
-            for layer, counter in tile_types.items():
-                types[layer].update(counter)
-    with open(out_dir / "features.geojsonseq", "wb") as out:
+    try:
+        with ProcessPoolExecutor(max_workers=min(workers, len(tile_ids))) as pool:
+            for tile_id, stats, tile_types in pool.map(decode_tile, [img_path] * len(tile_ids), tile_ids, parts):
+                print(f"  tile {tile_id}: {stats.features} features, "
+                      f"{stats.bad_sections}/{stats.sections} bad sections, {stats.out_of_bounds} out of bounds")
+                total.add(stats)
+                for layer, counter in tile_types.items():
+                    types[layer].update(counter)
+        with open(out_dir / "features.geojsonseq", "wb") as out:
+            for part in parts:
+                with open(part, "rb") as f:
+                    while chunk := f.read(1 << 24):
+                        out.write(chunk)
+                part.unlink()
+    except Exception:
         for part in parts:
-            with open(part, "rb") as f:
-                while chunk := f.read(1 << 24):
-                    out.write(chunk)
-            part.unlink()
+            part.unlink(missing_ok=True)
+        raise
     (out_dir / "types.json").write_text(json.dumps(
         {layer: {str(t): n for t, n in sorted(c.items())} for layer, c in types.items()}, indent=1))
     (out_dir / "decode-stats.json").write_text(json.dumps(total.__dict__, indent=1))
