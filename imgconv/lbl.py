@@ -16,17 +16,17 @@ def _is_number(s):
 def format_label(raw, codec):
     parts = []
     buf = bytearray()
-    last_sep = 0
+    prev_sep = 0
     for b in raw:
         if 0x1B <= b <= 0x1F:
-            last_sep = b
             if buf:
-                parts.append((bytes(buf), last_sep))
+                parts.append((bytes(buf), prev_sep))
                 buf.clear()
+            prev_sep = b
         elif b >= 0x07:
             buf.append(b)
     if buf:
-        parts.append((bytes(buf), last_sep))
+        parts.append((bytes(buf), prev_sep))
     out = []
     for part, sep in parts:
         s = part.decode(codec, errors="replace").strip()

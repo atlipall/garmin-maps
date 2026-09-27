@@ -33,6 +33,10 @@ def test_control_bytes_are_dropped():
     assert format_label(b"\x01A\x1bB", "cp1252") == "A B"
 
 
+def test_elevation_with_following_separator():
+    assert format_label(b"A\x1f4892\x1bXYZ", "cp1252") == "A 1491 m XYZ"
+
+
 def test_lookup_by_offset_and_poi():
     lbl = make_lbl([b"Vatn", b"Hraun"], poi=bytes([6, 0, 0]))
     table = LabelTable(lbl, None)
