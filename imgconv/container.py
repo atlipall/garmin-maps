@@ -6,6 +6,15 @@ from .binary import u32
 from .errors import ImgError
 
 FAT_ENTRY = 512
+REQUIRED_SUBFILE_EXTS = ("TRE", "RGN", "LBL")
+
+
+def require_subfiles(img, tile_id):
+    """Raise ImgError naming the tile if any of the mandatory subfiles (TRE, RGN, LBL) is missing.
+    NET is optional and not checked here."""
+    for ext in REQUIRED_SUBFILE_EXTS:
+        if img.get(f"{tile_id}.{ext}") is None:
+            raise ImgError(f"{tile_id}: missing {ext} subfile")
 
 
 @dataclass
@@ -34,6 +43,9 @@ class ImgContainer:
             off += FAT_ENTRY
             if e[0] != 1:
                 if started:
+                    if header_end is not None:
+                        # header size is known: skip zeroed/invalid slots, bounded by header_end
+                        continue
                     break
                 continue
             started = True

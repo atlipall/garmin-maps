@@ -5,7 +5,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from .binary import map_units_to_deg
-from .container import ImgContainer
+from .container import ImgContainer, require_subfiles
 from .errors import ImgError
 from .lbl import LabelTable
 from .rgn import DecodeStats, decode_subdivision
@@ -73,9 +73,16 @@ def in_bounds(geometry):
 
 def decode_tile(img_path, tile_id, out_path):
     img = ImgContainer.from_path(img_path)
+    require_subfiles(img, tile_id)
     rgn = img.get(f"{tile_id}.RGN")
-    tre = parse_tre(img.get(f"{tile_id}.TRE"), rgn)
-    labels = LabelTable(img.get(f"{tile_id}.LBL"), img.get(f"{tile_id}.NET"))
+    try:
+        tre = parse_tre(img.get(f"{tile_id}.TRE"), rgn)
+    except ImgError as e:
+        raise ImgError(f"{tile_id}.TRE: {e}")
+    try:
+        labels = LabelTable(img.get(f"{tile_id}.LBL"), img.get(f"{tile_id}.NET"))
+    except ImgError as e:
+        raise ImgError(f"{tile_id}.LBL: {e}")
     level_bits = [sd.level.bits for sd in tre.subdivisions if sd.has_data]
     bands = zoom_bands(level_bits)
     missing = set(level_bits) - bands.keys()
@@ -104,10 +111,24 @@ def decode_tile(img_path, tile_id, out_path):
     return tile_id, stats, types
 
 
+def check_thresholds(stats):
+    """Raise ImgError if decode stats indicate the IMG is unusable. Pure function so it's testable
+    without going through multiprocessing."""
+    if stats.sections and stats.bad_sections / stats.sections > MAX_ERROR_RATE:
+        raise ImgError(f"{stats.bad_sections} of {stats.sections} RGN sections failed to decode")
+    denom = stats.features + stats.out_of_bounds
+    if denom and stats.out_of_bounds / denom > MAX_ERROR_RATE:
+        raise ImgError(f"{stats.out_of_bounds} features fell outside Iceland")
+    if stats.features == 0:
+        raise ImgError("no features decoded")
+
+
 def decode_img(img_path, out_dir, workers=os.cpu_count()):
     img_path, out_dir = Path(img_path), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     tile_ids = ImgContainer.from_path(img_path).tile_ids()
+    if not tile_ids:
+        raise ImgError("no map tiles (TRE subfiles) in IMG")
     total = DecodeStats()
     types = {layer: Counter() for layer in LAYERS.values()}
     parts = [out_dir / f"part-{tid}.geojsonseq" for tid in tile_ids]
@@ -132,8 +153,10 @@ def decode_img(img_path, out_dir, workers=os.cpu_count()):
     (out_dir / "types.json").write_text(json.dumps(
         {layer: {str(t): n for t, n in sorted(c.items())} for layer, c in types.items()}, indent=1))
     (out_dir / "decode-stats.json").write_text(json.dumps(total.__dict__, indent=1))
-    if total.sections and total.bad_sections / total.sections > MAX_ERROR_RATE:
-        raise ImgError(f"{total.bad_sections} of {total.sections} RGN sections failed to decode")
-    if total.features and total.out_of_bounds / total.features > MAX_ERROR_RATE:
-        raise ImgError(f"{total.out_of_bounds} features fell outside Iceland")
+    try:
+        check_thresholds(total)
+    except ImgError:
+        (out_dir / "features.geojsonseq").unlink(missing_ok=True)
+        (out_dir / "types.json").unlink(missing_ok=True)
+        raise
     return total

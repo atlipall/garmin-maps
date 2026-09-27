@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .container import ImgContainer
+from .container import ImgContainer, require_subfiles
 from .errors import ImgError
 from .features import decode_img
 from .hillshade import build_dem_mbtiles
@@ -36,8 +36,15 @@ def cmd_inspect(args):
     for name in sorted(img.subfiles):
         print(f"{name:16} {len(img.subfiles[name]):>10}")
     for tid in img.tile_ids():
-        tre = parse_tre(img.get(f"{tid}.TRE"), img.get(f"{tid}.RGN"))
-        LabelTable(img.get(f"{tid}.LBL"), img.get(f"{tid}.NET"))
+        require_subfiles(img, tid)
+        try:
+            tre = parse_tre(img.get(f"{tid}.TRE"), img.get(f"{tid}.RGN"))
+        except ImgError as e:
+            raise ImgError(f"{tid}.TRE: {e}")
+        try:
+            LabelTable(img.get(f"{tid}.LBL"), img.get(f"{tid}.NET"))
+        except ImgError as e:
+            raise ImgError(f"{tid}.LBL: {e}")
         with_ext = sum(1 for sd in tre.subdivisions if any(e > s for s, e in sd.ext))
         print(f"tile {tid}: N{tre.north:.3f} S{tre.south:.3f} W{tre.west:.3f} E{tre.east:.3f} "
               f"levels={[lv.bits for lv in tre.levels]} subdivisions={len(tre.subdivisions)} "

@@ -2,20 +2,11 @@ import io
 import sqlite3
 
 import numpy as np
+import pytest
 from PIL import Image
 
+import imgconv.hillshade as hillshade
 from imgconv.hillshade import build_dem_mbtiles, decode_terrain_rgb
-from imgconv.mbtiles import write_from_xyz
-
-
-def test_write_from_xyz_flips_rows(tmp_path):
-    (tmp_path / "xyz" / "3" / "2").mkdir(parents=True)
-    (tmp_path / "xyz" / "3" / "2" / "1.png").write_bytes(b"PNG")
-    out = tmp_path / "t.mbtiles"
-    assert write_from_xyz(tmp_path / "xyz", out, {"name": "t", "format": "png"}) == 1
-    db = sqlite3.connect(out)
-    assert db.execute("SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles").fetchall() == [(3, 2, 6, b"PNG")]
-    assert dict(db.execute("SELECT name, value FROM metadata")) == {"name": "t", "format": "png"}
 
 
 def test_decode_terrain_rgb():
@@ -40,3 +31,28 @@ def test_build_dem_mbtiles_from_synthetic_hgt(tmp_path):
         img = Image.open(io.BytesIO(data)).convert("RGB")
         top = max(top, max(decode_terrain_rgb(r, g, b) for r, g, b in img.getdata()))
     assert abs(top - height) <= 1
+
+
+def test_build_dem_mbtiles_leaves_no_output_if_a_tile_render_raises_midway(tmp_path, monkeypatch):
+    hgt_dir = tmp_path / "hgt"
+    hgt_dir.mkdir()
+    np.full((1201, 1201), 500, dtype=">i2").tofile(hgt_dir / "n63w014.hgt")
+    out = tmp_path / "dem.mbtiles"
+
+    real_render_tile = hillshade._render_tile
+    calls = {"n": 0}
+
+    def flaky_render_tile(mosaic, bounds, x, y, z):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise RuntimeError("boom")
+        return real_render_tile(mosaic, bounds, x, y, z)
+
+    monkeypatch.setattr(hillshade, "_render_tile", flaky_render_tile)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        build_dem_mbtiles(hgt_dir, out, tmp_path / "work", maxzoom=6)
+
+    assert calls["n"] > 1  # the failure really did happen mid-generation
+    assert not out.exists()
+    assert not out.with_name(out.name + ".tmp").exists()

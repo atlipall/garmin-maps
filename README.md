@@ -28,3 +28,12 @@ Individual stages: `inspect`, `decode`, `style`, `tiles`, `dem`, `sample`, `rend
 .venv/bin/pytest            # tests marked realdata use the GPSmap.is files when present
 (cd render && npm test)
 ```
+
+## Phase 2 notes
+
+- `style.json` uses private URL schemes — `mbtiles://vector|dem/{z}/{x}/{y}`, `fonts://{fontstack}/{range}.pbf`,
+  and `sprite://sprite` — resolved by `render/lib/renderer.mjs`. A MapLibre iOS app must rewrite these to its
+  own tile/glyph/sprite sources before loading the style.
+- The sprite is 1x only.
+- Vector tiles use MapLibre zoom (z4-14); the DEM is terrain-RGB (Mapbox encoding) at z5-11 with tileSize 256.
+- Labels are placed per 8x8 metatile, so a label can occasionally be clipped at a metatile edge.

@@ -43,6 +43,25 @@ def test_rejects_duplicate_parts():
         ImgContainer.from_bytes(bytes(raw))
 
 
+def test_fat_scan_skips_zeroed_slot_between_entries():
+    """A zeroed/deleted 512-byte FAT slot between two valid entries must be skipped, not treated
+    as the end of the FAT, as long as the header size (header_end) is already known."""
+    files = {"AAAAAAAA.TRE": b"T" * 10, "ZZZZZZZZ.TMP": b"", "BBBBBBBB.RGN": b"R" * 10}
+    raw = bytearray(build_img(files))
+    off = 0x200
+    while off + 512 <= len(raw):
+        e = raw[off:off + 512]
+        if e[1:9].decode("latin-1").strip() == "ZZZZZZZZ" and e[9:12].decode("latin-1").strip() == "TMP":
+            raw[off:off + 512] = b"\x00" * 512
+            break
+        off += 512
+    else:
+        raise AssertionError("did not find the ZZZZZZZZ.TMP FAT entry to zero out")
+    img = ImgContainer.from_bytes(bytes(raw))
+    assert img.get("AAAAAAAA.TRE") == b"T" * 10
+    assert img.get("BBBBBBBB.RGN") == b"R" * 10
+
+
 def test_handles_out_of_order_parts():
     """Verify that FAT entries out of order are assembled in correct part order."""
     data = bytes(range(256)) * 20  # 5120 bytes = 10 blocks of 512

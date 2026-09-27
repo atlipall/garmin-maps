@@ -1,5 +1,6 @@
 import io
 import math
+import os
 
 import numpy as np
 from PIL import Image
@@ -128,15 +129,22 @@ def build_dem_mbtiles(hgt_dir, out, work, maxzoom=11):
     if not hgts:
         raise ImgError(f"no .hgt files in {hgt_dir}")
     mosaic, bounds = _load_mosaic(hgts)
-    db = create(out, {"name": "dem", "format": "png", "type": "overlay",
+    tmp = out.with_name(out.name + ".tmp")
+    db = create(tmp, {"name": "dem", "format": "png", "type": "overlay",
                        "minzoom": "5", "maxzoom": str(maxzoom), "encoding": "mapbox"})
     count = 0
-    for z in range(5, maxzoom + 1):
-        for x, y in _tiles_for_zoom(bounds, z):
-            png = _render_tile(mosaic, bounds, x, y, z)
-            tms_row = (1 << z) - 1 - y
-            db.execute("INSERT INTO tiles VALUES (?, ?, ?, ?)", (z, x, tms_row, png))
-            count += 1
-    db.commit()
+    try:
+        for z in range(5, maxzoom + 1):
+            for x, y in _tiles_for_zoom(bounds, z):
+                png = _render_tile(mosaic, bounds, x, y, z)
+                tms_row = (1 << z) - 1 - y
+                db.execute("INSERT INTO tiles VALUES (?, ?, ?, ?)", (z, x, tms_row, png))
+                count += 1
+        db.commit()
+    except Exception:
+        db.close()
+        tmp.unlink(missing_ok=True)
+        raise
     db.close()
+    os.replace(tmp, out)
     print(f"wrote {count} DEM tiles to {out}")
