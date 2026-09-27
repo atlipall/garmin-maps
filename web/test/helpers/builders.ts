@@ -63,3 +63,63 @@ export function buildImg(files: Record<string, Uint8Array>, blockSize = 512, blo
   }
   return concat(hdr, ...body);
 }
+
+export function makeRgnHeader(dataLen: number, ext: Array<[number, number]> = [[0, 0], [0, 0], [0, 0]], hlen = 0x7d): Uint8Array {
+  const h = new Uint8Array(hlen);
+  const dv = new DataView(h.buffer);
+  dv.setUint16(0, hlen, true);
+  h.set(bytesOf('GARMIN RGN'), 2);
+  dv.setUint32(0x15, hlen, true);
+  dv.setUint32(0x19, dataLen, true);
+  ext.forEach(([o, n], i) => {
+    const at = [0x1d, 0x39, 0x55][i];
+    dv.setUint32(at, o, true);
+    dv.setUint32(at + 4, n, true);
+  });
+  return h;
+}
+
+/** levels: [number, bits, inherited, count]; subdivs: [rgnOffset, kinds, cx, cy] in level order;
+ *  extRecords: [poly2, line2, point2] offsets (one per subdivision + sentinel). Half-width/height are 10. */
+export function makeTre(
+  levels: Array<[number, number, boolean, number]>,
+  subdivs: Array<[number, number, number, number]>,
+  extRecords: Array<[number, number, number]> = [],
+  bounds: [number, number, number, number] = [1000, 1000, -1000, -1000],
+  hlen = 0xbc,
+): Uint8Array {
+  const h = new Uint8Array(hlen);
+  const dv = new DataView(h.buffer);
+  dv.setUint16(0, hlen, true);
+  h.set(bytesOf('GARMIN TRE'), 2);
+  bounds.forEach((v, i) => h.set(packS24(v), 0x15 + 3 * i));
+  const lv = concat(...levels.map(([num, bits, inh, cnt]) => new Uint8Array([num | (inh ? 0x80 : 0), bits, cnt & 0xff, cnt >> 8])));
+  const sd: number[] = [];
+  let i = 0;
+  levels.forEach(([, , , cnt], li) => {
+    const last = li === levels.length - 1;
+    for (let k = 0; k < cnt; k++) {
+      const [rgnOff, kinds, cx, cy] = subdivs[i++];
+      sd.push(rgnOff & 0xff, (rgnOff >> 8) & 0xff, (rgnOff >> 16) & 0xff, kinds, ...packS24(cx), ...packS24(cy), 10, 0, 10, 0);
+      if (!last) sd.push(0, 0);
+    }
+  });
+  const ext = new Uint8Array(13 * extRecords.length);
+  const edv = new DataView(ext.buffer);
+  extRecords.forEach(([a, b, c], j) => {
+    edv.setUint32(13 * j, a, true);
+    edv.setUint32(13 * j + 4, b, true);
+    edv.setUint32(13 * j + 8, c, true);
+  });
+  const lvOff = hlen;
+  const sdOff = lvOff + lv.length;
+  const extOff = sdOff + sd.length;
+  dv.setUint32(0x21, lvOff, true);
+  dv.setUint32(0x25, lv.length, true);
+  dv.setUint32(0x29, sdOff, true);
+  dv.setUint32(0x2d, sd.length, true);
+  dv.setUint32(0x7c, extOff, true);
+  dv.setUint32(0x80, ext.length, true);
+  dv.setUint16(0x84, ext.length ? 13 : 0, true);
+  return concat(h, lv, new Uint8Array(sd), ext);
+}
