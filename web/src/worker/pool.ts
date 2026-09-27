@@ -1,7 +1,16 @@
+import type { Place } from '../search/places';
+
+export interface OpenPayload {
+  file: File;
+  hgt: File[];
+  overview: File | null;
+}
+
 export interface OpenMeta {
   bounds: [number, number, number, number];
   typ: Uint8Array | null;
   tileIds: string[];
+  demBounds: [number, number, number, number] | null;
 }
 
 export interface TileResult {
@@ -9,6 +18,16 @@ export interface TileResult {
   ms: number;
   badSections: number;
   features: number;
+}
+
+/** Exactly one of `bitmap`/`rgba` is set: `bitmap` on platforms where the worker could build an
+ *  `ImageBitmap` itself, `rgba` (a transferred RGBA buffer) where `createImageBitmap` was missing
+ *  or threw — which happens on some older iOS Safari versions. Task 6's main-thread code is
+ *  expected to build the `ImageBitmap` from `rgba` itself in that case. */
+export interface DemResult {
+  bitmap?: ImageBitmap;
+  rgba?: ArrayBuffer;
+  ms: number;
 }
 
 type Pending = { worker: Worker; resolve: (v: any) => void; reject: (e: Error | DOMException) => void };
@@ -24,8 +43,9 @@ export class TilePool {
   private readonly pending = new Map<number, Pending>();
   private seq = 0;
   private opened = false;
+  private disposed = false;
 
-  constructor(private readonly file: File, size: number) {
+  constructor(private readonly payload: OpenPayload, size: number) {
     for (let i = 0; i < size; i++) {
       this.respawns[i] = 0;
       this.workers[i] = this.spawn(i);
@@ -47,7 +67,7 @@ export class TilePool {
    * calls route around it instead of hanging forever. */
   private onWorkerDown(index: number, dead: Worker, err: Error): void {
     this.rejectPendingFor(dead, err);
-    if (this.workers[index] !== dead) return; // already replaced/handled by an earlier event
+    if (this.disposed || this.workers[index] !== dead) return; // already replaced/handled/disposed
     try {
       dead.terminate();
     } catch {
@@ -62,7 +82,7 @@ export class TilePool {
     this.workers[index] = w;
     if (this.opened) {
       // If re-opening also fails, the new worker's own onerror handler drives the next attempt.
-      this.call(w, { type: 'open', file: this.file }).catch(() => {});
+      this.call(w, { type: 'open', ...this.payload }).catch(() => {});
     }
   }
 
@@ -76,6 +96,7 @@ export class TilePool {
   }
 
   private call(w: Worker, msg: Record<string, unknown>, signal?: AbortSignal): Promise<any> {
+    if (this.disposed) return Promise.reject(new Error('pool disposed'));
     if (signal?.aborted) return Promise.reject(new DOMException('aborted', 'AbortError'));
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
@@ -114,13 +135,23 @@ export class TilePool {
     return this.workers.filter((w): w is Worker => w !== null);
   }
 
+  /** Same worker choice for every message keyed by tile coordinates (`tile` and `dem`), so a
+   *  worker's per-tile caches (subdivision cache, decoded DEM patches) stay warm across requests
+   *  for neighbouring tiles. */
+  private routeFor(x: number, y: number): Worker | undefined {
+    const live = this.live();
+    if (!live.length) return undefined;
+    return live[((x >> 1) + (y >> 1) * 7) % live.length];
+  }
+
   async open(): Promise<OpenMeta> {
+    if (this.disposed) throw new Error('pool disposed');
     this.opened = true;
     const live = this.live();
     if (!live.length) throw new Error('no workers available');
-    const results = await Promise.all(live.map((w) => this.call(w, { type: 'open', file: this.file })));
-    const { bounds, typ, tileIds } = results[0];
-    return { bounds, typ, tileIds };
+    const results = await Promise.all(live.map((w) => this.call(w, { type: 'open', ...this.payload })));
+    const { bounds, typ, tileIds, demBounds } = results[0];
+    return { bounds, typ, tileIds, demBounds };
   }
 
   /** Neighbouring tiles go to the same worker so its subdivision cache is reused. `signal`, when
@@ -128,9 +159,51 @@ export class TilePool {
    *  anything to the worker, and an abort mid-flight posts `{type: 'cancel', id}` to that worker
    *  and rejects with an `AbortError`. */
   tile(z: number, x: number, y: number, signal?: AbortSignal): Promise<TileResult> {
+    if (this.disposed) return Promise.reject(new Error('pool disposed'));
+    const w = this.routeFor(x, y);
+    if (!w) return Promise.reject(new Error('no workers available'));
+    return this.call(w, { type: 'tile', z, x, y }, signal);
+  }
+
+  /** Same routing and cancellation semantics as `tile()` — see its doc comment. */
+  dem(z: number, x: number, y: number, signal?: AbortSignal): Promise<DemResult> {
+    if (this.disposed) return Promise.reject(new Error('pool disposed'));
+    const w = this.routeFor(x, y);
+    if (!w) return Promise.reject(new Error('no workers available'));
+    return this.call(w, { type: 'dem', z, x, y }, signal).then((msg): DemResult => ({ bitmap: msg.bitmap, rgba: msg.rgba, ms: msg.ms }));
+  }
+
+  /** Builds the place list on the LAST live worker rather than the first: a simple way to keep
+   *  this one-off, comparatively expensive decode off the routing slot ((0,0) tiles and low zooms
+   *  hash to index 0) that's busiest with tile requests, so it doesn't starve tile serving. */
+  places(signal?: AbortSignal): Promise<Place[]> {
+    if (this.disposed) return Promise.reject(new Error('pool disposed'));
     const live = this.live();
     if (!live.length) return Promise.reject(new Error('no workers available'));
-    const w = live[((x >> 1) + (y >> 1) * 7) % live.length];
-    return this.call(w, { type: 'tile', z, x, y }, signal);
+    const w = live[live.length - 1];
+    return this.call(w, { type: 'places' }, signal).then((msg) => msg.places as Place[]);
+  }
+
+  /** Terminates every worker and rejects every pending call with Error('pool disposed'); any
+   *  later call rejects immediately the same way. Task 6 calls this on re-import, before a fresh
+   *  pool is constructed for the newly opened file. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    const err = new Error('pool disposed');
+    for (const [id, p] of this.pending) {
+      this.pending.delete(id);
+      p.reject(err);
+    }
+    for (let i = 0; i < this.workers.length; i++) {
+      const w = this.workers[i];
+      this.workers[i] = null;
+      if (!w) continue;
+      try {
+        w.terminate();
+      } catch {
+        // already gone
+      }
+    }
   }
 }

@@ -31,7 +31,7 @@ function tileWorkerCount(): number {
 }
 
 async function start(file: File): Promise<void> {
-  const pool = new TilePool(file, tileWorkerCount());
+  const pool = new TilePool({ file, hgt: [], overview: null }, tileWorkerCount());
   const meta = await pool.open();
   const perf = new PerfStats($('perf'));
   maplibregl.addProtocol('garmin', async (params, abortController) => {
