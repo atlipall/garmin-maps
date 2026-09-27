@@ -37,3 +37,16 @@ Individual stages: `inspect`, `decode`, `style`, `tiles`, `dem`, `sample`, `rend
 - The sprite is 1x only.
 - Vector tiles use MapLibre zoom (z4-14); the DEM is terrain-RGB (Mapbox encoding) at z5-11 with tileSize 256.
 - Labels are placed per 8x8 metatile, so a label can occasionally be clipped at a metatile edge.
+
+## Web app (on-the-fly, iPhone and Mac)
+
+`web/` is a browser app that renders the Garmin `.img` directly, with no pre-rendered tiles. It adds hillshade from the `.hgt` files, place search and GPS, and works offline once installed.
+
+```bash
+cd web && npm install
+npm run dev        # http://localhost:5173
+npm test           # unit + golden tests (golden tests need the GPSmap.is files and out/ reference data)
+npm run e2e        # full headless-Chrome check: import, hillshade, search, offline
+```
+
+On the iPhone, open the GitHub Pages URL in Safari, then use Share → Add to Home Screen. Open the app, tap Import, and pick the `.img` and the `.hgt` files from the Files app. They stay on the device.
