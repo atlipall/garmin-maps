@@ -28,7 +28,7 @@ Five stages. Each is a separate command that reads and writes files on disk, so 
 | decode | IMG → `features.geojsonseq` | Python `imgconv` (new) |
 | style | TYP → `style.json`, sprite | Python `imgconv` (new) |
 | tile | features → `vector.mbtiles` | tippecanoe |
-| hillshade | `.hgt` → `hillshade.mbtiles` | GDAL (`gdalbuildvrt`, `gdaldem hillshade`, `gdal2tiles`/`gdal_translate`) |
+| hillshade | `.hgt` → `dem.mbtiles` (terrain-RGB) | GDAL (`gdalbuildvrt`, `gdalwarp`, `gdal_calc`, `gdal2tiles`); shaded by MapLibre's `hillshade` layer at render time |
 | render | vector + hillshade + style → raster MBTiles | Node, `@maplibre/maplibre-native` |
 
 ### Python package `imgconv`
@@ -39,7 +39,7 @@ Five stages. Each is a separate command that reads and writes files on disk, so 
 - `rgn.py`: points, indexed points, polylines and polygons per subdivision, plus the extended types (RGN2–4 sections) when present. Geometry is delta-decoded with per-subdivision bit widths.
 - `lbl.py`: label decoding (6-, 8- and 10-bit encodings). The codepage comes from the LBL header and SRT; Icelandic characters must survive.
 - `typ.py`: polygon, line and point definitions (day colours, widths, bitmaps, draw order).
-- `features.py`: combines the tiles into GeoJSON features with `layer` (point/line/polygon), `type` (Garmin code incl. subtype), `name`, `minzoom`, `maxzoom`. Each object is emitted at the most detailed level it appears in. Levels are mapped to zoom as `zoom ≈ bits − 8`, clamped to 5–15.
+- `features.py`: combines the tiles into GeoJSON features with `layer` (point/line/polygon), `type` (Garmin code incl. subtype), `name`, `minzoom`, `maxzoom`. Each level's objects are emitted in that level's own zoom band, so coarse levels supply generalized geometry at low zoom, as on a Garmin device. The vector pipeline and style use MapLibre zoom (raster zoom − 1). A level with `bits` starts at `bits − 11`, the coarsest level with data starts at z4, and the finest level runs to z14. Raster output is therefore z5–z15.
 - `stylegen.py`: builds a MapLibre style from the TYP. It falls back to standard Garmin default styling for type codes the TYP does not define, and adds the hillshade raster layer beneath the vector layers.
 - `cli.py`: commands `inspect`, `decode`, `style`, `tile`, `hillshade`, `convert`.
 
@@ -60,7 +60,7 @@ A Node script that loads `style.json` with sources pointing at the local vector 
 - Unit tests (pytest) cover the bit reader, delta decoding, label encodings and TYP colour/bitmap parsing, using small hand-made byte fixtures.
 - Golden checks on the real files: all coordinates fall within the bounding box, feature counts are non-zero per tile and level, and known names decode correctly (Reykjavík, Þórsmörk, Landmannalaugar).
 - Visual check: sample tiles (Reykjavík z15, Landmannalaugar z13, whole-country z7) are rendered and compared with QMapShack showing the same IMG. The user reviews these before the full render.
-- Full render: ~3–4M tiles, estimated a few hours on 12 cores.
+- Full render: ~1.4M tiles (z5–z15 over the Iceland bounds) as ~22k 8×8 metatiles, estimated one to a few hours on 12 cores.
 
 ## Out of scope (phase 1)
 
