@@ -8,8 +8,10 @@ from pathlib import Path
 from .container import ImgContainer
 from .errors import ImgError
 from .features import decode_img
+from .hillshade import build_dem_mbtiles
 from .lbl import LabelTable
 from .stylegen import write_style
+from .tiling import build_vector_tiles
 from .tre import parse_tre
 from .typ import empty_typ, parse_typ
 
@@ -57,6 +59,17 @@ def cmd_style(args):
     print(f"wrote {out / 'style.json'} and sprite")
 
 
+def cmd_tiles(args):
+    out = Path(args.out) if args.out else variant_dir(args.img)
+    build_vector_tiles(out / "features.geojsonseq", out / "vector.mbtiles")
+    print(f"wrote {out / 'vector.mbtiles'}")
+
+
+def cmd_dem(args):
+    out = Path(args.out)
+    build_dem_mbtiles(Path(args.hgt), out, out.parent / "dem-work")
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="imgconv", description="Garmin IMG to MBTiles converter")
     sub = p.add_subparsers(dest="command", required=True)
@@ -72,6 +85,14 @@ def build_parser():
     s.add_argument("img")
     s.add_argument("--out")
     s.set_defaults(func=cmd_style)
+    s = sub.add_parser("tiles", help="features.geojsonseq -> vector.mbtiles (tippecanoe)")
+    s.add_argument("img")
+    s.add_argument("--out")
+    s.set_defaults(func=cmd_tiles)
+    s = sub.add_parser("dem", help=".hgt -> terrain-RGB dem.mbtiles (numpy)")
+    s.add_argument("--hgt", default=str(HGT_DIR))
+    s.add_argument("--out", default=str(OUT / "dem.mbtiles"))
+    s.set_defaults(func=cmd_dem)
     return p
 
 
