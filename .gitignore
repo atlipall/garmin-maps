@@ -5,3 +5,5 @@ node_modules/
 *.img
 *.hgt
 .superpowers/
+.venv/
+*.egg-info/
