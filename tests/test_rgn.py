@@ -47,8 +47,9 @@ def test_extended_point_with_poi_label():
 def test_misaligned_section_is_counted():
     line = bytes([0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x95])
     stats = DecodeStats()
-    decode_subdivision(line + b"\x00", sub(0, len(line) + 1, KIND_LINES), stats)
+    objs = decode_subdivision(line + b"\x00", sub(0, len(line) + 1, KIND_LINES), stats)
     assert stats.bad_sections == 1
+    assert objs == []
 
 
 @pytest.mark.realdata

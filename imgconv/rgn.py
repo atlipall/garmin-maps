@@ -115,16 +115,19 @@ def _point2(rgn, o, sd):
 def _run(stats, out, start, end, decode_one):
     stats.sections += 1
     o = start
+    local = []
     try:
         while o < end:
             size, obj = decode_one(o)
             o += size
-            out.append(obj)
+            local.append(obj)
     except (IndexError, struct.error):
         stats.bad_sections += 1
         return
     if o != end:
         stats.bad_sections += 1
+        return
+    out.extend(local)
 
 
 _SECTIONS = (KIND_POINTS, KIND_IDX_POINTS, KIND_LINES, KIND_POLYGONS)
