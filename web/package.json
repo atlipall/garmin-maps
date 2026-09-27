@@ -13,8 +13,7 @@
     "dev": "vite",
     "prebuild": "npm run fonts",
     "build": "vite build",
-    "typecheck": "tsc --noEmit",
-    "screenshots": "node scripts/screenshots.mjs"
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",

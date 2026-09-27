@@ -2,26 +2,61 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Garmin map viewer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#2c5a85" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <title>Garmin Map</title>
     <style>
-      html, body { margin: 0; height: 100%; font: 14px -apple-system, system-ui, sans-serif; }
+      :root { --ink: #1d2a38; --paper: #f4f0e4; --accent: #2c5a85; }
+      html, body { margin: 0; height: 100%; font: 15px -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--paper); }
       #map { position: absolute; inset: 0; }
-      #panel { position: absolute; top: 8px; left: 8px; z-index: 2; background: #fffe; padding: 8px; border-radius: 6px;
-               box-shadow: 0 1px 4px #0003; max-width: calc(100% - 32px); }
-      #perf { font: 12px ui-monospace, monospace; white-space: pre; margin-top: 6px; }
-      #error { color: #b00020; white-space: pre-wrap; }
-      #jumps button { margin: 4px 4px 0 0; }
+      .panel { background: #fffffff0; border-radius: 10px; box-shadow: 0 1px 6px #0003; }
+      #topbar { position: absolute; z-index: 3; top: calc(env(safe-area-inset-top) + 8px); left: calc(env(safe-area-inset-left) + 8px); right: calc(env(safe-area-inset-right) + 56px); max-width: 420px; }
+      #search { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 16px; border: 0; border-radius: 10px; background: transparent; }
+      #results { list-style: none; margin: 4px 0 0; padding: 0; max-height: 50vh; overflow: auto; }
+      #results li { padding: 9px 12px; border-top: 1px solid #0001; cursor: pointer; }
+      #results li small { color: #667; margin-left: 6px; }
+      #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + 8px); bottom: calc(env(safe-area-inset-bottom) + 28px); padding: 6px 10px; font-size: 13px; color: #8a3b00; }
+      #replace { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + 8px); bottom: calc(env(safe-area-inset-bottom) + 64px); padding: 6px 10px; border: 0; font-size: 13px; color: var(--ink); }
+      #perf { position: absolute; z-index: 3; right: calc(env(safe-area-inset-right) + 8px); bottom: calc(env(safe-area-inset-bottom) + 28px); padding: 6px 8px; font: 11px ui-monospace, monospace; white-space: pre; }
+      /* Keep MapLibre's corner controls clear of the notch / home indicator (viewport-fit=cover). */
+      .maplibregl-ctrl-top-right { top: env(safe-area-inset-top); right: env(safe-area-inset-right); }
+      .maplibregl-ctrl-bottom-right { bottom: env(safe-area-inset-bottom); right: env(safe-area-inset-right); }
+      #import { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: var(--paper); padding: 16px; overflow: auto; }
+      #import .card { max-width: 440px; padding: 20px; }
+      #import label { display: block; margin: 14px 0 4px; font-weight: 600; }
+      #import input[type=file] { font-size: 16px; max-width: 100%; }
+      #import button { margin-top: 18px; padding: 10px 16px; font-size: 16px; border: 0; border-radius: 8px; background: var(--accent); color: white; }
+      #import button:disabled { opacity: 0.6; }
+      #import-error { color: #b00020; white-space: pre-wrap; margin-top: 12px; }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
     <div id="map"></div>
-    <div id="panel">
-      <input id="file" type="file" accept=".img" />
-      <div id="jumps"></div>
-      <div id="perf"></div>
-      <div id="error"></div>
+    <div id="topbar" class="panel" hidden>
+      <input id="search" type="search" placeholder="Search places" autocomplete="off" enterkeyhint="search" />
+      <ul id="results"></ul>
     </div>
+    <div id="badge" class="panel" hidden></div>
+    <button id="replace" class="panel" hidden>Load another map</button>
+    <div id="perf" class="panel" hidden></div>
+    <section id="import" hidden>
+      <div class="card panel">
+        <h2>Load your map</h2>
+        <p>Pick the Garmin <code>.img</code> map file. Add the <code>.hgt</code> elevation files for hillshading (optional). They are stored on this device only.</p>
+        <label for="img-file">Map (.img)</label>
+        <input id="img-file" type="file" accept=".img" />
+        <label for="hgt-files">Elevation (.hgt, select all)</label>
+        <input id="hgt-files" type="file" accept=".hgt" multiple />
+        <div><button id="import-button">Import</button></div>
+        <div id="import-progress"></div>
+        <div id="import-error"></div>
+      </div>
+    </section>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
