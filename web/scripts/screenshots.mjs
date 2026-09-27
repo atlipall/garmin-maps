@@ -8,16 +8,18 @@ const REPO = fileURLToPath(new URL('../../', import.meta.url));
 const IMG = REPO + 'GPSmap.is 2024.21 Android/MAPS - Add content to MAPFILES folder/Iceland GPSmap.is 2024.21 Detailed.img';
 const OUT = REPO + 'out/web-samples/';
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const IDLE_TIMEOUT_MS = 120_000;
 
 await mkdir(OUT, { recursive: true });
 const server = await createServer({ root: WEB, server: { port: 5199, strictPort: true } });
 await server.listen();
-const browser = await puppeteer.launch({
-  executablePath: CHROME,
-  headless: true,
-  args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
-});
+let browser;
 try {
+  browser = await puppeteer.launch({
+    executablePath: CHROME,
+    headless: true,
+    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+  });
   const page = await browser.newPage();
   await page.setViewport({ width: 1024, height: 1024 });
   page.on('console', (m) => console.log('[page]', m.type(), m.text()));
@@ -29,18 +31,25 @@ try {
   const samples = await page.evaluate(() => window.__app.samples);
   for (const s of samples) {
     await page.evaluate(
-      (c, z) => new Promise((resolve) => {
+      (c, z, timeoutMs) => new Promise((resolve, reject) => {
         const map = window.__app.map;
+        const timer = setTimeout(
+          () => reject(new Error(`idle timed out after ${timeoutMs}ms for ${JSON.stringify(c)} z${z}`)),
+          timeoutMs,
+        );
         map.jumpTo({ center: c, zoom: z });
-        map.once('idle', resolve);
+        map.once('idle', () => {
+          clearTimeout(timer);
+          resolve();
+        });
       }),
-      s.center, s.zoom,
+      s.center, s.zoom, IDLE_TIMEOUT_MS,
     );
     await page.screenshot({ path: `${OUT}${s.name}.png` });
     console.log('wrote', `${OUT}${s.name}.png`);
   }
   console.log(await page.evaluate(() => window.__app.perf.summary()));
 } finally {
-  await browser.close();
+  if (browser) await browser.close();
   await server.close();
 }

@@ -2,6 +2,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { emptyTyp, parseTyp } from './img/typ';
 import { buildStyle } from './style/buildStyle';
+import { preloadImages } from './ui/images';
 import { PerfStats } from './ui/perf';
 import { TilePool } from './worker/pool';
 
@@ -37,6 +38,11 @@ async function start(file: File): Promise<void> {
   const { style, images } = buildStyle(typ, { tiles: 'garmin://{z}/{x}/{y}', glyphs });
   const [w, s, e, n] = meta.bounds;
   const map = new maplibregl.Map({ container: 'map', style, bounds: [[w, s], [e, n]], maxZoom: 18 });
+  // Register every icon/pattern before any tile is fetched, so the first tile that references
+  // one already finds it (see preloadImages for why the lazy styleimagemissing path alone isn't
+  // enough). The styleimagemissing handler stays as a defensive fallback in case `images` is
+  // ever incomplete for a type the style still references.
+  preloadImages(map, images);
   map.on('styleimagemissing', (ev) => {
     const img = images.get(ev.id);
     if (img && !map.hasImage(ev.id)) map.addImage(ev.id, img);
