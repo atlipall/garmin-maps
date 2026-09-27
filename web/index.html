@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Garmin map viewer</title>
+    <style>
+      html, body { margin: 0; height: 100%; font: 14px -apple-system, system-ui, sans-serif; }
+      #map { position: absolute; inset: 0; }
+      #panel { position: absolute; top: 8px; left: 8px; z-index: 2; background: #fffe; padding: 8px; border-radius: 6px;
+               box-shadow: 0 1px 4px #0003; max-width: calc(100% - 32px); }
+      #perf { font: 12px ui-monospace, monospace; white-space: pre; margin-top: 6px; }
+      #error { color: #b00020; white-space: pre-wrap; }
+      #jumps button { margin: 4px 4px 0 0; }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="panel">
+      <input id="file" type="file" accept=".img" />
+      <div id="jumps"></div>
+      <div id="perf"></div>
+      <div id="error"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
