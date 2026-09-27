@@ -9,11 +9,13 @@
   "scripts": {
     "test": "vitest run",
     "fonts": "node scripts/copy-fonts.mjs",
+    "maplibre-worker": "node scripts/copy-maplibre-worker.mjs",
     "predev": "npm run fonts",
     "dev": "vite",
-    "prebuild": "npm run fonts",
+    "prebuild": "npm run fonts && npm run maplibre-worker",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e": "npm run build && node scripts/e2e.mjs"
   },
   "keywords": [],
   "author": "",
