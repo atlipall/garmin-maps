@@ -1,4 +1,4 @@
-const DIR = 'garmin';
+import { currentDirName, isDataDir, isMissing, listEntries, POINTER } from './layout';
 
 export interface StoredMeta {
   version: 1;
@@ -18,18 +18,31 @@ export interface Stored {
 
 export const cacheKey = (m: StoredMeta) => `${m.imgName}|${m.imgSize}|${m.imgLastModified}`;
 
-async function dir(create = false): Promise<FileSystemDirectoryHandle> {
-  return (await navigator.storage.getDirectory()).getDirectoryHandle(DIR, { create });
+/** The current map's directory (see layout.ts), or null when no map is stored. */
+async function currentDir(): Promise<FileSystemDirectoryHandle | null> {
+  const root = await navigator.storage.getDirectory();
+  const name = await currentDirName(root);
+  return name ? root.getDirectoryHandle(name) : null;
 }
 
-const isMissing = (err: unknown) => err instanceof DOMException && (err.name === 'NotFoundError' || err.name === 'TypeMismatchError');
+function parseMeta(text: string): StoredMeta | null {
+  try {
+    const m = JSON.parse(text) as Partial<StoredMeta> | null;
+    if (!m || m.version !== 1 || typeof m.imgSize !== 'number' || !Array.isArray(m.hgtNames)) return null;
+    return m as StoredMeta;
+  } catch {
+    return null; // corrupt meta: treated as "no map"
+  }
+}
 
 export async function loadStored(): Promise<Stored | null> {
   try {
-    const d = await dir();
-    const meta = JSON.parse(await (await (await d.getFileHandle('meta.json')).getFile()).text()) as StoredMeta;
+    const d = await currentDir();
+    if (!d) return null;
+    const meta = parseMeta(await (await (await d.getFileHandle('meta.json')).getFile()).text());
+    if (!meta) return null;
     const img = await (await d.getFileHandle('map.img')).getFile();
-    if (meta.version !== 1 || img.size !== meta.imgSize) return null;
+    if (img.size !== meta.imgSize) return null;
     const demDir = meta.hgtNames.length ? await d.getDirectoryHandle('dem') : null;
     const hgt = demDir ? await Promise.all(meta.hgtNames.map(async (n) => (await demDir.getFileHandle(n)).getFile())) : [];
     const overview = meta.hasOverview ? await (await d.getFileHandle('dem-overview.bin')).getFile() : null;
@@ -42,7 +55,8 @@ export async function loadStored(): Promise<Stored | null> {
 
 export async function readText(name: string): Promise<string | null> {
   try {
-    return await (await (await dir()).getFileHandle(name)).getFile().then((f) => f.text());
+    const d = await currentDir();
+    return d ? await (await d.getFileHandle(name)).getFile().then((f) => f.text()) : null;
   } catch (err) {
     if (isMissing(err)) return null;
     throw err;
@@ -64,10 +78,29 @@ function runWorker(msg: Record<string, unknown>, onProgress?: (m: string) => voi
 }
 
 export const importFiles = (img: File, hgt: File[], onProgress: (m: string) => void) => runWorker({ type: 'import', img, hgt }, onProgress);
-export const writeText = (name: string, text: string) => runWorker({ type: 'writeText', name, text });
 
+/** Writes a small text file into the current map's directory; rejects when no map is stored. */
+export async function writeText(name: string, text: string): Promise<void> {
+  const dir = await currentDirName(await navigator.storage.getDirectory());
+  if (!dir) throw new Error('no stored map to write into');
+  await runWorker({ type: 'writeText', dir, name, text });
+}
+
+/** Removes the stored map: the commit pointer first (so a partial removal reads as "no map"),
+ *  then every map directory. Throws if anything could not be removed. */
 export async function clearStored(): Promise<void> {
-  await (await navigator.storage.getDirectory()).removeEntry(DIR, { recursive: true }).catch(() => undefined);
+  const root = await navigator.storage.getDirectory();
+  const errors: string[] = [];
+  const remove = async (name: string, recursive: boolean) => {
+    try {
+      await root.removeEntry(name, { recursive });
+    } catch (err) {
+      if (!isMissing(err)) errors.push(`${name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  await remove(POINTER, false);
+  for (const e of await listEntries(root)) if (e.kind === 'directory' && isDataDir(e.name)) await remove(e.name, true);
+  if (errors.length) throw new Error(`Could not remove the stored map: ${errors.join('; ')}`);
 }
 
 export async function requestPersistence(): Promise<boolean> {

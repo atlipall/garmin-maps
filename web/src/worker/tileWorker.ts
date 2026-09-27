@@ -9,7 +9,9 @@ import { buildTile, SubdivisionCache } from '../tiles/buildTile';
 declare const self: DedicatedWorkerGlobalScope;
 
 let opened: Promise<GarminMap> | null = null;
-let dem: Dem | null = null;
+/** Set synchronously when `open` arrives, so a `dem` request that lands while `open` is still
+ *  building the DEM (e.g. right after the pool respawned this worker) waits instead of failing. */
+let demReady: Promise<Dem | null> | null = null;
 const cache = new SubdivisionCache();
 /** Ids of `tile` requests the pool has asked us to abandon. Checked before starting decode work
  *  and again right before posting a result, so a cancelled tile does as little wasted work as
@@ -28,14 +30,18 @@ self.onmessage = async (e: MessageEvent) => {
       // data either (a map with no .hgt files must not keep serving the previous map's terrain).
       cache.clear();
       cancelled.clear();
-      dem = null;
       opened = GarminMap.open(new BlobSource(msg.file as File));
-      const m = await opened;
       const hgt = (msg.hgt ?? []) as File[];
-      if (hgt.length) {
-        const overview = msg.overview ? decodeOverview(new Uint8Array(await (msg.overview as File).arrayBuffer())) : null;
-        dem = Dem.fromFiles(hgt.map((f) => ({ name: f.name, src: new BlobSource(f) })), overview);
-      }
+      const overviewFile = (msg.overview ?? null) as File | null;
+      demReady = hgt.length
+        ? (async () => {
+            const overview = overviewFile ? decodeOverview(new Uint8Array(await overviewFile.arrayBuffer())) : null;
+            return Dem.fromFiles(hgt.map((f) => ({ name: f.name, src: new BlobSource(f) })), overview);
+          })()
+        : Promise.resolve(null);
+      demReady.catch(() => {}); // surfaced by the awaits below / in `dem`; never an unhandled rejection
+      const m = await opened;
+      const dem = await demReady;
       self.postMessage({
         type: 'opened',
         id: msg.id,
@@ -55,6 +61,8 @@ self.onmessage = async (e: MessageEvent) => {
       const buf = r.data.buffer.slice(r.data.byteOffset, r.data.byteOffset + r.data.byteLength) as ArrayBuffer;
       self.postMessage({ type: 'tile', id: msg.id, data: buf, ms: performance.now() - t0, badSections: r.badSections, features: r.features }, [buf]);
     } else if (msg.type === 'dem') {
+      if (!demReady) throw new Error('map not opened');
+      const dem = await demReady;
       if (!dem) throw new Error('no elevation data loaded');
       if (cancelled.delete(msg.id)) return;
       const t0 = performance.now();

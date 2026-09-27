@@ -4,7 +4,7 @@ import { PNG } from 'pngjs';
 import { describe, expect, test } from 'vitest';
 import { Dem } from '../src/dem/dem';
 import { decodeHgt, decodeTerrainRgb, encodeTerrainRgb, HGT_BYTES, HGT_SIZE, parseHgtName } from '../src/dem/hgt';
-import { decodeOverview, encodeOverview, OverviewBuilder } from '../src/dem/overview';
+import { decodeOverview, encodeOverview, MAX_OVERVIEW_TILES, OverviewBuilder } from '../src/dem/overview';
 import { BlobSource } from '../src/img/source';
 import { latToTileY, lonToTileX } from '../src/tiles/tileMath';
 import { nodeSource } from './helpers/nodeSource';
@@ -89,6 +89,14 @@ describe('Dem on synthetic tiles', () => {
     let maxDiff = 0;
     a.forEach((v, i) => (maxDiff = Math.max(maxDiff, Math.abs(v - c[i]))));
     expect(maxDiff).toBeLessThan(1.0); // linear field: bilinear on the coarse grid is near-exact
+  });
+
+  test('overview rejects an elevation extent that would blow up the mosaic', () => {
+    // Two far-apart tiles: 20° × 21° bounding box = 420 tiles > 400.
+    expect(() => new OverviewBuilder([{ south: 50, west: -30 }, { south: 69, west: -10 }])).toThrow(/20° of latitude × 21° of longitude.*at most 400/);
+    // Exactly at the cap is fine (20 × 20).
+    expect(() => new OverviewBuilder([{ south: 50, west: -30 }, { south: 69, west: -11 }])).not.toThrow();
+    expect(MAX_OVERVIEW_TILES).toBe(400);
   });
 
   test('rejects bad files', () => {

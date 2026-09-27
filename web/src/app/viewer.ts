@@ -3,11 +3,12 @@ import type { Kind } from '../img/rgn';
 import { emptyTyp, parseTyp, type Typ } from '../img/typ';
 import { PlaceIndex } from '../search/placeIndex';
 import type { Place } from '../search/places';
-import { cacheKey, clearStored, readText, writeText, type Stored } from '../storage/store';
+import { cacheKey, readText, writeText, type Stored } from '../storage/store';
 import { buildStyle } from '../style/buildStyle';
 import { preloadImages } from '../ui/images';
 import { PerfStats } from '../ui/perf';
-import { TilePool } from '../worker/pool';
+import { TilePool, type OpenMeta } from '../worker/pool';
+import { showImport } from './importScreen';
 
 /** MapLibre zooms, i.e. one less than the raster samples' zoom, so the scale matches. */
 const SAMPLES: Array<{ name: string; center: [number, number]; zoom: number }> = [
@@ -47,13 +48,23 @@ function tileWorkerCount(): number {
 
 export async function startViewer(stored: Stored): Promise<void> {
   const pool = new TilePool({ file: stored.img, hgt: stored.hgt, overview: stored.overview }, tileWorkerCount());
-  let meta;
+  let meta: OpenMeta;
   try {
     meta = await pool.open();
   } catch (err) {
     pool.dispose();
     throw err;
   }
+  try {
+    mountViewer(stored, pool, meta);
+  } catch (err) {
+    // e.g. no WebGL: don't leave tile workers (holding the map file) running behind the error.
+    pool.dispose();
+    throw err;
+  }
+}
+
+function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   const debug = new URLSearchParams(location.search).has('debug');
   const perf = new PerfStats($('perf'));
   $('perf').hidden = !debug;
@@ -107,12 +118,15 @@ export async function startViewer(stored: Stored): Promise<void> {
 
   $('topbar').hidden = false;
   $('replace').hidden = false;
-  $('replace').onclick = async () => {
-    if (!confirm('Remove the stored map from this device and load another?')) return;
-    // Workers hold File snapshots of the OPFS files; stop them before those files are deleted.
+  let closed = false;
+  $('replace').onclick = () => {
+    // Nothing is deleted here: the stored map stays until a new import commits (and Cancel
+    // reloads straight back into it). Stop the workers and the map to free memory for the import.
+    closed = true;
     pool.dispose();
-    await clearStored();
-    location.reload();
+    map.remove();
+    for (const id of ['topbar', 'replace', 'badge', 'perf']) $(id).hidden = true;
+    showImport('', { hasMap: true, canCancel: true });
   };
 
   const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES };
@@ -121,6 +135,7 @@ export async function startViewer(stored: Stored): Promise<void> {
 
   void loadPlaces(stored, pool)
     .then((index) => {
+      if (closed) return;
       app.search = (q) => index.search(q);
       app.placesReady = true;
       wireSearch(map, index);
@@ -129,6 +144,7 @@ export async function startViewer(stored: Stored): Promise<void> {
       input.disabled = false;
     })
     .catch((err) => {
+      if (closed) return; // "Load another map" disposed the pool mid-build
       console.error('search index', err);
       $<HTMLInputElement>('search').placeholder = 'Search unavailable';
     });

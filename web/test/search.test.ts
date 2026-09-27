@@ -38,6 +38,50 @@ describe('PlaceIndex', () => {
   });
 });
 
+describe('PlaceIndex matches a naive full sort', () => {
+  const KIND_RANK = { point: 0, polygon: 1, line: 2 } as const;
+  // The pre-optimization implementation: score every entry, sort all hits, slice.
+  function naive(places: Place[], query: string, limit = 20): Place[] {
+    const q = normalize(query);
+    if (!q) return [];
+    const hits: Array<[number, number, number, string, Place]> = [];
+    for (const place of places) {
+      const norm = normalize(place.name);
+      let score: number;
+      if (norm.startsWith(q)) score = 0;
+      else if (norm.split(' ').some((w) => w.startsWith(q))) score = 1;
+      else if (q.length >= 3 && norm.includes(q)) score = 2;
+      else continue;
+      hits.push([score, KIND_RANK[place.kind], norm.length, place.name, place]);
+    }
+    hits.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3].localeCompare(b[3]));
+    return hits.slice(0, limit).map((h) => h[4]);
+  }
+
+  // Deterministic pseudo-random names from a small syllable set, so many names share prefixes,
+  // word prefixes and substrings, with duplicates (same name and kind at different coordinates).
+  let seed = 12345;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+  const syll = ['lau', 'gar', 'hvera', 'fjall', 'dalur', 'á', 'þór', 'mörk', 'vík', 'reykja', 'foss', 'nes', 'Lau', 'Ey'];
+  const word = () => Array.from({ length: 1 + Math.floor(rand() * 3) }, () => syll[Math.floor(rand() * syll.length)]).join('');
+  const kinds = ['point', 'line', 'polygon'] as const;
+  const places: Place[] = Array.from({ length: 5000 }, (_, i) => ({
+    name: Array.from({ length: 1 + Math.floor(rand() * 3) }, word).join(rand() < 0.2 ? '-' : ' '),
+    lon: i,
+    lat: -i,
+    kind: kinds[Math.floor(rand() * 3)],
+    type: i,
+  }));
+  const idx = new PlaceIndex(places);
+
+  test.each(['lau', 'la', 'gar', 'hveragerdi', 'thor', 'fjalld', 'ik', 'vik', 'foss nes', 'ey', 'dalu', 'zzz', 'a', 'mork'])('query %s', (q) => {
+    for (const limit of [1, 5, 20, 100, 10_000]) {
+      expect(idx.search(q, limit)).toEqual(naive(places, q, limit));
+    }
+    expect(idx.search(q)).toEqual(naive(places, q));
+  });
+});
+
 describe('bboxCenter', () => {
   test('does not overflow the call stack on large coordinate arrays', () => {
     const coords: Array<[number, number]> = Array.from({ length: 200_000 }, (_, i) => [i, -i]);

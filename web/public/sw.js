@@ -1,11 +1,27 @@
-/* Offline support: precache the shell and fonts; cache everything else same-origin on first use. */
-const CACHE = 'garmin-map-v1';
+/* Offline support: precache the whole app shell; cache everything else same-origin on first use.
+ *
+ * `npm run build` rewrites the two placeholders below (scripts/precache.ts, run by the Vite plugin
+ * in vite.config.ts): CACHE becomes `garmin-map-<hash of the built files>` and PRECACHE lists every
+ * built file, so each deploy installs a fresh complete copy and `activate` drops the old one. The
+ * defaults keep an unbuilt copy (dev) working. */
+const CACHE = self.__CACHE__ || 'garmin-map-dev';
 const FONTS = ['Noto Sans Regular', 'Noto Sans Italic'].flatMap((f) =>
-  ['0-255', '256-511', '8192-8447'].map((r) => `fonts/${encodeURIComponent(f)}/${r}.pbf`));
-const PRECACHE = ['./', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', ...FONTS];
+  ['0-255', '256-511', '8192-8447'].map((r) => `./fonts/${encodeURIComponent(f)}/${r}.pbf`));
+const PRECACHE = [...new Set([
+  ...(self.__PRECACHE__ || ['./', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png']),
+  ...FONTS,
+])];
+/** How long a navigation waits for the network before serving the cached shell. */
+const NAV_TIMEOUT_MS = 3000;
+
+const cacheable = (res) => res && res.ok && res.type === 'basic';
+const put = (key, res) => caches.open(CACHE).then((c) => c.put(key, res)).catch(() => {});
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
+  // `cache: 'reload'` bypasses the HTTP cache so a new build never precaches stale files.
+  e.waitUntil(caches.open(CACHE)
+    .then((c) => c.addAll(PRECACHE.map((u) => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -18,24 +34,36 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put('./', copy));
-        return res;
-      })
-      .catch(() => caches.match('./')));
-    return;
-  }
-  e.respondWith(caches.match(req).then((hit) => {
+    // Race the network against a timeout so a flaky connection in the field can't hang startup;
+    // whichever way it goes, a good network response still refreshes the cached shell.
+    let refresh = Promise.resolve();
     const net = fetch(req).then((res) => {
-      if (res.ok) {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
-      }
+      if (cacheable(res)) refresh = put('./', res.clone());
       return res;
     });
-    return hit || net;
+    e.waitUntil(net.then(() => refresh).catch(() => {}));
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), NAV_TIMEOUT_MS));
+    e.respondWith((async () => {
+      const res = await Promise.race([net.catch(() => null), timeout]);
+      if (res && res.ok) return res;
+      const cached = await caches.match('./');
+      if (cached) return cached;
+      return res || net; // no cached shell: wait for (or fail with) the network
+    })());
+    return;
+  }
+
+  e.respondWith(caches.match(req).then((hit) => {
+    const net = fetch(req).then((res) => {
+      if (cacheable(res)) put(req, res.clone());
+      return res;
+    });
+    if (hit) {
+      net.catch(() => {}); // background refresh; offline is expected here
+      return hit;
+    }
+    return net;
   }));
 });

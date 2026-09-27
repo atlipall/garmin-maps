@@ -11,13 +11,13 @@ export async function startApp(): Promise<void> {
     stored = await loadStored();
   } catch (err) {
     console.error(err);
-    return showImport(`Could not read the stored map: ${err instanceof Error ? err.message : String(err)}`);
+    return showImport(`Could not read the stored map: ${err instanceof Error ? err.message : String(err)}`, { hasMap: true });
   }
   if (!stored) return showImport();
   try {
     await startViewer(stored);
   } catch (err) {
     console.error(err);
-    showImport(`Could not open the stored map: ${err instanceof Error ? err.message : String(err)}`);
+    showImport(`Could not open the stored map: ${err instanceof Error ? err.message : String(err)}`, { hasMap: true });
   }
 }

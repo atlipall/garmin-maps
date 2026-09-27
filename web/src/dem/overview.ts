@@ -11,6 +11,11 @@ export interface Overview {
   data: Int16Array;
 }
 
+/** Largest elevation extent (in 1°×1° tiles, gaps included) the overview mosaic accepts. The
+ *  mosaic covers the whole bounding box of the given tiles, so two far-apart files would otherwise
+ *  allocate an enormous array (400 tiles at step 8 is ~9 M samples, ~18 MB). */
+export const MAX_OVERVIEW_TILES = 400;
+
 export class OverviewBuilder {
   private readonly o: Overview;
   private readonly southMax: number;
@@ -24,6 +29,12 @@ export class OverviewBuilder {
     this.westMin = Math.min(...wests);
     const nLat = this.southMax - Math.min(...souths) + 1;
     const nLon = Math.max(...wests) - this.westMin + 1;
+    if (nLat * nLon > MAX_OVERVIEW_TILES) {
+      throw new ImgError(
+        `Elevation files span ${nLat}° of latitude × ${nLon}° of longitude (${nLat * nLon} tiles including gaps); ` +
+          `at most ${MAX_OVERVIEW_TILES} are supported. Pick the .hgt files for one region only.`,
+      );
+    }
     const rows = (nLat * HGT_STEP) / step + 1;
     const cols = (nLon * HGT_STEP) / step + 1;
     this.o = { step, west: this.westMin, north: this.southMax + 1, rows, cols, data: new Int16Array(rows * cols) };
