@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "out"
 FONTS = REPO / "assets" / "fonts"
 HGT_DIR = REPO / "GPSmap.is 2024.21 Android" / "HILLSHADE - Add content to DEM folder"
+RENDERER = REPO / "render" / "render.mjs"
 
 
 def slug(path):
@@ -70,6 +72,20 @@ def cmd_dem(args):
     build_dem_mbtiles(Path(args.hgt), out, out.parent / "dem-work")
 
 
+def render_args(out_dir):
+    return ["--style", out_dir / "style.json", "--vector", out_dir / "vector.mbtiles",
+            "--dem", OUT / "dem.mbtiles", "--sprite", out_dir, "--fonts", FONTS]
+
+
+def cmd_sample(args):
+    out = variant_dir(args.img)
+    (out / "samples").mkdir(exist_ok=True)
+    target = out / "samples" / f"{args.name or f'z{args.zoom}'}.png"
+    # "=" form: node's parseArgs rejects option values that start with "-" (western longitudes)
+    subprocess.run(["node", RENDERER, "sample", *render_args(out), f"--center={args.center}",
+                    "--zoom", str(args.zoom), "--size", str(args.size), "--out", target], check=True)
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="imgconv", description="Garmin IMG to MBTiles converter")
     sub = p.add_subparsers(dest="command", required=True)
@@ -93,6 +109,13 @@ def build_parser():
     s.add_argument("--hgt", default=str(HGT_DIR))
     s.add_argument("--out", default=str(OUT / "dem.mbtiles"))
     s.set_defaults(func=cmd_dem)
+    s = sub.add_parser("sample", help="render one image for visual checking")
+    s.add_argument("img")
+    s.add_argument("--center", required=True, help="lon,lat")
+    s.add_argument("--zoom", type=int, required=True, help="raster zoom (5-15)")
+    s.add_argument("--size", type=int, default=1024)
+    s.add_argument("--name")
+    s.set_defaults(func=cmd_sample)
     return p
 
 
