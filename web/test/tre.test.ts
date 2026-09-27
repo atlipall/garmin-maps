@@ -1,11 +1,18 @@
 import { describe, expect, test } from 'vitest';
 import { ImgContainer } from '../src/img/container';
-import { KIND_LINES, KIND_POINTS, parseTre, shiftOf, subdivisionBounds } from '../src/img/tre';
+import { EMPTY_EXT, KIND_LINES, KIND_POINTS, parseTre, shiftOf, subdivisionBounds } from '../src/img/tre';
 import { makeRgnHeader, makeTre } from './helpers/builders';
 import { nodeSource } from './helpers/nodeSource';
 import { DETAILED, hasRealData } from './helpers/paths';
 
 const LEVELS: Array<[number, number, boolean, number]> = [[1, 22, false, 1], [0, 24, false, 2]];
+
+describe('EMPTY_EXT', () => {
+  test('is deeply frozen', () => {
+    expect(Object.isFrozen(EMPTY_EXT)).toBe(true);
+    expect(Object.isFrozen(EMPTY_EXT[0])).toBe(true);
+  });
+});
 
 describe('parseTre', () => {
   test('levels, subdivisions and bounds', () => {

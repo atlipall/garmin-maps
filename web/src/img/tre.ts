@@ -6,7 +6,12 @@ export const KIND_LINES = 0x40;
 export const KIND_POLYGONS = 0x80;
 
 export type Range = [number, number];
-export const EMPTY_EXT: [Range, Range, Range] = [[0, 0], [0, 0], [0, 0]];
+const _EMPTY_EXT = [
+  Object.freeze([0, 0] as Range),
+  Object.freeze([0, 0] as Range),
+  Object.freeze([0, 0] as Range),
+] as const;
+export const EMPTY_EXT = Object.freeze(_EMPTY_EXT) as [Range, Range, Range];
 
 export interface Level {
   number: number;
