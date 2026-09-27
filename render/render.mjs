@@ -22,6 +22,15 @@ const { positionals, values: opts } = parseArgs({
 
 const sources = { style: opts.style, vector: opts.vector, dem: opts.dem, sprite: opts.sprite, fonts: opts.fonts };
 
+// Workers forked by tiles(), tracked at module scope so the top-level catch can always clean them up.
+let activeWorkers = [];
+function killWorkers() {
+  for (const w of activeWorkers) {
+    w.stopped = true;
+    try { w.kill(); } catch { /* already dead */ }
+  }
+}
+
 async function sample() {
   const [lon, lat] = opts.center.split(',').map(Number);
   const size = Number(opts.size);
@@ -34,7 +43,9 @@ async function sample() {
 }
 
 async function tiles() {
-  const bounds = openReader(opts.vector).metadata().bounds.split(',').map(Number);
+  const vectorReader = openReader(opts.vector);
+  const bounds = vectorReader.metadata().bounds.split(',').map(Number);
+  vectorReader.close();
   const minzoom = Number(opts.minzoom), maxzoom = Number(opts.maxzoom), size = Number(opts.metatile);
   const writer = openWriter(opts.out, {
     name: 'GPSmap.is', type: 'baselayer', version: '1', format: opts.format, attribution: 'GPSmap.is',
@@ -59,21 +70,36 @@ async function tiles() {
     const eta = rate ? Math.round((total - done) / rate / 60) : '?';
     console.log(`${done}/${total} metatiles, ${tilesDone} tiles, ${rate.toFixed(1)} meta/s, ETA ${eta} min`);
   };
+  let failed = false;
   await Promise.all(Array.from({ length: Math.min(Number(opts.workers), total) }, () => new Promise((resolve, reject) => {
     const worker = fork(workerPath, [cfg]);
+    worker.stopped = false;
+    activeWorkers.push(worker);
+    const fail = (err) => {
+      if (failed) return; // first failure wins; kill the pool once
+      failed = true;
+      killWorkers();
+      reject(err);
+    };
     const next = () => {
       const job = jobs.shift();
-      if (!job) { worker.kill(); resolve(); return; }
+      if (!job) { worker.stopped = true; worker.kill(); resolve(); return; }
       worker.send(job);
     };
     worker.on('message', (msg) => {
-      if (!msg.ok) { worker.kill(); reject(new Error(msg.error)); return; }
+      if (!msg.ok) { fail(new Error(msg.error)); return; }
       done += 1;
       tilesDone += msg.n;
       progress();
       next();
     });
-    worker.on('exit', (code) => { if (code && jobs.length) reject(new Error(`worker exited with ${code}`)); });
+    // A worker can also die without sending a message: segfault, OOM, or a native GL failure kill it with
+    // a signal, in which case `code` is null. Any exit that isn't our own intentional drain/kill must reject,
+    // or this promise (and the surrounding Promise.all) would hang forever.
+    worker.on('exit', (code, signal) => {
+      if (worker.stopped) return;
+      fail(new Error(`worker exited unexpectedly (code=${code}, signal=${signal})`));
+    });
     next();
   })));
   writer.finish();
@@ -87,4 +113,4 @@ if (!run) {
   console.error('usage: render.mjs sample|tiles --style … --vector … --dem … --sprite DIR --fonts DIR --out …');
   process.exit(2);
 }
-run().catch((err) => { console.error(err); process.exit(1); });
+run().catch((err) => { console.error(err); killWorkers(); process.exit(1); });

@@ -11,6 +11,19 @@ function encode(img, format) {
   return format === 'jpg' ? img.jpeg({ quality: 85, mozjpeg: true }) : img.png({ palette: true, effort: 4 });
 }
 
+// The parent kills workers with SIGTERM (drained, or a sibling failed) and its IPC channel drops on 'disconnect'.
+// Release the native map/mbtiles handles so we don't leave the DB connection or GL context dangling.
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try { renderer.release(); } catch { /* already gone, or a render was in flight */ }
+  try { out.close(); } catch { /* already gone */ }
+  process.exit(0);
+}
+process.on('disconnect', shutdown);
+process.on('SIGTERM', shutdown);
+
 process.on('message', async (meta) => {
   try {
     const view = metatileView(meta, cfg.buffer);
