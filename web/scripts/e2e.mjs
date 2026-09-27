@@ -145,6 +145,19 @@ try {
     fail(`legacy dir not cleaned up: ${JSON.stringify(migrated)}`);
   }
   console.log('legacy cleanup ok:', JSON.stringify(migrated));
+
+  // 9. an empty (interrupted) pointer still resolves to the stored map
+  await page.waitForFunction(() => window.__app?.placesReady === true, { timeout: 600_000 });
+  await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const w = await (await root.getFileHandle('current.json')).createWritable();
+    await w.truncate(0);
+    await w.close();
+  });
+  await page.reload();
+  await waitReady();
+  if (await page.$('#import:not([hidden])')) fail('empty pointer lost the stored map');
+  console.log('empty pointer falls back ok');
 } finally {
   await browser?.close();
   await new Promise((resolve) => server.httpServer.close(resolve));

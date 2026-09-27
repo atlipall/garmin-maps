@@ -1,13 +1,6 @@
-import { currentDirName, isDataDir, isMissing, listEntries, POINTER } from './layout';
+import { currentDirName, hasDataDirs, isDataDir, isMissing, listEntries, parseMeta, POINTER, type StoredMeta } from './layout';
 
-export interface StoredMeta {
-  version: 1;
-  imgName: string;
-  imgSize: number;
-  imgLastModified: number;
-  hgtNames: string[];
-  hasOverview: boolean;
-}
+export type { StoredMeta };
 
 export interface Stored {
   meta: StoredMeta;
@@ -23,16 +16,6 @@ async function currentDir(): Promise<FileSystemDirectoryHandle | null> {
   const root = await navigator.storage.getDirectory();
   const name = await currentDirName(root);
   return name ? root.getDirectoryHandle(name) : null;
-}
-
-function parseMeta(text: string): StoredMeta | null {
-  try {
-    const m = JSON.parse(text) as Partial<StoredMeta> | null;
-    if (!m || m.version !== 1 || typeof m.imgSize !== 'number' || !Array.isArray(m.hgtNames)) return null;
-    return m as StoredMeta;
-  } catch {
-    return null; // corrupt meta: treated as "no map"
-  }
 }
 
 export async function loadStored(): Promise<Stored | null> {
@@ -101,6 +84,12 @@ export async function clearStored(): Promise<void> {
   await remove(POINTER, false);
   for (const e of await listEntries(root)) if (e.kind === 'directory' && isDataDir(e.name)) await remove(e.name, true);
   if (errors.length) throw new Error(`Could not remove the stored map: ${errors.join('; ')}`);
+}
+
+/** Whether any map data exists in storage, even if it isn't a loadable map (so the user can
+ *  still be offered "Remove stored map"). */
+export async function hasStoredData(): Promise<boolean> {
+  return hasDataDirs(await navigator.storage.getDirectory());
 }
 
 export async function requestPersistence(): Promise<boolean> {

@@ -1,4 +1,4 @@
-import { loadStored, type Stored } from '../storage/store';
+import { hasStoredData, loadStored, type Stored } from '../storage/store';
 import { showImport } from './importScreen';
 import { startViewer } from './viewer';
 
@@ -13,7 +13,8 @@ export async function startApp(): Promise<void> {
     console.error(err);
     return showImport(`Could not read the stored map: ${err instanceof Error ? err.message : String(err)}`, { hasMap: true });
   }
-  if (!stored) return showImport();
+  // Leftover map data that doesn't form a loadable map can still be removed from the import screen.
+  if (!stored) return showImport('', { hasMap: await hasStoredData().catch(() => false) });
   try {
     await startViewer(stored);
   } catch (err) {

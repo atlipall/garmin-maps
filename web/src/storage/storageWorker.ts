@@ -4,7 +4,7 @@ import { encodeOverview, OverviewBuilder } from '../dem/overview';
 import { ImgError } from '../img/bytes';
 import { BlobSource } from '../img/source';
 import { GarminMap } from '../map/garminMap';
-import { DIR_PREFIX, isDataDir, isMissing, listEntries, POINTER } from './layout';
+import { currentDirName, DIR_PREFIX, isCompleteDir, isDataDir, isMissing, listEntries, opfsAdapter, parsePointer, POINTER } from './layout';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -116,15 +116,32 @@ async function doImport(img: File, hgt: File[]): Promise<void> {
     await writeSmall(root, POINTER, new TextEncoder().encode(JSON.stringify({ dir: name })));
   } catch (err) {
     progress('Import failed; keeping the stored map.');
-    await removeDir(root, name);
+    if (await safeToDiscard(root, name)) await removeDir(root, name);
     throw err;
   }
 
   // Best effort: drop every other map directory (older imports, the legacy `garmin/`, partial
-  // leftovers of an interrupted import). A failure here only wastes space until the next import.
+  // leftovers of an interrupted import), but only once storage demonstrably resolves to the new
+  // map. A failure here only wastes space until the next import.
   progress('Cleaning up…');
+  if ((await currentDirName(root).catch(() => null)) !== name) return;
   for (const e of await listEntries(root).catch(() => [])) {
     if (e.kind === 'directory' && e.name !== name && isDataDir(e.name)) await removeDir(root, e.name);
+  }
+}
+
+/** A failed import's directory may be removed only if it isn't (possibly) the stored map: not
+ *  named by the pointer (its bytes may have landed before the error) and not the only complete
+ *  map directory there is. Any doubt keeps it. */
+async function safeToDiscard(root: FileSystemDirectoryHandle, name: string): Promise<boolean> {
+  try {
+    const io = opfsAdapter(root);
+    if (parsePointer(await io.pointerText()) === name) return false;
+    if (!(await isCompleteDir(root, name))) return true;
+    for (const d of await io.dirs()) if (d !== name && isDataDir(d) && (await isCompleteDir(root, d))) return true;
+    return false;
+  } catch {
+    return false;
   }
 }
 
