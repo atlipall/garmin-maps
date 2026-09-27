@@ -3,6 +3,11 @@ import type { ByteSource } from './source';
 
 const FAT_ENTRY = 512;
 
+/** Fixed page size for `PageCache`. */
+export const PAGE_SIZE = 65536;
+/** Default page cache capacity, in pages (~8 MiB). */
+export const DEFAULT_CACHE_PAGES = 128;
+
 interface SubfileInfo {
   size: number;
   blocks: number[];
@@ -55,14 +60,110 @@ function scanFat(data: Uint8Array): ScanResult {
   return { headerEnd, parts };
 }
 
+/**
+ * LRU cache of fixed-size `PAGE_SIZE` pages backed by a `ByteSource`. `read(start, length)` fetches
+ * whatever pages the range touches: pages already cached are reused, and every missing *run* of
+ * consecutive pages is fetched with a single underlying `src.read` call (all runs for one request
+ * go out in parallel), then split into pages. Concurrent requests that need the same page share
+ * one in-flight fetch, so a page is never fetched twice at once. Eviction only affects the shared
+ * cache; a call's own pages stay reachable (via `got`) even if fetching them overflows the cap.
+ */
+class PageCache {
+  private readonly pages = new Map<number, Uint8Array>(); // insertion/access order: oldest (LRU) first
+  private readonly pending = new Map<number, Promise<Map<number, Uint8Array>>>();
+
+  constructor(
+    private readonly src: ByteSource,
+    private readonly cap: number,
+  ) {}
+
+  async read(start: number, length: number): Promise<Uint8Array> {
+    if (length <= 0) return new Uint8Array(0);
+    const end = start + length;
+    const firstPage = Math.floor(start / PAGE_SIZE);
+    const lastPage = Math.floor((end - 1) / PAGE_SIZE);
+
+    const got = new Map<number, Uint8Array>();
+    const waits: Promise<void>[] = [];
+    let runStart = -1;
+    const flushRun = (runEnd: number) => {
+      if (runStart === -1) return;
+      const fetched = this.fetchRun(runStart, runEnd);
+      waits.push(fetched.then((pages) => void pages.forEach((v, k) => got.set(k, v))));
+      runStart = -1;
+    };
+    for (let p = firstPage; p <= lastPage; p++) {
+      const cached = this.pages.get(p);
+      if (cached !== undefined) {
+        flushRun(p - 1);
+        this.touch(p);
+        got.set(p, cached);
+        continue;
+      }
+      const pending = this.pending.get(p);
+      if (pending) {
+        flushRun(p - 1);
+        waits.push(pending.then((pages) => void got.set(p, pages.get(p)!)));
+        continue;
+      }
+      if (runStart === -1) runStart = p;
+    }
+    flushRun(lastPage);
+    await Promise.all(waits);
+
+    const out = new Uint8Array(length);
+    let opos = 0;
+    for (let p = firstPage; p <= lastPage; p++) {
+      const page = got.get(p)!;
+      const pageStart = p * PAGE_SIZE;
+      const from = Math.max(start, pageStart) - pageStart;
+      const to = Math.min(end, pageStart + page.length) - pageStart;
+      if (to <= from) break; // real EOF inside this page: nothing further is available
+      out.set(page.subarray(from, to), opos);
+      opos += to - from;
+    }
+    return opos === length ? out : out.subarray(0, opos);
+  }
+
+  private touch(p: number): void {
+    const v = this.pages.get(p);
+    if (v === undefined) return;
+    this.pages.delete(p);
+    this.pages.set(p, v);
+  }
+
+  /** Fetches pages `[first, last]` with one `src.read` call, sharing the resulting promise with
+   *  any concurrent caller that asks for one of the same pages before it resolves. */
+  private fetchRun(first: number, last: number): Promise<Map<number, Uint8Array>> {
+    const promise = this.doFetch(first, last);
+    for (let p = first; p <= last; p++) this.pending.set(p, promise);
+    return promise;
+  }
+
+  private async doFetch(first: number, last: number): Promise<Map<number, Uint8Array>> {
+    const start = first * PAGE_SIZE;
+    const bytes = await this.src.read(start, (last - first + 1) * PAGE_SIZE);
+    const fetched = new Map<number, Uint8Array>();
+    for (let p = first; p <= last; p++) {
+      const off = (p - first) * PAGE_SIZE;
+      const page = off < bytes.length ? bytes.subarray(off, Math.min(bytes.length, off + PAGE_SIZE)) : new Uint8Array(0);
+      fetched.set(p, page);
+      this.pending.delete(p);
+      this.pages.set(p, page);
+      if (this.pages.size > this.cap) this.pages.delete(this.pages.keys().next().value!);
+    }
+    return fetched;
+  }
+}
+
 export class ImgContainer {
   private constructor(
-    private readonly src: ByteSource,
+    private readonly pageCache: PageCache,
     private readonly blockSize: number,
     private readonly subfiles: Map<string, SubfileInfo>,
   ) {}
 
-  static async open(src: ByteSource): Promise<ImgContainer> {
+  static async open(src: ByteSource, cachePages = DEFAULT_CACHE_PAGES): Promise<ImgContainer> {
     let head = await src.read(0, Math.min(src.size, 0x10000));
     if (head.length < 0x200) throw new ImgError('not a Garmin IMG file (too small)');
     if (head[0] !== 0) {
@@ -83,7 +184,7 @@ export class ImgContainer {
       if (nums.some((n, i) => n !== i)) throw new ImgError(`${key}: FAT parts [${nums}] are not contiguous from 0`);
       subfiles.set(key, { size: entry.size, blocks: nums.flatMap((n) => entry.parts.get(n)!) });
     }
-    return new ImgContainer(src, blockSize, subfiles);
+    return new ImgContainer(new PageCache(src, cachePages), blockSize, subfiles);
   }
 
   tileIds(): string[] {
@@ -118,7 +219,7 @@ export class ImgContainer {
       let run = 1;
       while (bi + run < sf.blocks.length && sf.blocks[bi + run] === sf.blocks[bi] + run && (bi + run) * bs < end) run++;
       const runEnd = Math.min(end, (bi + run) * bs);
-      const chunk = await this.src.read(sf.blocks[bi] * bs + (pos % bs), runEnd - pos);
+      const chunk = await this.pageCache.read(sf.blocks[bi] * bs + (pos % bs), runEnd - pos);
       if (chunk.length !== runEnd - pos) throw new ImgError(`${name}: IMG file truncated`);
       out.set(chunk, pos - start);
       pos = runEnd;

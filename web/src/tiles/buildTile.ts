@@ -2,7 +2,7 @@ import { fromGeojsonVt } from '@maplibre/vt-pbf';
 import { clipPolygon, clipPolyline } from 'lineclip';
 import { decodeSubdivision, type RawObject } from '../img/rgn';
 import { shiftOf, subdivisionBounds, type Subdivision } from '../img/tre';
-import { objectName, type GarminMap } from '../map/garminMap';
+import { objectName, type GarminMap, type MapTile } from '../map/garminMap';
 import { tileBounds } from './tileMath';
 
 export const EXTENT = 4096;
@@ -98,41 +98,62 @@ export async function buildTile(
     };
     const clip: BBox = [-BUFFER, -BUFFER, EXTENT + BUFFER, EXTENT + BUFFER];
 
+    // Collect every subdivision that intersects the tile first, split into cache hits and misses,
+    // then read+decode all misses in parallel (one readSubdivision per subdivision, all subdivisions
+    // at once) instead of awaiting them one at a time. Output is identical either way: `resolved`
+    // ends up holding the same objects for the same keys, just fetched concurrently.
+    interface Entry { tile: MapTile; sd: Subdivision; key: string }
+    const entries: Entry[] = [];
     for (const tile of map.tiles) {
       for (const sd of tile.byLevel.get(bits) ?? []) {
         if (!intersects(paddedSubdivisionBounds(sd), query)) continue;
-        const key = `${tile.id}:${sd.index}`;
-        let objs = cache.get(key);
-        if (!objs) {
-          const stats = { sections: 0, badSections: 0 };
-          objs = decodeSubdivision(await map.readSubdivision(tile, sd), sd, stats);
-          badSections += stats.badSections;
-          cache.set(key, objs);
-        }
-        for (const obj of objs) {
-          if (!intersects(coordsBounds(obj.coords), query)) continue;
-          const pts = obj.coords.map(project);
-          let feature: TileFeature | null = null;
-          if (obj.kind === 'point') {
-            const [px, py] = pts[0];
-            if (px >= clip[0] && px <= clip[2] && py >= clip[1] && py <= clip[3]) feature = { type: 1, geometry: [[Math.round(px), Math.round(py)]], tags: {} };
-          } else if (obj.kind === 'line') {
-            const parts = clipPolyline(pts, clip).map(roundDedupe).filter((p) => p.length >= 2);
-            if (parts.length) feature = { type: 2, geometry: parts, tags: {} };
-          } else {
-            const ring = roundDedupe(clipPolygon(pts, clip));
-            if (ring.length >= 3) {
-              const [f, l] = [ring[0], ring[ring.length - 1]];
-              if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0], f[1]]);
-              feature = { type: 3, geometry: [ring], tags: {} };
-            }
+        entries.push({ tile, sd, key: `${tile.id}:${sd.index}` });
+      }
+    }
+    const resolved = new Map<string, RawObject[]>();
+    const misses: Entry[] = [];
+    for (const e of entries) {
+      const objs = cache.get(e.key);
+      if (objs) resolved.set(e.key, objs);
+      else misses.push(e);
+    }
+    if (misses.length) {
+      const bytesList = await Promise.all(misses.map((e) => map.readSubdivision(e.tile, e.sd)));
+      for (let i = 0; i < misses.length; i++) {
+        const e = misses[i];
+        const stats = { sections: 0, badSections: 0 };
+        const objs = decodeSubdivision(bytesList[i], e.sd, stats);
+        badSections += stats.badSections;
+        cache.set(e.key, objs);
+        resolved.set(e.key, objs);
+      }
+    }
+
+    for (const { tile, key } of entries) {
+      const objs = resolved.get(key)!;
+      for (const obj of objs) {
+        if (!intersects(coordsBounds(obj.coords), query)) continue;
+        const pts = obj.coords.map(project);
+        let feature: TileFeature | null = null;
+        if (obj.kind === 'point') {
+          const [px, py] = pts[0];
+          if (px >= clip[0] && px <= clip[2] && py >= clip[1] && py <= clip[3]) feature = { type: 1, geometry: [[Math.round(px), Math.round(py)]], tags: {} };
+        } else if (obj.kind === 'line') {
+          const parts = clipPolyline(pts, clip).map(roundDedupe).filter((p) => p.length >= 2);
+          if (parts.length) feature = { type: 2, geometry: parts, tags: {} };
+        } else {
+          const ring = roundDedupe(clipPolygon(pts, clip));
+          if (ring.length >= 3) {
+            const [f, l] = [ring[0], ring[ring.length - 1]];
+            if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0], f[1]]);
+            feature = { type: 3, geometry: [ring], tags: {} };
           }
-          if (!feature) continue;
-          feature.tags.t = obj.type;
-          const name = objectName(tile, obj);
-          if (name) feature.tags.name = name;
-          layers[LAYER[obj.kind]].push(feature);
         }
+        if (!feature) continue;
+        feature.tags.t = obj.type;
+        const name = objectName(tile, obj);
+        if (name) feature.tags.name = name;
+        layers[LAYER[obj.kind]].push(feature);
       }
     }
   }

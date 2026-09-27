@@ -1,10 +1,31 @@
 import { describe, expect, test } from 'vitest';
 import { ImgError } from '../src/img/bytes';
-import { ImgContainer } from '../src/img/container';
+import { ImgContainer, PAGE_SIZE } from '../src/img/container';
 import { BlobSource } from '../src/img/source';
+import type { ByteSource } from '../src/img/source';
 import { buildImg, bytesOf } from './helpers/builders';
 import { nodeSource } from './helpers/nodeSource';
 import { DETAILED, hasRealData } from './helpers/paths';
+
+/** Wraps a ByteSource and records every `read` call, so tests can assert how many (and which)
+ *  physical reads the page cache actually issued. */
+class CountingSource implements ByteSource {
+  readonly calls: Array<[number, number]> = [];
+  constructor(private readonly inner: ByteSource) {}
+  get size(): number {
+    return this.inner.size;
+  }
+  async read(offset: number, length: number): Promise<Uint8Array> {
+    this.calls.push([offset, length]);
+    return this.inner.read(offset, length);
+  }
+}
+
+const openCounting = async (data: Uint8Array, cachePages?: number) => {
+  const counting = new CountingSource(new BlobSource(new Blob([new Uint8Array(data)])));
+  const img = await ImgContainer.open(counting, cachePages);
+  return { img, counting };
+};
 
 const open = (bytes: Uint8Array) => ImgContainer.open(new BlobSource(new Blob([new Uint8Array(bytes)])));
 const filled = (n: number, c: string) => new Uint8Array(n).fill(c.charCodeAt(0));
@@ -56,6 +77,75 @@ describe('ImgContainer', () => {
     expect(await img.read('A.TRE')).toEqual(filled(10, 'a'));
     expect(await img.read('C.TRE')).toEqual(filled(10, 'c'));
     expect(img.has('B.TRE')).toBe(false);
+  });
+});
+
+describe('ImgContainer page cache', () => {
+  test('reads through the cache equal direct reads, across page boundaries and up to EOF', async () => {
+    // A single subfile whose data length is an exact multiple of the block size, so the built
+    // image ends exactly at the physical end of the backing Blob with no block-padding slack.
+    const blockSize = 512;
+    const nblocks = 281; // 281 * 512 = 143,872 bytes: not a multiple of PAGE_SIZE (65536).
+    const data = Uint8Array.from({ length: nblocks * blockSize }, (_, i) => i % 256);
+    const { img } = await openCounting(buildImg({ 'A.RGN': data }, blockSize));
+
+    // Spans a page boundary.
+    expect(await img.read('A.RGN', PAGE_SIZE - 100, 300)).toEqual(data.subarray(PAGE_SIZE - 100, PAGE_SIZE + 200));
+    // Starts and ends inside the same page, well past the first boundary.
+    expect(await img.read('A.RGN', PAGE_SIZE + 40000, 5000)).toEqual(data.subarray(PAGE_SIZE + 40000, PAGE_SIZE + 45000));
+    // The whole subfile: its end lands exactly at EOF of the underlying Blob.
+    expect(await img.read('A.RGN')).toEqual(data);
+  });
+
+  test('repeated reads of the same range hit the source only once', async () => {
+    const data = Uint8Array.from({ length: 3 * PAGE_SIZE }, (_, i) => i % 256);
+    const { img, counting } = await openCounting(buildImg({ 'A.RGN': data }, 512));
+
+    const first = await img.read('A.RGN', PAGE_SIZE + 100, 400);
+    const afterFirst = counting.calls.length;
+    const second = await img.read('A.RGN', PAGE_SIZE + 100, 400);
+    expect(second).toEqual(first);
+    expect(counting.calls.length).toBe(afterFirst); // no new source read on the repeat
+  });
+
+  test('two concurrent reads of the same page issue one source read', async () => {
+    const data = Uint8Array.from({ length: 3 * PAGE_SIZE }, (_, i) => i % 256);
+    const { img, counting } = await openCounting(buildImg({ 'A.RGN': data }, 512));
+
+    const before = counting.calls.length;
+    const [a, b] = await Promise.all([
+      img.read('A.RGN', PAGE_SIZE + 100, 50), // same page (page 1), issued concurrently
+      img.read('A.RGN', PAGE_SIZE + 200, 50),
+    ]);
+    expect(a).toEqual(data.subarray(PAGE_SIZE + 100, PAGE_SIZE + 150));
+    expect(b).toEqual(data.subarray(PAGE_SIZE + 200, PAGE_SIZE + 250));
+    expect(counting.calls.length - before).toBe(1); // one fetch served both concurrent reads
+  });
+
+  test('LRU eviction happens at the cap', async () => {
+    const data = Uint8Array.from({ length: 3 * PAGE_SIZE }, (_, i) => i % 256);
+    const { img, counting } = await openCounting(buildImg({ 'A.RGN': data }, 512), 2); // cap = 2 pages
+
+    await img.read('A.RGN', 100, 10); // page 0
+    await img.read('A.RGN', PAGE_SIZE + 100, 10); // page 1: cache now at cap {0, 1}
+    const afterTwo = counting.calls.length;
+
+    await img.read('A.RGN', 2 * PAGE_SIZE + 100, 10); // page 2: over cap, evicts page 0 (LRU)
+    expect(counting.calls.length).toBe(afterTwo + 1);
+
+    const afterThree = counting.calls.length;
+    const again = await img.read('A.RGN', 100, 10); // page 0 again: was evicted, must be refetched
+    expect(counting.calls.length).toBe(afterThree + 1);
+    expect(again).toEqual(data.subarray(100, 110));
+  });
+
+  test('a physically truncated file still raises ImgError', async () => {
+    const data = Uint8Array.from({ length: 3 * PAGE_SIZE }, (_, i) => i % 256);
+    const raw = buildImg({ 'A.RGN': data }, 512);
+    const truncated = raw.slice(0, raw.length - 100); // simulate a file cut short on disk
+    const { img } = await openCounting(truncated);
+    await expect(img.read('A.RGN')).rejects.toThrow(ImgError);
+    await expect(img.read('A.RGN')).rejects.toThrow(/truncated/);
   });
 });
 
