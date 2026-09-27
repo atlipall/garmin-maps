@@ -21,7 +21,7 @@ function lineLayer(id: string, t: number | null, color: string, width: number, d
   } as LayerSpecification;
 }
 
-export function buildStyle(typ: Typ, opts: { tiles: string; glyphs: string }): { style: StyleSpecification; images: Map<string, RgbaImage> } {
+export function buildStyle(typ: Typ, opts: { tiles: string; glyphs: string; dem?: string; demBounds?: [number, number, number, number] }): { style: StyleSpecification; images: Map<string, RgbaImage> } {
   const images = new Map<string, RgbaImage>();
   const layers: LayerSpecification[] = [{ id: 'background', type: 'background', paint: { 'background-color': BACKGROUND } }];
 
@@ -37,6 +37,13 @@ export function buildStyle(typ: Typ, opts: { tiles: string; glyphs: string }): {
     }
     const color = s ? s.color : SKIP_POLYGONS.has(t) ? undefined : POLYGON_COLORS.get(t);
     if (color) layers.push({ ...base, paint: { 'fill-color': color, 'fill-antialias': false } } as LayerSpecification);
+  }
+
+  if (opts.dem) {
+    layers.push({
+      id: 'hillshade', type: 'hillshade', source: 'dem',
+      paint: { 'hillshade-exaggeration': 0.5, 'hillshade-shadow-color': '#5a4a3a', 'hillshade-accent-color': '#5a4a3a', 'hillshade-highlight-color': '#ffffff' },
+    } as LayerSpecification);
   }
 
   const lineTypes = [...new Set([...typ.lines.keys(), ...LINE_STYLES.keys()])]
@@ -86,10 +93,15 @@ export function buildStyle(typ: Typ, opts: { tiles: string; glyphs: string }): {
       paint: { 'text-color': '#222222', ...HALO } },
   ] as LayerSpecification[]);
 
+  const sources: StyleSpecification['sources'] = { garmin: { type: 'vector', tiles: [opts.tiles], minzoom: MIN_ZOOM, maxzoom: MAX_ZOOM } };
+  if (opts.dem) {
+    sources.dem = { type: 'raster-dem', tiles: [opts.dem], tileSize: 256, minzoom: 5, maxzoom: 11, encoding: 'mapbox', ...(opts.demBounds ? { bounds: opts.demBounds } : {}) } as StyleSpecification['sources']['raster-dem'];
+  }
+
   const style: StyleSpecification = {
     version: 8,
     name: 'GPSmap.is (on the fly)',
-    sources: { garmin: { type: 'vector', tiles: [opts.tiles], minzoom: MIN_ZOOM, maxzoom: MAX_ZOOM } },
+    sources,
     glyphs: opts.glyphs,
     layers,
   };

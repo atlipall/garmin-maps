@@ -45,4 +45,15 @@ describe('buildStyle', () => {
     expect(ids).toContain('pg-80');
     expect(ids).toContain('ln-1');
   });
+
+  test('hillshade when a dem source is given', () => {
+    const { style } = buildStyle(emptyTyp(), { ...OPTS, dem: 'dem://{z}/{x}/{y}', demBounds: [-25, 63, -13, 67] });
+    const ids = style.layers.map((l) => l.id);
+    const lastFill = Math.max(...ids.map((id, i) => (id.startsWith('pg-') && id !== 'pg-labels' ? i : -1)));
+    expect(ids.indexOf('hillshade')).toBe(lastFill + 1);
+    expect(ids.indexOf('hillshade')).toBeLessThan(ids.indexOf('ln-other'));
+    expect(style.sources.dem).toEqual({
+      type: 'raster-dem', tiles: ['dem://{z}/{x}/{y}'], tileSize: 256, minzoom: 5, maxzoom: 11, encoding: 'mapbox', bounds: [-25, 63, -13, 67],
+    });
+  });
 });
