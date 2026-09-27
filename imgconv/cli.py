@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import re
 import sys
@@ -8,7 +9,9 @@ from .container import ImgContainer
 from .errors import ImgError
 from .features import decode_img
 from .lbl import LabelTable
+from .stylegen import write_style
 from .tre import parse_tre
+from .typ import empty_typ, parse_typ
 
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "out"
@@ -43,6 +46,17 @@ def cmd_decode(args):
     print(f"decoded {stats.features} features into {out / 'features.geojsonseq'}")
 
 
+def cmd_style(args):
+    out = Path(args.out) if args.out else variant_dir(args.img)
+    types_path = out / "types.json"
+    if not types_path.exists():
+        raise ImgError(f"{types_path} missing; run `imgconv decode` first")
+    typ_bytes = ImgContainer.from_path(args.img).first_of_type("TYP")
+    typ = parse_typ(typ_bytes) if typ_bytes else empty_typ()
+    write_style(out, typ, json.loads(types_path.read_text()))
+    print(f"wrote {out / 'style.json'} and sprite")
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="imgconv", description="Garmin IMG to MBTiles converter")
     sub = p.add_subparsers(dest="command", required=True)
@@ -54,6 +68,10 @@ def build_parser():
     s.add_argument("--out")
     s.add_argument("--workers", type=int, default=os.cpu_count())
     s.set_defaults(func=cmd_decode)
+    s = sub.add_parser("style", help="TYP -> style.json + sprite")
+    s.add_argument("img")
+    s.add_argument("--out")
+    s.set_defaults(func=cmd_style)
     return p
 
 
