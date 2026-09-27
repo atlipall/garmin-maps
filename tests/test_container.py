@@ -32,6 +32,28 @@ def test_rejects_scrambled():
         ImgContainer.from_bytes(bytes(raw))
 
 
+def test_rejects_duplicate_parts():
+    """Verify that duplicate or missing FAT part numbers raise ImgError."""
+    data = bytes(range(256)) * 20  # 5120 bytes = 10 blocks of 512
+    raw = bytearray(build_img({"A.RGN": data}, blocks_per_entry=3))
+    # Corrupt the second FAT entry (at 0x600) to have part number 0 (same as first)
+    raw[0x600 + 0x10] = 0x00
+    raw[0x600 + 0x11] = 0x00
+    with pytest.raises(ImgError, match="FAT parts .* are not contiguous"):
+        ImgContainer.from_bytes(bytes(raw))
+
+
+def test_handles_out_of_order_parts():
+    """Verify that FAT entries out of order are assembled in correct part order."""
+    data = bytes(range(256)) * 20  # 5120 bytes = 10 blocks of 512
+    raw = bytearray(build_img({"A.RGN": data}, blocks_per_entry=3))
+    # Swap the second and third FAT entries for the same file
+    raw[0x400:0x400 + 512], raw[0x600:0x600 + 512] = raw[0x600:0x600 + 512], raw[0x400:0x400 + 512]
+    img = ImgContainer.from_bytes(bytes(raw))
+    # Data should still be correctly assembled despite out-of-order FAT entries
+    assert img.get("A.RGN") == data
+
+
 @pytest.mark.realdata
 def test_real_detailed_img(detailed_img):
     assert detailed_img.tile_ids() == ["14057401", "14057402", "14057403", "14057405", "14057406"]

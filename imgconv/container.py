@@ -46,15 +46,23 @@ class ImgContainer:
                 # this entry describes the header area itself; its size ends the FAT
                 header_end = size
                 continue
-            entry = parts.setdefault(f"{name}.{ext}", {"size": 0, "blocks": []})
+            entry = parts.setdefault(f"{name}.{ext}", {"size": 0, "parts": {}})
             if part == 0:
                 entry["size"] = size
-            entry["blocks"].extend(blocks)
+            entry["parts"][part] = blocks
         if not parts:
             raise ImgError("no subfiles found in the IMG FAT")
         subfiles = {}
         for key, entry in parts.items():
-            chunks = [data[b * block_size:(b + 1) * block_size] for b in entry["blocks"]]
+            # Validate that part numbers are contiguous from 0 to n-1
+            part_nums = sorted(entry["parts"].keys())
+            if part_nums != list(range(len(part_nums))):
+                raise ImgError(f"{key}: FAT parts {part_nums} are not contiguous from 0")
+            # Assemble blocks in order of part number
+            all_blocks = []
+            for part_num in part_nums:
+                all_blocks.extend(entry["parts"][part_num])
+            chunks = [data[b * block_size:(b + 1) * block_size] for b in all_blocks]
             subfiles[key] = b"".join(chunks)[:entry["size"]]
         return cls(subfiles)
 
