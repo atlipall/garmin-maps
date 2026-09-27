@@ -86,6 +86,26 @@ def cmd_sample(args):
                     "--zoom", str(args.zoom), "--size", str(args.size), "--out", target], check=True)
 
 
+def cmd_render(args):
+    out = variant_dir(args.img)
+    target = out / f"{out.name}.mbtiles"
+    extra = ["--format", args.format, "--maxzoom", str(args.maxzoom)]
+    if args.workers:
+        extra += ["--workers", str(args.workers)]
+    subprocess.run(["node", RENDERER, "tiles", *render_args(out), "--out", target, *extra], check=True)
+    print(f"finished: {target}")
+
+
+def cmd_convert(args):
+    out = variant_dir(args.img)
+    cmd_decode(argparse.Namespace(img=args.img, out=str(out), workers=os.cpu_count()))
+    cmd_style(argparse.Namespace(img=args.img, out=str(out)))
+    cmd_tiles(argparse.Namespace(img=args.img, out=str(out)))
+    if not (OUT / "dem.mbtiles").exists():
+        cmd_dem(argparse.Namespace(hgt=args.hgt, out=str(OUT / "dem.mbtiles")))
+    cmd_render(args)
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="imgconv", description="Garmin IMG to MBTiles converter")
     sub = p.add_subparsers(dest="command", required=True)
@@ -116,6 +136,15 @@ def build_parser():
     s.add_argument("--size", type=int, default=1024)
     s.add_argument("--name")
     s.set_defaults(func=cmd_sample)
+    for name, func, help_text in (("render", cmd_render, "render raster MBTiles (resumable)"),
+                                  ("convert", cmd_convert, "run every stage for one IMG")):
+        s = sub.add_parser(name, help=help_text)
+        s.add_argument("img")
+        s.add_argument("--workers", type=int)
+        s.add_argument("--format", choices=["png", "jpg"], default="png")
+        s.add_argument("--maxzoom", type=int, default=15)
+        s.add_argument("--hgt", default=str(HGT_DIR))
+        s.set_defaults(func=func)
     return p
 
 
