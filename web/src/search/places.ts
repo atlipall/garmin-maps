@@ -13,6 +13,28 @@ export interface Place {
   type: number;
 }
 
+const round5 = (v: number) => Math.round(v * 1e5) / 1e5;
+
+/**
+ * Midpoint of a coordinate array's bounding box. Loops rather than spreading into `Math.min`/
+ * `Math.max` — a spread of more than ~130k arguments overflows V8's call stack (fewer on some
+ * mobile engines), which would otherwise reject the whole `collectPlaces` call on a large polygon
+ * or line.
+ */
+export function bboxCenter(coords: Array<[number, number]>): [number, number] {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of coords) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return [(minX + maxX) / 2, (minY + maxY) / 2];
+}
+
 /** Named objects of the most detailed level, deduplicated by name within ~0.05°. */
 export async function collectPlaces(map: GarminMap): Promise<Place[]> {
   const bits = Math.max(...map.bands.keys());
@@ -27,11 +49,12 @@ export async function collectPlaces(map: GarminMap): Promise<Place[]> {
     if (obj.kind === 'point') {
       [lon, lat] = obj.coords[0].map(mapUnitsToDeg);
     } else {
-      const xs = obj.coords.map((c) => c[0]);
-      const ys = obj.coords.map((c) => c[1]);
-      lon = mapUnitsToDeg((Math.min(...xs) + Math.max(...xs)) / 2);
-      lat = mapUnitsToDeg((Math.min(...ys) + Math.max(...ys)) / 2);
+      const [cx, cy] = bboxCenter(obj.coords);
+      lon = mapUnitsToDeg(cx);
+      lat = mapUnitsToDeg(cy);
     }
+    lon = round5(lon);
+    lat = round5(lat);
     const key = `${normalize(name)}|${obj.kind}|${Math.round(lon * 20)}|${Math.round(lat * 20)}`;
     if (seen.has(key)) return;
     seen.add(key);
