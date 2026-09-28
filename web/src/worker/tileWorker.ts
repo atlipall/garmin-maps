@@ -12,7 +12,9 @@ let opened: Promise<GarminMap> | null = null;
 /** Set synchronously when `open` arrives, so a `dem` request that lands while `open` is still
  *  building the DEM (e.g. right after the pool respawned this worker) waits instead of failing. */
 let demReady: Promise<Dem | null> | null = null;
-const cache = new SubdivisionCache();
+// 750k points: the coarsest level alone needs ~585k for a 3x3 block of z7 tiles, plus the slim
+// early-road and label-context entries.
+const cache = new SubdivisionCache(750_000);
 /** Ids of `tile` requests the pool has asked us to abandon. Checked before starting decode work
  *  and again right before posting a result, so a cancelled tile does as little wasted work as
  *  practical; entries are removed once consumed so the set can't grow without bound. */

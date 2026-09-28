@@ -1,4 +1,4 @@
-import { nearness } from './describe';
+import { isTownType, nearness } from './describe';
 import { normalize } from './normalize';
 import type { Place } from './places';
 
@@ -30,24 +30,34 @@ export class PlaceIndex {
       .sort((a, b) => KIND_RANK[a.place.kind] - KIND_RANK[b.place.kind] || a.norm.length - b.norm.length || a.place.name.localeCompare(b.place.name));
   }
 
-  /** With `near`, hits of equal match score within NEARBY_KM of it come first, nearest first
+  /** With `near`: exact name matches, then name prefixes, word prefixes and substrings; within
+   *  each, the hits within NEARBY_KM of `near` first, nearest first, then the rest in static order
    *  (every hit is scored then, since the nearest may come anywhere in the static order). */
   search(query: string, limit = 20, near?: [number, number]): Place[] {
     const q = normalize(query);
     if (!q || limit <= 0) return [];
     if (near) {
-      const buckets: Place[][] = [[], [], []];
+      // An exact name match gets its own top bucket, so nearby longer names that merely start
+      // with the query don't bury it (searching the town's name finds the town first).
+      const buckets: Place[][] = [[], [], [], []];
       for (const e of this.entries) {
         const score = this.score(e, q);
-        if (score >= 0) buckets[score].push(e.place);
+        if (score >= 0) buckets[score === 0 && e.norm === q ? 0 : score + 1].push(e.place);
       }
-      // Nearby hits (within NEARBY_KM) first, nearest first; the rest keep the static order, so a
-      // distant but well-known name is not buried under every minor nearby-ish match.
+      // Within a bucket: nearby hits (within NEARBY_KM), nearest first, then the rest in static
+      // order, so a distant but well-known name is not buried under every minor nearby match.
+      // Among exact matches, towns go first: a farm or area sharing a town's name is rarely meant.
       const nearby = (p: Place) => nearness(p, near) < NEARBY_DEG2;
-      return buckets.flatMap((b) => [
-        ...b.filter(nearby).map((p) => [nearness(p, near), p] as const).sort((x, y) => x[0] - y[0]).map(([, p]) => p),
-        ...b.filter((p) => !nearby(p)),
-      ]).slice(0, limit);
+      const order = (hits: Place[]) => [
+        ...hits.filter(nearby).map((p) => [nearness(p, near), p] as const).sort((x, y) => x[0] - y[0]).map(([, p]) => p),
+        ...hits.filter((p) => !nearby(p)),
+      ];
+      const [exact, ...rest] = buckets;
+      return [
+        ...order(exact.filter(isTownType)),
+        ...order(exact.filter((p) => !isTownType(p))),
+        ...rest.flatMap(order),
+      ].slice(0, limit);
     }
     const buckets: Place[][] = [[], [], []];
     for (const e of this.entries) {

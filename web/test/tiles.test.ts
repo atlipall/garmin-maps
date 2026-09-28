@@ -5,7 +5,7 @@ import type { RawObject } from '../src/img/rgn';
 import { shiftOf, subdivisionBounds } from '../src/img/tre';
 import { decodeAll } from '../src/map/decodeAll';
 import { GarminMap } from '../src/map/garminMap';
-import { buildTile, coordsBounds, dedupeLabels, paddedSubdivisionBounds, polygonLabelAnchor, stitchLines, SubdivisionCache } from '../src/tiles/buildTile';
+import { buildTile, coordsBounds, dedupeLabels, paddedSubdivisionBounds, polygonLabelAnchor, simplifyLine, stitchLines, SubdivisionCache } from '../src/tiles/buildTile';
 import { latToTileY, lonToTileX, tileBounds } from '../src/tiles/tileMath';
 import { nodeSource } from './helpers/nodeSource';
 import { DETAILED, hasRealData } from './helpers/paths';
@@ -115,6 +115,15 @@ describe('stitchLines', () => {
       line(0x20, '400', [[10, 0], [20, 0]]),
     ];
     expect(stitchLines(fs)).toHaveLength(fs.length);
+  });
+});
+
+describe('simplifyLine', () => {
+  test('drops points within the tolerance of the simplified line, keeps the ends and real bends', () => {
+    const line: Array<[number, number]> = [[0, 0], [100, 10], [200, -10], [300, 0], [400, 500], [500, 0]];
+    expect(simplifyLine(line, 64)).toEqual([[0, 0], [300, 0], [400, 500], [500, 0]]);
+    expect(simplifyLine(line, 5)).toEqual(line);
+    expect(simplifyLine([[0, 0], [1, 1]], 64)).toEqual([[0, 0], [1, 1]]);
   });
 });
 
@@ -233,6 +242,28 @@ describe.skipIf(!hasRealData)('buildTile on real data', () => {
     expect(await fRoads(7)).toBeGreaterThan(0);
     expect(await fRoads(6)).toBe(0);
   });
+
+  test('neighbouring tiles never repeat an area label within half a tile of each other', async () => {
+    // 3x3 blocks where Garmin splits rivers/areas into many pieces (HÖFÐAR at z9, Blanda at z7).
+    for (const [z, lon, lat] of [[9, -22.4, 64.55], [7, -19.75, 65.25], [11, -19.06, 64.0]] as const) {
+      const cache = new SubdivisionCache();
+      const [cx, cy] = [lonToTileX(lon, z), latToTileY(lat, z)];
+      const labels: Array<{ name: string; x: number; y: number; tile: string }> = [];
+      for (let x = cx - 1; x <= cx + 1; x++) {
+        for (let y = cy - 1; y <= cy + 1; y++) {
+          for (const f of decode((await buildTile(map, cache, z, x, y)).data)) {
+            if (f.layer !== 'polygons' || !f.name || f.geom[0].length !== 1 || /^\d/.test(f.name)) continue;
+            const p = f.geom[0][0];
+            labels.push({ name: f.name, x: x * 4096 + p.x, y: y * 4096 + p.y, tile: `${x},${y}` });
+          }
+        }
+      }
+      const close = labels.flatMap((a, i) => labels.slice(i + 1)
+        .filter((b) => a.name === b.name && a.tile !== b.tile && Math.hypot(a.x - b.x, a.y - b.y) < 2048)
+        .map((b) => `z${z} ${a.name} ${a.tile}/${b.tile}`));
+      expect(close).toEqual([]);
+    }
+  }, 120_000);
 
   test('a tile far out at sea is empty', async () => {
     const z = 10;

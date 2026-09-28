@@ -45,9 +45,22 @@ describe('PlaceIndex', () => {
       { name: 'Svartárkot', lon: -19.9, lat: 65, kind: 'point', type: 0x6402 },
       { name: 'Svartárdalur', lon: -14, lat: 65, kind: 'point', type: 0x640a },
     ]);
-    // Within 25 km: -20 (0 km), -19.9 (~5 km), -19.7 (~14 km); then the far ones in static order.
-    expect(near.search('svarta', 20, [-20, 65]).map((p) => p.lon)).toEqual([-20, -19.9, -19.7, -14, -15]);
+    // Exact "Svartá" first: within 25 km -20 (0 km), -19.7 (~14 km), then far -15; then the longer
+    // names: nearby Svartárkot (~5 km), then far Svartárdalur.
+    expect(near.search('svarta', 20, [-20, 65]).map((p) => p.lon)).toEqual([-20, -19.7, -15, -19.9, -14]);
     expect(near.search('svarta').map((p) => p.lon)).toEqual([-19.9, -14, -15, -20, -19.7]); // no reference: unchanged
+  });
+
+  test('with a reference point, exact name matches come first, towns before other exact matches', () => {
+    const idx = new PlaceIndex([
+      { name: 'Reykjavíkurtjörn', lon: -21.94, lat: 64.144, kind: 'polygon', type: 0x41 },
+      { name: 'Reykjavíkurhöfn', lon: -21.93, lat: 64.15, kind: 'point', type: 0x650b },
+      { name: 'REYKJAVÍK', lon: -21.89, lat: 64.13, kind: 'point', type: 0x0700 },
+      { name: 'Reykjavík', lon: -21.93, lat: 64.14, kind: 'point', type: 0x6402 }, // a farm, nearer than the town
+    ]);
+    expect(idx.search('reykjavik', 20, [-21.94, 64.144]).map((p) => [p.name, p.type])).toEqual([
+      ['REYKJAVÍK', 0x0700], ['Reykjavík', 0x6402], ['Reykjavíkurtjörn', 0x41], ['Reykjavíkurhöfn', 0x650b],
+    ]);
   });
 });
 

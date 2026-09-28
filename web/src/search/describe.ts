@@ -41,7 +41,7 @@ const POLYGON: Record<number, string> = {
 };
 
 /** Garmin city points: types 0x01-0x0d (by size). */
-const isTownType = (p: Place) => p.kind === 'point' && (p.type >> 8) >= 0x01 && (p.type >> 8) <= 0x0d;
+export const isTownType = (p: Place) => p.kind === 'point' && (p.type >> 8) >= 0x01 && (p.type >> 8) <= 0x0d;
 
 export function placeCategory(p: Place): string {
   if (p.kind === 'point') {

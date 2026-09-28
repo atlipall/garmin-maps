@@ -29,6 +29,8 @@ interface TileFeature {
 
 interface CacheEntry {
   promise: Promise<RawObject[]>;
+  /** The resolved objects, once loaded (for `peek`). */
+  value?: RawObject[];
   /** Total `coords.length` across the resolved objects, or `null` while still in flight (an
    *  in-flight entry is never evicted: its size isn't known yet, and other callers may be
    *  awaiting the same promise). */
@@ -59,6 +61,7 @@ export class SubdivisionCache {
     const entry = { points: null } as CacheEntry;
     entry.promise = load().then(
       (objs) => {
+        entry.value = objs;
         entry.points = objs.reduce((n, o) => n + o.coords.length, 0);
         this.totalPoints += entry.points;
         this.evict();
@@ -71,6 +74,11 @@ export class SubdivisionCache {
     );
     this.entries.set(key, entry);
     return entry.promise;
+  }
+
+  /** The loaded objects for `key`, if cached and resolved (no load, no LRU touch). */
+  peek(key: string): RawObject[] | undefined {
+    return this.entries.get(key)?.value;
   }
 
   /** Drops every cached (and in-flight) entry, e.g. when a worker opens a different file. */
@@ -121,8 +129,42 @@ function roundDedupe(points: Pt[]): Pt[] {
   return out;
 }
 
-const ringArea = (ring: Pt[]) =>
-  Math.abs(ring.reduce((sum, p, i) => sum + (i ? ring[i - 1][0] * p[1] - p[0] * ring[i - 1][1] : 0), 0)) / 2;
+/** Douglas-Peucker: drop points closer than `tol` to the simplified line (ends always kept). */
+export function simplifyLine(coords: Array<[number, number]>, tol: number): Array<[number, number]> {
+  if (coords.length <= 2) return coords;
+  const keep = new Uint8Array(coords.length);
+  keep[0] = keep[coords.length - 1] = 1;
+  const stack: Array<[number, number]> = [[0, coords.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop()!;
+    const [ax, ay] = coords[a];
+    const [dx, dy] = [coords[b][0] - ax, coords[b][1] - ay];
+    const len = Math.hypot(dx, dy);
+    let worst = -1;
+    let worstD = tol;
+    for (let i = a + 1; i < b; i++) {
+      const [px, py] = [coords[i][0] - ax, coords[i][1] - ay];
+      const d = len === 0 ? Math.hypot(px, py) : Math.abs(px * dy - py * dx) / len;
+      if (d > worstD) [worst, worstD] = [i, d];
+    }
+    if (worst >= 0) {
+      keep[worst] = 1;
+      stack.push([a, worst], [worst, b]);
+    }
+  }
+  return coords.filter((_, i) => keep[i]);
+}
+
+/** Early roads are only drawn at the coarsest level's zooms (<= 8): half a pixel there, in map units. */
+const EARLY_ROAD_TOLERANCE = 64;
+
+/** Shoelace area, including the closing edge (Garmin rings are not explicitly closed; without it
+ *  the result depends on the coordinate origin, i.e. would differ from tile to tile). */
+const ringArea = (ring: Pt[]) => {
+  let sum = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) sum += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+  return Math.abs(sum) / 2;
+};
 
 /**
  * A point inside a polygon to hang its label on: the area centroid when it lies inside, else the
@@ -305,36 +347,49 @@ export async function buildTile(
     // level supplies only roads (so each road is drawn once, from one level).
     const roadBits = map.roadLevelForZoom(z);
     const isRoad = (o: RawObject) => o.kind === 'line' && isRoadType(o.type);
-    const levels: Array<[number, ((o: RawObject) => boolean) | null]> = roadBits === undefined
-      ? [[bits, null]]
-      : [[bits, (o) => !isRoad(o)], [roadBits, isRoad]];
-    interface Entry { tile: MapTile; sd: Subdivision; key: string; keep: ((o: RawObject) => boolean) | null }
+    // Each subdivision is read in one of three views. 'all': the tile's own data. 'roads': only
+    // the roads of the finer road level. 'labels': only named polygons, from around the tile, for
+    // label context. The partial views are cached as their own (much smaller) entries, derived
+    // from the full entry when that is cached, so the extra reads don't flush the cache.
+    type View = 'all' | 'roads' | 'labels';
+    interface Entry { tile: MapTile; sd: Subdivision; key: string; view: View }
     const entries: Entry[] = [];
-    for (const [i, [level, keep]] of levels.entries()) {
+    for (const [i, level] of (roadBits === undefined ? [bits] : [bits, roadBits]).entries()) {
       for (const tile of map.tiles) {
         for (const sd of tile.byLevel.get(level) ?? []) {
-          // The tile's own level (i = 0) holds the polygons, so it is read over the label area.
-          if (!intersects(paddedSubdivisionBounds(sd), i === 0 ? labelQuery : query)) continue;
-          entries.push({ tile, sd, key: `${tile.id}:${sd.index}`, keep });
+          const b = paddedSubdivisionBounds(sd);
+          const inTile = intersects(b, query);
+          const view: View | null = i === 1 ? (inTile ? 'roads' : null) : inTile ? 'all' : intersects(b, labelQuery) ? 'labels' : null;
+          if (view) entries.push({ tile, sd, key: `${tile.id}:${sd.index}`, view });
         }
       }
     }
-    const resolved = new Map<string, RawObject[]>();
+    const isNamedPolygon = (o: RawObject) => o.kind === 'polygon' && o.label !== 0;
+    const resolved = new Map<Entry, RawObject[]>();
     await Promise.all(entries.map(async (e) => {
-      const objs = await cache.get(e.key, async () => {
+      const decode = async () => {
         const bytes = await map.readSubdivision(e.tile, e.sd);
         const stats = { sections: 0, badSections: 0 };
         const decoded = decodeSubdivision(bytes, e.sd, stats);
         badSections += stats.badSections;
         return decoded;
-      });
-      resolved.set(e.key, objs);
+      };
+      const objs = e.view === 'all'
+        ? await cache.get(e.key, decode)
+        : await cache.get(`${e.key}|${e.view}`, async () =>
+          e.view === 'roads'
+            ? (cache.peek(e.key) ?? (await decode())).filter(isRoad)
+              .map((o) => ({ ...o, coords: simplifyLine(o.coords, EARLY_ROAD_TOLERANCE) }))
+            : (cache.peek(e.key) ?? (await decode())).filter(isNamedPolygon));
+      resolved.set(e, objs);
     }));
 
-    for (const { tile, key, keep } of entries) {
-      const objs = resolved.get(key)!;
-      for (const obj of objs) {
-        if (keep && !keep(obj)) continue;
+    for (const e of entries) {
+      const { tile } = e;
+      for (const obj of resolved.get(e)!) {
+        // With early roads, the tile's own level supplies everything but roads (the road level
+        // supplies those, so each road is drawn once).
+        if (e.view === 'all' && roadBits !== undefined && isRoad(obj)) continue;
         const bounds = coordsBounds(obj.coords);
         const inTile = intersects(bounds, query);
         const name = obj.kind === 'polygon' && intersects(bounds, labelQuery) ? objectName(tile, obj) : null;
