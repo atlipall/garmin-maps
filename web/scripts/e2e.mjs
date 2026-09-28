@@ -85,6 +85,7 @@ try {
   const before = await opfs();
   console.log('OPFS before re-import:', JSON.stringify(before));
   if (!before.pointer || !before.names.includes(`${before.pointer.dir}/`)) fail(`no committed map dir: ${JSON.stringify(before)}`);
+  await page.click('#menu-button');
   await page.click('#replace');
   await page.waitForSelector('#import:not([hidden])', { timeout: 30_000 });
   if (await page.$('#import-cancel[hidden]')) fail('Cancel button hidden on "Load another map"');
@@ -97,6 +98,7 @@ try {
   console.log('cancel back to stored map ok');
 
   // 7. re-import the IMG only (no HGT): the new map replaces the old one, leaving one data dir
+  await page.click('#menu-button');
   await page.click('#replace');
   await page.waitForSelector('#import:not([hidden])', { timeout: 30_000 });
   await (await page.$('#img-file')).uploadFile(IMG);
@@ -135,6 +137,7 @@ try {
   await waitReady();
   if (await page.$('#import:not([hidden])')) fail('legacy garmin/ map not loaded');
   console.log('legacy layout loads:', JSON.stringify(await opfs()));
+  await page.click('#menu-button');
   await page.click('#replace');
   await page.waitForSelector('#import:not([hidden])', { timeout: 30_000 });
   await (await page.$('#img-file')).uploadFile(IMG);

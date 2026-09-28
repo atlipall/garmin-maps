@@ -112,20 +112,30 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     if (img && !map.hasImage(ev.id)) map.addImage(ev.id, img);
   });
   map.on('error', (ev) => console.error(ev.error));
-  map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
-  map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'top-right');
-  map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+  // Phones pinch to zoom, so they get only the compass; the locate button sits bottom-right,
+  // within thumb reach.
+  const touch = matchMedia('(pointer: coarse)').matches;
+  map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: !touch }), 'top-right');
+  map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'bottom-right');
+  map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
   $('topbar').hidden = false;
-  $('replace').hidden = false;
+  $('menu-button').hidden = false;
+  const setMenu = (open: boolean) => {
+    $('menu').hidden = !open;
+    $('menu-button').setAttribute('aria-expanded', String(open));
+  };
+  $('menu-button').onclick = () => setMenu($('menu').hidden !== false);
+  map.on('movestart', () => setMenu(false));
   let closed = false;
   $('replace').onclick = () => {
     // Nothing is deleted here: the stored map stays until a new import commits (and Cancel
     // reloads straight back into it). Stop the workers and the map to free memory for the import.
     closed = true;
+    setMenu(false);
     pool.dispose();
     map.remove();
-    for (const id of ['topbar', 'replace', 'badge', 'perf']) $(id).hidden = true;
+    for (const id of ['topbar', 'menu-button', 'badge', 'perf']) $(id).hidden = true;
     showImport('', { hasMap: true, canCancel: true });
   };
 
