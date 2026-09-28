@@ -24,14 +24,33 @@ describe('tile math', () => {
 
 describe('dedupeLabels', () => {
   type F = Parameters<typeof dedupeLabels>[0][number];
+  type Info = NonNullable<ReturnType<Parameters<typeof dedupeLabels>[1]>>;
   const labelPoint = (name: string): F => ({ type: 1, geometry: [[0, 0]], tags: { t: 0x3c, name } });
   const names = (fs: F[]) => fs.map((f) => f.tags.name ?? null);
+  const box = (x0: number, x1: number): Info['bbox'] => [x0, 0, x1, 10];
 
-  test('keeps only the label point of the largest area with that name', () => {
+  test('keeps only the label of the largest of touching same-named pieces', () => {
+    // One lake that Garmin split into three pieces sharing edges, plus another name.
     const fs = [labelPoint('Þingvallavatn'), labelPoint('Þingvallavatn'), labelPoint('Þingvallavatn'), labelPoint('Hestvík')];
-    const areas = new Map([[fs[0], 10], [fs[1], 50], [fs[2], 20], [fs[3], 1]]);
-    dedupeLabels(fs, (f) => areas.get(f));
+    const info = new Map<F, Info>([
+      [fs[0], { size: 10, bbox: box(0, 10) }],
+      [fs[1], { size: 50, bbox: box(10, 20) }],
+      [fs[2], { size: 20, bbox: box(20, 30) }],
+      [fs[3], { size: 1, bbox: box(0, 1) }],
+    ]);
+    dedupeLabels(fs, (f) => info.get(f));
     expect(names(fs)).toEqual([null, 'Þingvallavatn', null, 'Hestvík']);
+  });
+
+  test('keeps every label of same-named areas that do not touch (house numbers on different streets)', () => {
+    const fs = [labelPoint('36'), labelPoint('36'), labelPoint('36')];
+    const info = new Map<F, Info>([
+      [fs[0], { size: 5, bbox: box(0, 5) }],
+      [fs[1], { size: 6, bbox: box(100, 105) }],
+      [fs[2], { size: 7, bbox: box(200, 205) }],
+    ]);
+    dedupeLabels(fs, (f) => info.get(f));
+    expect(names(fs)).toEqual(['36', '36', '36']);
   });
 });
 

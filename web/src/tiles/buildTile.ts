@@ -217,25 +217,46 @@ function joinParts(parts: Pt[][]): Pt[][] {
   return chains;
 }
 
+export interface LabelInfo {
+  /** Area of the whole polygon the label belongs to. */
+  size: number;
+  /** Bounds of the whole polygon, in map units. */
+  bbox: BBox;
+}
+
 /**
- * Keep only the label point of the largest polygon carrying each name in a tile (Garmin splits a
- * big lake or area into several polygons; each would otherwise get its own label).
+ * Garmin splits a big lake or area into several polygons that share edges, and each piece would
+ * otherwise get its own label. Among label points with the same name whose polygons touch or
+ * overlap (transitively), keep only the one of the largest polygon. Same-named areas that don't
+ * touch (house number 36 on two streets) keep their labels.
  */
-export function dedupeLabels(features: TileFeature[], sizeOf: (f: TileFeature) => number | undefined): void {
-  const best = new Map<string, { feature: TileFeature; size: number }>();
+export function dedupeLabels(features: TileFeature[], infoOf: (f: TileFeature) => LabelInfo | undefined): void {
+  const byName = new Map<string, Array<{ f: TileFeature; info: LabelInfo }>>();
   for (const f of features) {
-    const name = f.tags.name;
-    if (name === undefined || f.type !== 1) continue;
-    const size = sizeOf(f) ?? 0;
-    const prev = best.get(String(name));
-    if (!prev) {
-      best.set(String(name), { feature: f, size });
-    } else if (size > prev.size) {
-      delete prev.feature.tags.name;
-      best.set(String(name), { feature: f, size });
-    } else {
-      delete f.tags.name;
+    const info = infoOf(f);
+    if (f.type !== 1 || f.tags.name === undefined || !info) continue;
+    const key = String(f.tags.name);
+    (byName.get(key) ?? byName.set(key, []).get(key)!).push({ f, info });
+  }
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    // Union-find over touching bounding boxes.
+    const parent = group.map((_, i) => i);
+    const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        if (intersects(group[i].info.bbox, group[j].info.bbox)) parent[root(i)] = root(j);
+      }
     }
+    const keep = new Map<number, number>();
+    group.forEach(({ info }, i) => {
+      const r = root(i);
+      const k = keep.get(r);
+      if (k === undefined || info.size > group[k].info.size) keep.set(r, i);
+    });
+    group.forEach(({ f }, i) => {
+      if (keep.get(root(i)) !== i) delete f.tags.name;
+    });
   }
 }
 
@@ -244,7 +265,7 @@ export async function buildTile(
 ): Promise<{ data: Uint8Array; badSections: number; features: number }> {
   const layers: Record<'points' | 'lines' | 'polygons', TileFeature[]> = { points: [], lines: [], polygons: [] };
   let badSections = 0;
-  const labelArea = new Map<TileFeature, number>();
+  const labelInfo = new Map<TileFeature, LabelInfo>();
   const bits = map.levelForZoom(z);
   if (bits !== undefined) {
     const [w, s, e, n] = tileBounds(z, x, y);
@@ -314,7 +335,7 @@ export async function buildTile(
           const [ax, ay] = project(polygonLabelAnchor(obj.coords));
           if (ax >= 0 && ax < EXTENT && ay >= 0 && ay < EXTENT) {
             const label: TileFeature = { type: 1, geometry: [[Math.round(ax), Math.round(ay)]], tags: { t: obj.type, name } };
-            labelArea.set(label, ringArea(pts));
+            labelInfo.set(label, { size: ringArea(pts), bbox: coordsBounds(obj.coords) });
             layers.polygons.push(label);
           }
         } else if (name) {
@@ -325,7 +346,7 @@ export async function buildTile(
     }
   }
   layers.lines = stitchLines(layers.lines);
-  dedupeLabels(layers.polygons, (f) => labelArea.get(f));
+  dedupeLabels(layers.polygons, (f) => labelInfo.get(f));
   const data = fromGeojsonVt(
     { points: { features: layers.points }, lines: { features: layers.lines }, polygons: { features: layers.polygons } } as never,
     { version: 2, extent: EXTENT },
