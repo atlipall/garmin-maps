@@ -22,7 +22,11 @@
       :root { --gap: 8px; --btn: 44px; --top: calc(env(safe-area-inset-top) + var(--gap)); --bottom: calc(env(safe-area-inset-bottom) + var(--gap)); }
       /* Top row: search (stretches) + menu button. */
       #topbar { position: absolute; z-index: 3; top: var(--top); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); max-width: 420px; }
-      #search { width: 100%; height: var(--btn); box-sizing: border-box; padding: 0 12px; font-size: 16px; border: 0; border-radius: 10px; background: transparent; }
+      .search-row { position: relative; }
+      #search { width: 100%; height: var(--btn); box-sizing: border-box; padding: 0 var(--btn) 0 12px; font-size: 16px; border: 0; border-radius: 10px; background: transparent; }
+      /* Our own clear button (iOS shows none); hide the browser's so desktop doesn't show two. */
+      #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+      #search-clear { position: absolute; top: 0; right: 0; width: var(--btn); height: var(--btn); border: 0; background: none; font-size: 22px; line-height: 1; color: #667; cursor: pointer; -webkit-tap-highlight-color: transparent; }
       #results { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow: auto; }
       #results li { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 8px 12px; border-top: 1px solid #0001; cursor: pointer; }
       #results .name { grid-column: 1; font-weight: 600; overflow-wrap: anywhere; }
@@ -70,7 +74,10 @@
   <body>
     <div id="map"></div>
     <div id="topbar" class="panel" hidden>
-      <input id="search" type="search" placeholder="Loading places…" aria-label="Search places" disabled autocomplete="off" enterkeyhint="search" />
+      <div class="search-row">
+        <input id="search" type="search" placeholder="Loading places…" aria-label="Search places" disabled autocomplete="off" enterkeyhint="search" />
+        <button id="search-clear" type="button" aria-label="Clear search" hidden>×</button>
+      </div>
       <ul id="results"></ul>
     </div>
     <div id="badge" class="panel" role="status" aria-live="polite" hidden></div>

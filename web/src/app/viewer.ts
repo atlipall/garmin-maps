@@ -259,8 +259,19 @@ function wireSearch(map: maplibregl.Map, index: PlaceIndex, searchFrom: () => { 
       }),
     );
   };
+  const clear = $<HTMLButtonElement>('search-clear');
   input.addEventListener('input', () => {
+    clear.hidden = input.value === '';
     clearTimeout(timer);
     timer = window.setTimeout(render, 120);
   });
+  // Clear the query and results but keep the keyboard up for a new search (the result marker stays).
+  clear.addEventListener('pointerdown', (ev) => ev.preventDefault()); // don't steal focus from the input
+  clear.onclick = () => {
+    clearTimeout(timer);
+    input.value = '';
+    clear.hidden = true;
+    list.replaceChildren();
+    input.focus();
+  };
 }
