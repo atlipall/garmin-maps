@@ -25,7 +25,7 @@ describe('tile math', () => {
 describe('dedupeLabels', () => {
   type F = Parameters<typeof dedupeLabels>[0][number];
   type Info = NonNullable<ReturnType<Parameters<typeof dedupeLabels>[1]>>;
-  const labelPoint = (name: string): F => ({ type: 1, geometry: [[0, 0]], tags: { t: 0x3c, name } });
+  const labelPoint = (name: string, x = 0, t = 0x3c): F => ({ type: 1, geometry: [[x, 0]], tags: { t, name } });
   const names = (fs: F[]) => fs.map((f) => f.tags.name ?? null);
   const box = (x0: number, x1: number): Info['bbox'] => [x0, 0, x1, 10];
 
@@ -42,8 +42,8 @@ describe('dedupeLabels', () => {
     expect(names(fs)).toEqual([null, 'Þingvallavatn', null, 'Hestvík']);
   });
 
-  test('keeps every label of same-named areas that do not touch (house numbers on different streets)', () => {
-    const fs = [labelPoint('36'), labelPoint('36'), labelPoint('36')];
+  test('keeps every label of same-named buildings that do not touch (house numbers on different streets)', () => {
+    const fs = [labelPoint('36', 0, 0x13), labelPoint('36', 100, 0x13), labelPoint('36', 200, 0x13)];
     const info = new Map<F, Info>([
       [fs[0], { size: 5, bbox: box(0, 5) }],
       [fs[1], { size: 6, bbox: box(100, 105) }],
@@ -51,6 +51,35 @@ describe('dedupeLabels', () => {
     ]);
     dedupeLabels(fs, (f) => info.get(f));
     expect(names(fs)).toEqual(['36', '36', '36']);
+  });
+
+  test('merges nearby same-named areas even when they do not touch (a wide river in pieces)', () => {
+    // Pieces of one river polygon with gaps between them: near each other, but not touching.
+    const fs = [labelPoint('Blanda', 0, 0x48), labelPoint('Blanda', 900, 0x48), labelPoint('Blanda', 1800, 0x48), labelPoint('Blanda', 4000, 0x48)];
+    const info = new Map<F, Info>([
+      [fs[0], { size: 5, bbox: box(0, 5) }],
+      [fs[1], { size: 9, bbox: box(100, 105) }],
+      [fs[2], { size: 7, bbox: box(200, 205) }],
+      [fs[3], { size: 1, bbox: box(300, 305) }],
+    ]);
+    dedupeLabels(fs, (f) => info.get(f));
+    // 0-900-1800 chain within half a tile of each other; 4000 is 2200 away from the nearest.
+    expect(names(fs)).toEqual([null, 'Blanda', null, 'Blanda']);
+  });
+
+  test('a larger piece just outside the tile (context) suppresses the label here, and is not emitted', () => {
+    const own = [labelPoint('Blanda', 4000, 0x48)];
+    const ctx = [labelPoint('Blanda', 4500, 0x48)]; // across the tile edge, in the neighbour tile
+    const info = new Map<F, Info>([[own[0], { size: 3, bbox: box(0, 5) }], [ctx[0], { size: 8, bbox: box(100, 105) }]]);
+    dedupeLabels(own, (f) => info.get(f), ctx);
+    expect(names(own)).toEqual([null]);
+    expect(names(ctx)).toEqual(['Blanda']);
+    // And the neighbour, seeing the same two pieces the other way round, keeps its own.
+    const own2 = [labelPoint('Blanda', 404, 0x48)];
+    const ctx2 = [labelPoint('Blanda', -96, 0x48)];
+    const info2 = new Map<F, Info>([[own2[0], { size: 8, bbox: box(100, 105) }], [ctx2[0], { size: 3, bbox: box(0, 5) }]]);
+    dedupeLabels(own2, (f) => info2.get(f), ctx2);
+    expect(names(own2)).toEqual(['Blanda']);
   });
 });
 

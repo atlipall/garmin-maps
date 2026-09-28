@@ -29,14 +29,15 @@
       #menu-button { position: absolute; z-index: 3; top: var(--top); right: calc(env(safe-area-inset-right) + var(--gap)); width: var(--btn); height: var(--btn); border: 0; font-size: 22px; line-height: 1; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
       #menu { position: absolute; z-index: 4; background: #fff; top: calc(var(--top) + var(--btn) + 6px); right: calc(env(safe-area-inset-right) + var(--gap)); min-width: 200px; padding: 4px 0; }
       #menu button { display: block; width: 100%; padding: 12px 16px; border: 0; background: none; font-size: 16px; text-align: left; color: var(--ink); cursor: pointer; }
-      #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 46px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: 13px; color: #8a3b00; }
+      #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 24px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: 13px; color: #8a3b00; }
       #perf { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); top: calc(var(--top) + var(--btn) + var(--gap)); padding: 6px 8px; font: 11px ui-monospace, monospace; white-space: pre; }
       /* MapLibre's corner controls, kept clear of the notch / home indicator and our top row.
          '#map' raises specificity above maplibre-gl.css, which loads after this sheet. */
       #map .maplibregl-ctrl-top-right { top: calc(var(--top) + var(--btn)); right: env(safe-area-inset-right); }
-      /* Extra room at the bottom: the home indicator area is not always reported as an inset. */
-      #map .maplibregl-ctrl-bottom-right { bottom: calc(env(safe-area-inset-bottom) + 16px); right: env(safe-area-inset-right); }
-      #map .maplibregl-ctrl-bottom-left { bottom: calc(env(safe-area-inset-bottom) + 16px); left: env(safe-area-inset-left); }
+      /* The home-indicator inset (34 pt) is generous; controls already have a 10 px margin, so
+         sit ~30 pt above the screen edge, still clear of the indicator. */
+      #map .maplibregl-ctrl-bottom-right { bottom: max(0px, calc(env(safe-area-inset-bottom) - 14px)); right: env(safe-area-inset-right); }
+      #map .maplibregl-ctrl-bottom-left { bottom: max(0px, calc(env(safe-area-inset-bottom) - 14px)); left: env(safe-area-inset-left); }
       #map .maplibregl-ctrl-group { border-radius: 10px; box-shadow: 0 1px 6px #0003; }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {

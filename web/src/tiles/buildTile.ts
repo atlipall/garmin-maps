@@ -222,41 +222,51 @@ export interface LabelInfo {
   size: number;
   /** Bounds of the whole polygon, in map units. */
   bbox: BBox;
+  /** Label anchor in map units: a tile-independent tie-break between equal sizes. */
+  anchor?: [number, number];
 }
 
+/** Same-named area labels closer than this (tile units: half a tile) are one feature's pieces. */
+export const LABEL_MERGE_DISTANCE = EXTENT / 2;
+
+/** Addresses (house numbers) repeat on nearby streets, so they only merge when touching. */
+const isAddress = (name: string) => /^\d/.test(name);
+
+const bigger = (a: LabelInfo, b: LabelInfo) =>
+  a.size !== b.size ? a.size > b.size
+    : (a.anchor?.[0] ?? 0) !== (b.anchor?.[0] ?? 0) ? (a.anchor?.[0] ?? 0) > (b.anchor?.[0] ?? 0)
+    : (a.anchor?.[1] ?? 0) > (b.anchor?.[1] ?? 0);
+
 /**
- * Garmin splits a big lake or area into several polygons that share edges, and each piece would
- * otherwise get its own label. Among label points with the same name whose polygons touch or
- * overlap (transitively), keep only the one of the largest polygon. Same-named areas that don't
- * touch (house number 36 on two streets) keep their labels.
+ * Garmin splits a big lake or wide river into several polygons (a wide river as pieces with gaps
+ * between them), and each piece would otherwise get its own label. Drop a label when a larger
+ * polygon with the same name touches its polygon or, except for addresses, has its label within
+ * LABEL_MERGE_DISTANCE. `context` holds same-kind label points of polygons just outside this tile
+ * (never emitted): every tile sees the same neighbourhood, so neighbouring tiles agree on which
+ * label survives instead of each keeping its own copy near their shared edge.
  */
-export function dedupeLabels(features: TileFeature[], infoOf: (f: TileFeature) => LabelInfo | undefined): void {
-  const byName = new Map<string, Array<{ f: TileFeature; info: LabelInfo }>>();
-  for (const f of features) {
+export function dedupeLabels(
+  features: TileFeature[], infoOf: (f: TileFeature) => LabelInfo | undefined, context: TileFeature[] = [],
+): void {
+  const byName = new Map<string, Array<{ f: TileFeature; info: LabelInfo; own: boolean }>>();
+  const add = (f: TileFeature, own: boolean) => {
     const info = infoOf(f);
-    if (f.type !== 1 || f.tags.name === undefined || !info) continue;
+    if (f.type !== 1 || f.tags.name === undefined || !info) return;
     const key = String(f.tags.name);
-    (byName.get(key) ?? byName.set(key, []).get(key)!).push({ f, info });
-  }
-  for (const group of byName.values()) {
+    (byName.get(key) ?? byName.set(key, []).get(key)!).push({ f, info, own });
+  };
+  for (const f of features) add(f, true);
+  for (const f of context) add(f, false);
+  for (const [name, group] of byName) {
     if (group.length < 2) continue;
-    // Union-find over touching bounding boxes.
-    const parent = group.map((_, i) => i);
-    const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
-    for (let i = 0; i < group.length; i++) {
-      for (let j = i + 1; j < group.length; j++) {
-        if (intersects(group[i].info.bbox, group[j].info.bbox)) parent[root(i)] = root(j);
-      }
-    }
-    const keep = new Map<number, number>();
-    group.forEach(({ info }, i) => {
-      const r = root(i);
-      const k = keep.get(r);
-      if (k === undefined || info.size > group[k].info.size) keep.set(r, i);
-    });
-    group.forEach(({ f }, i) => {
-      if (keep.get(root(i)) !== i) delete f.tags.name;
-    });
+    const address = isAddress(name);
+    const drop = group.filter(({ f, info, own }) => own && group.some((o) => {
+      if (o.f === f || !bigger(o.info, info)) return false;
+      if (intersects(o.info.bbox, info.bbox)) return true;
+      const [pa, pb] = [(f.geometry as Pt[])[0], (o.f.geometry as Pt[])[0]];
+      return !address && Math.hypot(pa[0] - pb[0], pa[1] - pb[1]) < LABEL_MERGE_DISTANCE;
+    }));
+    for (const { f } of drop) delete f.tags.name;
   }
 }
 
@@ -266,6 +276,7 @@ export async function buildTile(
   const layers: Record<'points' | 'lines' | 'polygons', TileFeature[]> = { points: [], lines: [], polygons: [] };
   let badSections = 0;
   const labelInfo = new Map<TileFeature, LabelInfo>();
+  let labelContext: TileFeature[] = [];
   const bits = map.levelForZoom(z);
   if (bits !== undefined) {
     const [w, s, e, n] = tileBounds(z, x, y);
@@ -281,6 +292,10 @@ export async function buildTile(
       ];
     };
     const clip: BBox = [-BUFFER, -BUFFER, EXTENT + BUFFER, EXTENT + BUFFER];
+    // Polygons within half a tile around this one only contribute label context (dedupeLabels).
+    const [hx, hy] = [((e - w) / 2) * UNITS_PER_DEG, ((n - s) / 2) * UNITS_PER_DEG];
+    const labelQuery: BBox = [w * UNITS_PER_DEG - hx, s * UNITS_PER_DEG - hy, e * UNITS_PER_DEG + hx, n * UNITS_PER_DEG + hy];
+    labelContext = [];
 
     // Collect every subdivision that intersects the tile first, then resolve them all in parallel
     // via the cache: a cache hit (resolved or already in flight from a concurrent buildTile call)
@@ -295,10 +310,11 @@ export async function buildTile(
       : [[bits, (o) => !isRoad(o)], [roadBits, isRoad]];
     interface Entry { tile: MapTile; sd: Subdivision; key: string; keep: ((o: RawObject) => boolean) | null }
     const entries: Entry[] = [];
-    for (const [level, keep] of levels) {
+    for (const [i, [level, keep]] of levels.entries()) {
       for (const tile of map.tiles) {
         for (const sd of tile.byLevel.get(level) ?? []) {
-          if (!intersects(paddedSubdivisionBounds(sd), query)) continue;
+          // The tile's own level (i = 0) holds the polygons, so it is read over the label area.
+          if (!intersects(paddedSubdivisionBounds(sd), i === 0 ? labelQuery : query)) continue;
           entries.push({ tile, sd, key: `${tile.id}:${sd.index}`, keep });
         }
       }
@@ -319,7 +335,20 @@ export async function buildTile(
       const objs = resolved.get(key)!;
       for (const obj of objs) {
         if (keep && !keep(obj)) continue;
-        if (!intersects(coordsBounds(obj.coords), query)) continue;
+        const bounds = coordsBounds(obj.coords);
+        const inTile = intersects(bounds, query);
+        const name = obj.kind === 'polygon' && intersects(bounds, labelQuery) ? objectName(tile, obj) : null;
+        if (name) {
+          // One label per polygon, not one per tile it crosses: anchor it on the whole polygon and
+          // emit it only from the tile that holds the anchor; the rest is context for dedupeLabels.
+          const anchor = polygonLabelAnchor(obj.coords);
+          const [ax, ay] = project(anchor);
+          const label: TileFeature = { type: 1, geometry: [[Math.round(ax), Math.round(ay)]], tags: { t: obj.type, name } };
+          labelInfo.set(label, { size: ringArea(obj.coords.map(project)), bbox: bounds, anchor });
+          if (inTile && ax >= 0 && ax < EXTENT && ay >= 0 && ay < EXTENT) layers.polygons.push(label);
+          else labelContext.push(label);
+        }
+        if (!inTile) continue;
         const pts = obj.coords.map(project);
         let feature: TileFeature | null = null;
         if (obj.kind === 'point') {
@@ -338,25 +367,16 @@ export async function buildTile(
         }
         if (!feature) continue;
         feature.tags.t = obj.type;
-        const name = objectName(tile, obj);
-        if (name && obj.kind === 'polygon') {
-          // One label per polygon, not one per tile it crosses: anchor it on the whole polygon and
-          // emit it only from the tile that holds the anchor.
-          const [ax, ay] = project(polygonLabelAnchor(obj.coords));
-          if (ax >= 0 && ax < EXTENT && ay >= 0 && ay < EXTENT) {
-            const label: TileFeature = { type: 1, geometry: [[Math.round(ax), Math.round(ay)]], tags: { t: obj.type, name } };
-            labelInfo.set(label, { size: ringArea(pts), bbox: coordsBounds(obj.coords) });
-            layers.polygons.push(label);
-          }
-        } else if (name) {
-          feature.tags.name = name;
+        if (obj.kind !== 'polygon') {
+          const lineOrPointName = objectName(tile, obj);
+          if (lineOrPointName) feature.tags.name = lineOrPointName;
         }
         layers[LAYER[obj.kind]].push(feature);
       }
     }
   }
   layers.lines = stitchLines(layers.lines);
-  dedupeLabels(layers.polygons, (f) => labelInfo.get(f));
+  dedupeLabels(layers.polygons, (f) => labelInfo.get(f), labelContext);
   const data = fromGeojsonVt(
     { points: { features: layers.points }, lines: { features: layers.lines }, polygons: { features: layers.polygons } } as never,
     { version: 2, extent: EXTENT },
