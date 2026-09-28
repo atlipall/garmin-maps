@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#2c5a85" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Not black-translucent: iOS then gives the Home Screen app a view that is short by the status
+         bar height (797 of 844 pt on an iPhone 13) and leaves an empty band below the map. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <link rel="icon" href="./icons/icon-192.png" />
@@ -15,9 +17,6 @@
       html, body { margin: 0; height: 100%; font: 15px -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--paper); }
       /* The body is the positioning box for the map and every overlay. */
       body { position: fixed; top: 0; left: 0; right: 0; overflow: hidden; }
-      /* iOS Home Screen apps with the translucent status bar report a page height that is short
-         by the status bar, leaving an empty band at the bottom; extend by the top inset there. */
-      @media (display-mode: standalone) { body { height: calc(100% + env(safe-area-inset-top)); } }
       #map { position: absolute; inset: 0; }
       .panel { background: #fffffff0; border-radius: 10px; box-shadow: 0 1px 6px #0003; }
       :root { --gap: 8px; --btn: 44px; --top: calc(env(safe-area-inset-top) + var(--gap)); --bottom: calc(env(safe-area-inset-bottom) + var(--gap)); }
