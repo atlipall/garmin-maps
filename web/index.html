@@ -30,13 +30,14 @@
       #menu-button { position: absolute; z-index: 3; top: var(--top); right: calc(env(safe-area-inset-right) + var(--gap)); width: var(--btn); height: var(--btn); border: 0; font-size: 22px; line-height: 1; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
       #menu { position: absolute; z-index: 4; background: #fff; top: calc(var(--top) + var(--btn) + 6px); right: calc(env(safe-area-inset-right) + var(--gap)); min-width: 200px; padding: 4px 0; }
       #menu button { display: block; width: 100%; padding: 12px 16px; border: 0; background: none; font-size: 16px; text-align: left; color: var(--ink); cursor: pointer; }
-      #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 30px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: 13px; color: #8a3b00; }
+      #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 46px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: 13px; color: #8a3b00; }
       #perf { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); top: calc(var(--top) + var(--btn) + var(--gap)); padding: 6px 8px; font: 11px ui-monospace, monospace; white-space: pre; }
       /* MapLibre's corner controls, kept clear of the notch / home indicator and our top row.
          '#map' raises specificity above maplibre-gl.css, which loads after this sheet. */
       #map .maplibregl-ctrl-top-right { top: calc(var(--top) + var(--btn)); right: env(safe-area-inset-right); }
-      #map .maplibregl-ctrl-bottom-right { bottom: env(safe-area-inset-bottom); right: env(safe-area-inset-right); }
-      #map .maplibregl-ctrl-bottom-left { bottom: env(safe-area-inset-bottom); left: env(safe-area-inset-left); }
+      /* Extra room at the bottom: the home indicator area is not always reported as an inset. */
+      #map .maplibregl-ctrl-bottom-right { bottom: calc(env(safe-area-inset-bottom) + 16px); right: env(safe-area-inset-right); }
+      #map .maplibregl-ctrl-bottom-left { bottom: calc(env(safe-area-inset-bottom) + 16px); left: env(safe-area-inset-left); }
       #map .maplibregl-ctrl-group { border-radius: 10px; box-shadow: 0 1px 6px #0003; }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {
@@ -74,6 +75,7 @@
     <button id="menu-button" class="panel" aria-label="Menu" aria-haspopup="true" aria-expanded="false" hidden>⋯</button>
     <div id="menu" class="panel" role="menu" hidden>
       <button id="replace" role="menuitem">Load another map</button>
+      <button id="screen-info" role="menuitem">Screen info</button>
     </div>
     <div id="perf" class="panel" hidden></div>
     <section id="import" hidden>
@@ -91,6 +93,7 @@
         <div class="actions"><button id="remove-stored" class="danger" hidden>Remove stored map</button></div>
       </div>
     </section>
+    <div id="inset-probe" style="position: fixed; visibility: hidden; pointer-events: none; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

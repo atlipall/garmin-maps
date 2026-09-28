@@ -4,7 +4,7 @@ import { LabelTable } from '../img/lbl';
 import type { Chunk, RawObject, SubdivisionBytes } from '../img/rgn';
 import type { ByteSource } from '../img/source';
 import { hasData, parseTre, type Subdivision, type Tre } from '../img/tre';
-import { CONTOUR_LINE_TYPES, contourLabel, zoomBands } from './zoom';
+import { CONTOUR_LINE_TYPES, contourLabel, EARLY_ROADS_ZOOM, zoomBands } from './zoom';
 
 export interface MapTile {
   id: string;
@@ -75,6 +75,13 @@ export class GarminMap {
   levelForZoom(z: number): number | undefined {
     for (const [bits, [a, b]] of this.bands) if (z >= a && z <= b) return bits;
     return undefined;
+  }
+
+  /** The level whose roads a tile at zoom z shows, when it differs from `levelForZoom(z)`:
+   *  the next finer level, for the coarsest level's zooms from EARLY_ROADS_ZOOM on. */
+  roadLevelForZoom(z: number): number | undefined {
+    const levels = [...this.bands.keys()].sort((a, b) => a - b);
+    return z >= EARLY_ROADS_ZOOM && levels.length > 1 && this.levelForZoom(z) === levels[0] ? levels[1] : undefined;
   }
 
   async readSubdivision(tile: MapTile, sd: Subdivision): Promise<SubdivisionBytes> {

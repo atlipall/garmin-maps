@@ -194,6 +194,17 @@ describe.skipIf(!hasRealData)('buildTile on real data', () => {
     }
   });
 
+  test('highland tiles at z7-8 carry the F-roads from the finer level, but not at z6', async () => {
+    const fRoads = async (z: number) => {
+      const [x, y] = [lonToTileX(-19.0, z), latToTileY(64.05, z)];
+      const feats = decode((await buildTile(map, new SubdivisionCache(), z, x, y)).data);
+      return feats.filter((f) => f.layer === 'lines' && /^F\d+/.test(f.name ?? '')).length;
+    };
+    expect(await fRoads(8)).toBeGreaterThan(0);
+    expect(await fRoads(7)).toBeGreaterThan(0);
+    expect(await fRoads(6)).toBe(0);
+  });
+
   test('a tile far out at sea is empty', async () => {
     const z = 10;
     const { features } = await buildTile(map, new SubdivisionCache(10), z, lonToTileX(-30, z), latToTileY(60, z));

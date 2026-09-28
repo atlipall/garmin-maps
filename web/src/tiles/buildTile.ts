@@ -3,7 +3,7 @@ import { clipPolygon, clipPolyline } from 'lineclip';
 import { decodeSubdivision, type RawObject } from '../img/rgn';
 import { shiftOf, subdivisionBounds, type Subdivision } from '../img/tre';
 import { objectName, type GarminMap, type MapTile } from '../map/garminMap';
-import { CONTOUR_LINE_TYPES } from '../map/zoom';
+import { CONTOUR_LINE_TYPES, isRoadType } from '../map/zoom';
 import { tileBounds } from './tileMath';
 
 export const EXTENT = 4096;
@@ -286,12 +286,21 @@ export async function buildTile(
     // via the cache: a cache hit (resolved or already in flight from a concurrent buildTile call)
     // resolves immediately/shares that promise, and a miss reads+decodes once. Output is
     // identical either way: `resolved` ends up holding the same objects for the same keys.
-    interface Entry { tile: MapTile; sd: Subdivision; key: string }
+    // With early roads, the tile's own level supplies everything but roads and the finer road
+    // level supplies only roads (so each road is drawn once, from one level).
+    const roadBits = map.roadLevelForZoom(z);
+    const isRoad = (o: RawObject) => o.kind === 'line' && isRoadType(o.type);
+    const levels: Array<[number, ((o: RawObject) => boolean) | null]> = roadBits === undefined
+      ? [[bits, null]]
+      : [[bits, (o) => !isRoad(o)], [roadBits, isRoad]];
+    interface Entry { tile: MapTile; sd: Subdivision; key: string; keep: ((o: RawObject) => boolean) | null }
     const entries: Entry[] = [];
-    for (const tile of map.tiles) {
-      for (const sd of tile.byLevel.get(bits) ?? []) {
-        if (!intersects(paddedSubdivisionBounds(sd), query)) continue;
-        entries.push({ tile, sd, key: `${tile.id}:${sd.index}` });
+    for (const [level, keep] of levels) {
+      for (const tile of map.tiles) {
+        for (const sd of tile.byLevel.get(level) ?? []) {
+          if (!intersects(paddedSubdivisionBounds(sd), query)) continue;
+          entries.push({ tile, sd, key: `${tile.id}:${sd.index}`, keep });
+        }
       }
     }
     const resolved = new Map<string, RawObject[]>();
@@ -306,9 +315,10 @@ export async function buildTile(
       resolved.set(e.key, objs);
     }));
 
-    for (const { tile, key } of entries) {
+    for (const { tile, key, keep } of entries) {
       const objs = resolved.get(key)!;
       for (const obj of objs) {
+        if (keep && !keep(obj)) continue;
         if (!intersects(coordsBounds(obj.coords), query)) continue;
         const pts = obj.coords.map(project);
         let feature: TileFeature | null = null;
