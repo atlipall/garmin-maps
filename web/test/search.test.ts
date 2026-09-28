@@ -36,6 +36,19 @@ describe('PlaceIndex', () => {
     expect(idx.search('')).toEqual([]);
     expect(idx.search('la', 2)).toHaveLength(2);
   });
+
+  test('with a reference point, equally good matches within 25 km come first, nearest first', () => {
+    const near = new PlaceIndex([
+      { name: 'Svartá', lon: -15, lat: 65, kind: 'line', type: 0x1f },
+      { name: 'Svartá', lon: -20, lat: 65, kind: 'line', type: 0x1f },
+      { name: 'Svartá', lon: -19.7, lat: 65, kind: 'line', type: 0x1f },
+      { name: 'Svartárkot', lon: -19.9, lat: 65, kind: 'point', type: 0x6402 },
+      { name: 'Svartárdalur', lon: -14, lat: 65, kind: 'point', type: 0x640a },
+    ]);
+    // Within 25 km: -20 (0 km), -19.9 (~5 km), -19.7 (~14 km); then the far ones in static order.
+    expect(near.search('svarta', 20, [-20, 65]).map((p) => p.lon)).toEqual([-20, -19.9, -19.7, -14, -15]);
+    expect(near.search('svarta').map((p) => p.lon)).toEqual([-19.9, -14, -15, -20, -19.7]); // no reference: unchanged
+  });
 });
 
 describe('PlaceIndex matches a naive full sort', () => {

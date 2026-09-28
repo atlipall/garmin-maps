@@ -1,6 +1,7 @@
 import * as maplibregl from 'maplibre-gl';
 import type { Kind } from '../img/rgn';
 import { emptyTyp, parseTyp, type Typ } from '../img/typ';
+import { collapseNearby, describePlace, titleCase, townsOf } from '../search/describe';
 import { PlaceIndex } from '../search/placeIndex';
 import type { Place } from '../search/places';
 import { cacheKey, readText, writeText, type Stored } from '../storage/store';
@@ -116,7 +117,18 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   // within thumb reach.
   const touch = matchMedia('(pointer: coarse)').matches;
   map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: !touch }), 'top-right');
-  map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'bottom-right');
+  const geolocate = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true });
+  map.addControl(geolocate, 'bottom-right');
+  // Last GPS fix, as the reference for search-result distances (the map centre when none is recent).
+  let lastFix: { at: [number, number]; time: number } | null = null;
+  geolocate.on('geolocate', (pos) => {
+    lastFix = { at: [pos.coords.longitude, pos.coords.latitude], time: Date.now() };
+  });
+  const searchFrom = (): { at: [number, number]; gps: boolean } => {
+    if (lastFix && Date.now() - lastFix.time < 10 * 60_000) return { at: lastFix.at, gps: true };
+    const c = map.getCenter();
+    return { at: [c.lng, c.lat], gps: false };
+  };
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
   $('topbar').hidden = false;
@@ -163,7 +175,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       if (closed) return;
       app.search = (q) => index.search(q);
       app.placesReady = true;
-      wireSearch(map, index);
+      wireSearch(map, index, searchFrom);
       const input = $<HTMLInputElement>('search');
       input.placeholder = 'Search places';
       input.disabled = false;
@@ -213,19 +225,29 @@ function decodePlaces(text: string, key: string): Place[] | null {
   }
 }
 
-function wireSearch(map: maplibregl.Map, index: PlaceIndex): void {
+function wireSearch(map: maplibregl.Map, index: PlaceIndex, searchFrom: () => { at: [number, number]; gps: boolean }): void {
+  const towns = townsOf(index.places);
   const input = $<HTMLInputElement>('search');
   const list = $<HTMLUListElement>('results');
   let marker: maplibregl.Marker | null = null;
   let timer = 0;
   const render = () => {
     list.replaceChildren(
-      ...index.search(input.value).map((p) => {
+      ...collapseNearby(index.search(input.value, 100, searchFrom().at)).slice(0, 20).map((p) => {
+        const from = searchFrom();
+        const d = describePlace(p, towns, from.at);
         const li = document.createElement('li');
-        li.textContent = p.name;
-        const kind = document.createElement('small');
-        kind.textContent = p.kind === 'point' ? 'place' : p.kind === 'polygon' ? 'area' : 'route';
-        li.append(kind);
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = titleCase(p.name);
+        const detail = document.createElement('div');
+        detail.className = 'detail';
+        detail.textContent = [d.category, d.where].filter(Boolean).join(' · ');
+        const dist = document.createElement('span');
+        dist.className = 'dist';
+        dist.textContent = d.distance ?? '';
+        dist.title = from.gps ? 'from your position' : 'from the map centre';
+        li.append(name, detail, dist);
         li.onclick = () => {
           map.flyTo({ center: [p.lon, p.lat], zoom: p.kind === 'point' ? 14 : 12 });
           marker?.remove();
