@@ -3,6 +3,7 @@ import { clipPolygon, clipPolyline } from 'lineclip';
 import { decodeSubdivision, type RawObject } from '../img/rgn';
 import { shiftOf, subdivisionBounds, type Subdivision } from '../img/tre';
 import { objectName, type GarminMap, type MapTile } from '../map/garminMap';
+import { CONTOUR_LINE_TYPES } from '../map/zoom';
 import { tileBounds } from './tileMath';
 
 export const EXTENT = 4096;
@@ -120,11 +121,130 @@ function roundDedupe(points: Pt[]): Pt[] {
   return out;
 }
 
+const ringArea = (ring: Pt[]) =>
+  Math.abs(ring.reduce((sum, p, i) => sum + (i ? ring[i - 1][0] * p[1] - p[0] * ring[i - 1][1] : 0), 0)) / 2;
+
+/**
+ * A point inside a polygon to hang its label on: the area centroid when it lies inside, else the
+ * middle of the widest interior span along the horizontal line through the centroid (so a
+ * U-shaped lake is labelled on water, not in its bay). Works in any planar units.
+ */
+export function polygonLabelAnchor(ring: Array<[number, number]>): [number, number] {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const cross = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+    a += cross;
+    cx += (ring[j][0] + ring[i][0]) * cross;
+    cy += (ring[j][1] + ring[i][1]) * cross;
+  }
+  if (a === 0) return ring[0];
+  cx /= 3 * a;
+  cy /= 3 * a;
+  // Crossings of the horizontal line y = cy; consecutive pairs bound the interior spans.
+  const xs: number[] = [];
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > cy !== yj > cy) xs.push(xi + ((cy - yi) * (xj - xi)) / (yj - yi));
+  }
+  xs.sort((p, q) => p - q);
+  let best: [number, number] | null = null;
+  let width = -1;
+  for (let k = 0; k + 1 < xs.length; k += 2) {
+    if (xs[k] <= cx && cx <= xs[k + 1]) return [cx, cy];
+    if (xs[k + 1] - xs[k] > width) {
+      width = xs[k + 1] - xs[k];
+      best = [(xs[k] + xs[k + 1]) / 2, cy];
+    }
+  }
+  return best ?? ring[0];
+}
+
+/**
+ * Garmin stores a river or road as many short pieces with the same name, and MapLibre labels each
+ * piece on its own, so one river got several labels close together. Join the pieces of each named
+ * line (same type and name) that touch end to end into continuous lines, so labels are spaced
+ * along the whole line by `symbol-spacing`. Unnamed lines and contours pass through unchanged
+ * (contours keep a label per ring: equal elevations on different hills are different lines).
+ */
+export function stitchLines(features: TileFeature[]): TileFeature[] {
+  const out: TileFeature[] = [];
+  const groups = new Map<string, { tags: TileFeature['tags']; parts: Pt[][] }>();
+  for (const f of features) {
+    const name = f.tags.name;
+    if (name === undefined || CONTOUR_LINE_TYPES.has(f.tags.t as number)) {
+      out.push(f);
+      continue;
+    }
+    const key = `${f.tags.t}|${name}`;
+    const g = groups.get(key) ?? groups.set(key, { tags: f.tags, parts: [] }).get(key)!;
+    g.parts.push(...(f.geometry as Pt[][]));
+  }
+  for (const { tags, parts } of groups.values()) out.push({ type: 2, geometry: joinParts(parts), tags });
+  return out;
+}
+
+const ptKey = (p: Pt) => `${p[0]},${p[1]}`;
+
+/** Greedily chain polylines that share endpoints (reversing pieces as needed). */
+function joinParts(parts: Pt[][]): Pt[][] {
+  const byEnd = new Map<string, number[]>();
+  parts.forEach((part, i) => {
+    for (const p of [part[0], part[part.length - 1]]) {
+      const k = ptKey(p);
+      (byEnd.get(k) ?? byEnd.set(k, []).get(k)!).push(i);
+    }
+  });
+  const used = new Array<boolean>(parts.length).fill(false);
+  const takeAt = (p: Pt): Pt[] | null => {
+    for (const i of byEnd.get(ptKey(p)) ?? []) {
+      if (used[i]) continue;
+      used[i] = true;
+      const part = parts[i];
+      return ptKey(part[0]) === ptKey(p) ? part : [...part].reverse();
+    }
+    return null;
+  };
+  const chains: Pt[][] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    let chain = parts[i];
+    for (let next = takeAt(chain[chain.length - 1]); next; next = takeAt(chain[chain.length - 1])) chain = chain.concat(next.slice(1));
+    for (let prev = takeAt(chain[0]); prev; prev = takeAt(chain[0])) chain = [...prev].reverse().concat(chain.slice(1));
+    chains.push(chain);
+  }
+  return chains;
+}
+
+/**
+ * Keep only the label point of the largest polygon carrying each name in a tile (Garmin splits a
+ * big lake or area into several polygons; each would otherwise get its own label).
+ */
+export function dedupeLabels(features: TileFeature[], sizeOf: (f: TileFeature) => number | undefined): void {
+  const best = new Map<string, { feature: TileFeature; size: number }>();
+  for (const f of features) {
+    const name = f.tags.name;
+    if (name === undefined || f.type !== 1) continue;
+    const size = sizeOf(f) ?? 0;
+    const prev = best.get(String(name));
+    if (!prev) {
+      best.set(String(name), { feature: f, size });
+    } else if (size > prev.size) {
+      delete prev.feature.tags.name;
+      best.set(String(name), { feature: f, size });
+    } else {
+      delete f.tags.name;
+    }
+  }
+}
+
 export async function buildTile(
   map: GarminMap, cache: SubdivisionCache, z: number, x: number, y: number,
 ): Promise<{ data: Uint8Array; badSections: number; features: number }> {
   const layers: Record<'points' | 'lines' | 'polygons', TileFeature[]> = { points: [], lines: [], polygons: [] };
   let badSections = 0;
+  const labelArea = new Map<TileFeature, number>();
   const bits = map.levelForZoom(z);
   if (bits !== undefined) {
     const [w, s, e, n] = tileBounds(z, x, y);
@@ -188,11 +308,24 @@ export async function buildTile(
         if (!feature) continue;
         feature.tags.t = obj.type;
         const name = objectName(tile, obj);
-        if (name) feature.tags.name = name;
+        if (name && obj.kind === 'polygon') {
+          // One label per polygon, not one per tile it crosses: anchor it on the whole polygon and
+          // emit it only from the tile that holds the anchor.
+          const [ax, ay] = project(polygonLabelAnchor(obj.coords));
+          if (ax >= 0 && ax < EXTENT && ay >= 0 && ay < EXTENT) {
+            const label: TileFeature = { type: 1, geometry: [[Math.round(ax), Math.round(ay)]], tags: { t: obj.type, name } };
+            labelArea.set(label, ringArea(pts));
+            layers.polygons.push(label);
+          }
+        } else if (name) {
+          feature.tags.name = name;
+        }
         layers[LAYER[obj.kind]].push(feature);
       }
     }
   }
+  layers.lines = stitchLines(layers.lines);
+  dedupeLabels(layers.polygons, (f) => labelArea.get(f));
   const data = fromGeojsonVt(
     { points: { features: layers.points }, lines: { features: layers.lines }, polygons: { features: layers.polygons } } as never,
     { version: 2, extent: EXTENT },

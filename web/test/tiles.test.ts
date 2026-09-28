@@ -5,7 +5,7 @@ import type { RawObject } from '../src/img/rgn';
 import { shiftOf, subdivisionBounds } from '../src/img/tre';
 import { decodeAll } from '../src/map/decodeAll';
 import { GarminMap } from '../src/map/garminMap';
-import { buildTile, coordsBounds, paddedSubdivisionBounds, SubdivisionCache } from '../src/tiles/buildTile';
+import { buildTile, coordsBounds, dedupeLabels, paddedSubdivisionBounds, polygonLabelAnchor, stitchLines, SubdivisionCache } from '../src/tiles/buildTile';
 import { latToTileY, lonToTileX, tileBounds } from '../src/tiles/tileMath';
 import { nodeSource } from './helpers/nodeSource';
 import { DETAILED, hasRealData } from './helpers/paths';
@@ -19,6 +19,77 @@ describe('tile math', () => {
     const [tw, ts] = tileBounds(15, 14387, 7890);
     expect(lonToTileX(tw + 1e-9, 15)).toBe(14387);
     expect(latToTileY(ts + 1e-9, 15)).toBe(7890);
+  });
+});
+
+describe('dedupeLabels', () => {
+  type F = Parameters<typeof dedupeLabels>[0][number];
+  const labelPoint = (name: string): F => ({ type: 1, geometry: [[0, 0]], tags: { t: 0x3c, name } });
+  const names = (fs: F[]) => fs.map((f) => f.tags.name ?? null);
+
+  test('keeps only the label point of the largest area with that name', () => {
+    const fs = [labelPoint('Þingvallavatn'), labelPoint('Þingvallavatn'), labelPoint('Þingvallavatn'), labelPoint('Hestvík')];
+    const areas = new Map([[fs[0], 10], [fs[1], 50], [fs[2], 20], [fs[3], 1]]);
+    dedupeLabels(fs, (f) => areas.get(f));
+    expect(names(fs)).toEqual([null, 'Þingvallavatn', null, 'Hestvík']);
+  });
+});
+
+describe('stitchLines', () => {
+  type F = Parameters<typeof stitchLines>[0][number];
+  const line = (t: number, name: string | undefined, ...parts: Array<Array<[number, number]>>): F =>
+    ({ type: 2, geometry: parts, tags: name ? { t, name } : { t } });
+
+  test('joins touching pieces of the same named line into one continuous line', () => {
+    const out = stitchLines([
+      line(0x1f, 'Þjórsá', [[20, 0], [30, 0]]),
+      line(0x1f, 'Þjórsá', [[0, 0], [10, 0]]),
+      line(0x1f, 'Þjórsá', [[20, 0], [10, 0]]), // reversed piece in the middle
+      line(0x1f, 'Þjórsá', [[50, 50], [60, 50]]), // not touching: stays a separate part
+    ]);
+    expect(out).toHaveLength(1);
+    const parts = out[0].geometry as Array<Array<[number, number]>>;
+    expect(parts).toHaveLength(2);
+    const chain = parts.find((p) => p.length === 4)!;
+    const xs = chain.map((pt) => pt[0]);
+    expect(xs[0] === 0 ? xs : [...xs].reverse()).toEqual([0, 10, 20, 30]);
+    expect(out[0].tags).toEqual({ t: 0x1f, name: 'Þjórsá' });
+  });
+
+  test('keeps different names, different types, unnamed lines and contours apart', () => {
+    const fs = [
+      line(0x1f, 'Þjórsá', [[0, 0], [10, 0]]),
+      line(0x18, 'Þjórsá', [[10, 0], [20, 0]]),
+      line(0x1f, 'Hvítá', [[10, 0], [20, 0]]),
+      line(0x1f, undefined, [[0, 0], [10, 0]]),
+      line(0x1f, undefined, [[10, 0], [20, 0]]),
+      line(0x20, '400', [[0, 0], [10, 0]]),
+      line(0x20, '400', [[10, 0], [20, 0]]),
+    ];
+    expect(stitchLines(fs)).toHaveLength(fs.length);
+  });
+});
+
+describe('polygonLabelAnchor', () => {
+  const inside = ([x, y]: [number, number], ring: Array<[number, number]>) => {
+    let c = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+
+  test('a convex polygon is labelled at its centroid', () => {
+    expect(polygonLabelAnchor([[0, 0], [10, 0], [10, 10], [0, 10]])).toEqual([5, 5]);
+  });
+
+  test('a concave polygon whose centroid falls outside is labelled inside it', () => {
+    // A "U": two 2-wide arms joined by a base; the centroid lies in the empty gap between the arms.
+    const u: Array<[number, number]> = [[0, 0], [10, 0], [10, 10], [8, 10], [8, 2], [2, 2], [2, 10], [0, 10]];
+    const a = polygonLabelAnchor(u);
+    expect(inside(a, u)).toBe(true);
   });
 });
 

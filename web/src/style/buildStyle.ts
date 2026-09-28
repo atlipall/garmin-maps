@@ -74,7 +74,9 @@ export function buildStyle(typ: Typ, opts: { tiles: string; glyphs: string; dem?
       layout: { 'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-font': [FONT_REGULAR], 'text-size': 9 },
       paint: { 'text-color': '#8a6a4a', ...HALO } },
     { id: 'line-labels', type: 'symbol', source: 'garmin', 'source-layer': 'lines', filter: ['all', ['has', 'name'], ['!', isContour]],
-      layout: { 'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-font': [FONT_REGULAR], 'text-size': 11, 'text-max-angle': 30 },
+      layout: { 'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-font': [FONT_REGULAR], 'text-size': 11, 'text-max-angle': 30,
+                // Wide spacing where long rivers dominate; default spacing where town streets do.
+                'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 12, 500, 14, 250] },
       paint: { 'text-color': '#333333', ...HALO } },
   ] as LayerSpecification[]);
 
