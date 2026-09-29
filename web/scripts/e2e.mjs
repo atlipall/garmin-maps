@@ -61,6 +61,44 @@ try {
   if (!hit || Math.abs(hit.lon + 19.06) > 0.1 || Math.abs(hit.lat - 63.99) > 0.1) fail(`search landmannalaugar → ${JSON.stringify(hit)}`);
   console.log('search ok:', hit.name, hit.lon.toFixed(3), hit.lat.toFixed(3));
 
+  // 3b. location: a simulated GPS fix at Landmannalaugar; follow, heading up, pause on drag, height
+  await browser.defaultBrowserContext().overridePermissions(`http://localhost:${PORT}`, ['geolocation', 'accelerometer', 'gyroscope', 'magnetometer']);
+  await page.setGeolocation({ latitude: 63.9913, longitude: -19.0605, accuracy: 15 });
+  const locState = () => page.$eval('.locate-button', (b) => b.dataset.state);
+  await page.click('.locate-button');
+  await page.waitForSelector('.you', { timeout: 10_000 });
+  await page.waitForFunction(() => /^▲ \d+ m$/.test(document.querySelector('.height-pill')?.textContent ?? ''), { timeout: 10_000 });
+  await new Promise((r) => setTimeout(r, 1200)); // let the first-fix zoom finish
+  const loc = await page.evaluate(() => {
+    const c = window.__app.map.getCenter();
+    return { lon: c.lng, lat: c.lat, zoom: window.__app.map.getZoom(), height: document.querySelector('.height-pill').textContent };
+  });
+  if (Math.abs(loc.lon + 19.0605) > 0.001 || Math.abs(loc.lat - 63.9913) > 0.001 || loc.zoom < 14) fail(`follow did not centre on the fix: ${JSON.stringify(loc)}`);
+  const metres = Number(loc.height.replace(/\D/g, ''));
+  if (metres < 500 || metres > 700) fail(`Landmannalaugar ground height ${loc.height}`);
+  if ((await locState()) !== 'north') fail(`after one tap: ${await locState()}`);
+  // A compass reading of 40° (alpha counts counter-clockwise): the cone shows, and heading-up turns the map.
+  const compass = () => page.evaluate(() => window.dispatchEvent(new DeviceOrientationEvent('deviceorientationabsolute', { alpha: 320, beta: 0, gamma: 0, absolute: true })));
+  await compass();
+  if (await page.$eval('.you-cone', (c) => c.hidden)) fail('no direction cone after a compass reading');
+  await page.click('.locate-button');
+  if ((await locState()) !== 'heading') fail(`after two taps: ${await locState()}`);
+  for (let i = 0; i < 8; i++) { await compass(); await new Promise((r) => setTimeout(r, 150)); }
+  await new Promise((r) => setTimeout(r, 900));
+  const bearing = await page.evaluate(() => window.__app.map.getBearing());
+  if (Math.abs(bearing - 40) > 3) fail(`heading-up bearing ${bearing}, expected ~40`);
+  const box = await page.$eval('#map', (m) => { const r = m.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  await page.mouse.move(box.x, box.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 120, box.y + 60, { steps: 8 });
+  await page.mouse.up();
+  if ((await locState()) !== 'paused') fail(`after dragging: ${await locState()}`);
+  await page.click('.locate-button');
+  if ((await locState()) !== 'heading') fail(`resume after pause: ${await locState()}`);
+  await new Promise((r) => setTimeout(r, 800)); // let the resume animation finish
+  await page.screenshot({ path: `${OUT}location.png` });
+  console.log('location ok:', loc.height);
+
   // 4. reload opens straight from storage
   await page.reload();
   await waitReady();
