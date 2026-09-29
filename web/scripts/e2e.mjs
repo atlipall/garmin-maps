@@ -143,6 +143,34 @@ try {
   await new Promise((r) => setTimeout(r, 900));
   const resumedZoom = await page.evaluate(() => window.__app.map.getZoom());
   if (resumedZoom < 15.9) fail(`resuming did not zoom in: z${resumedZoom}`);
+  // Driving at 90 km/h heading 40°: the follow zoom eases out to 13, heading-up follows the GPS
+  // course, and the position sits low on the screen (look-ahead).
+  const gps = await page.createCDPSession();
+  const drive = async (i, speed) => {
+    await gps.send('Emulation.setGeolocationOverride', { latitude: 63.9913 + i * 0.0003, longitude: -19.0605 + i * 0.0005, accuracy: 8, speed, heading: 40 });
+    await new Promise((r) => setTimeout(r, 400));
+  };
+  for (let i = 1; i <= 8; i++) await drive(i, 25);
+  await new Promise((r) => setTimeout(r, 1500));
+  const car = await page.evaluate(() => {
+    const m = window.__app.map;
+    const you = document.querySelector('.you').getBoundingClientRect();
+    const box = m.getContainer().getBoundingClientRect();
+    return { zoom: m.getZoom(), bearing: m.getBearing(), y: (you.top - box.top) / box.height };
+  });
+  if (Math.abs(car.zoom - 13) > 0.05) fail(`driving follow zoom ${car.zoom.toFixed(2)}, expected 13`);
+  if (Math.abs(car.bearing - 40) > 3) fail(`driving heading-up bearing ${car.bearing.toFixed(1)}, expected 40`);
+  if (car.y < 0.65 || car.y > 0.75) fail(`heading-up position at ${car.y.toFixed(2)} of the height, expected ~0.7`);
+  // Zooming by hand turns the speed zoom off until the next tap.
+  await page.mouse.move(box.x, box.y);
+  await page.mouse.wheel({ deltaY: -300 });
+  await new Promise((r) => setTimeout(r, 800));
+  const handZoom = await page.evaluate(() => window.__app.map.getZoom());
+  for (let i = 9; i <= 12; i++) await drive(i, 1);
+  await new Promise((r) => setTimeout(r, 800));
+  const afterWalk = await page.evaluate(() => window.__app.map.getZoom());
+  if (Math.abs(afterWalk - handZoom) > 0.05) fail(`speed zoom overrode a hand zoom: ${handZoom.toFixed(2)} -> ${afterWalk.toFixed(2)}`);
+  console.log(`driving ok: z${car.zoom.toFixed(1)}, bearing ${car.bearing.toFixed(0)}, position at ${Math.round(car.y * 100)}%`);
   await new Promise((r) => setTimeout(r, 800)); // let the resume animation finish
   await page.screenshot({ path: `${OUT}location.png` });
   console.log('location ok:', loc.height);
