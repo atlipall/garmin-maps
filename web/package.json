@@ -13,7 +13,7 @@
     "predev": "npm run fonts",
     "dev": "vite",
     "prebuild": "npm run fonts && npm run maplibre-worker",
-    "build": "vite build",
+    "build": "vite build && node scripts/copy-site.mjs",
     "typecheck": "tsc --noEmit",
     "e2e": "npm run build && node scripts/e2e.mjs"
   },

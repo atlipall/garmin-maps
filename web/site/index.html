@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#2c5a85" />
+  <meta name="description" content="Offline Garmin IMG maps on iPhone and Mac: how to install the app, load your map and use it in the field." />
+  <link rel="icon" href="app/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="app/icons/icon-192.png" />
+  <title>Garmin Map</title>
+  <style>
+    :root {
+      --ink: #1d2a38; --muted: #58636f; --paper: #f4f0e4; --card: #fbf9f3; --line: #ddd5c1;
+      --accent: #2c5a85; --gps: #1f7ae0; --on-accent: #ffffff;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #e9e5d9; --muted: #a8b0ba; --paper: #151b22; --card: #1d252e; --line: #323d49; --accent: #86b4e0; --gps: #4d9bf0; --on-accent: #0f1720; color-scheme: dark; }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+    main { max-width: 720px; margin: 0 auto; padding-inline: max(20px, env(safe-area-inset-left)); padding-block: calc(env(safe-area-inset-top) + 32px) calc(env(safe-area-inset-bottom) + 56px); display: grid; gap: 40px; }
+    h1, h2, h3 { line-height: 1.15; text-wrap: balance; margin: 0; }
+    h1 { font-size: clamp(32px, 7vw, 44px); letter-spacing: -0.01em; }
+    h2 { font-size: 24px; }
+    h3 { font-size: 18px; }
+    p, ul, ol { margin: 0; }
+    ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+    a { color: var(--accent); }
+    code, .key { font: 0.9em ui-monospace, "SF Mono", Menlo, monospace; }
+    .key { padding: 1px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); white-space: nowrap; }
+    .muted { color: var(--muted); }
+
+    header { display: grid; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand img { width: 56px; height: 56px; border-radius: 13px; }
+    .lead { font-size: 19px; color: var(--muted); max-width: 34em; }
+    .open { justify-self: start; display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 18px; text-decoration: none; }
+    .open:focus-visible { outline: 3px solid var(--gps); outline-offset: 3px; }
+
+    section { display: grid; gap: 14px; }
+    .steps { counter-reset: step; list-style: none; padding: 0; gap: 12px; }
+    .steps li { counter-increment: step; display: grid; grid-template-columns: 32px 1fr; gap: 12px; align-items: start; }
+    .steps li::before { content: counter(step); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--card); border: 1px solid var(--line); font-weight: 600; font-size: 15px; }
+
+    .modes { display: grid; gap: 10px; }
+    .mode { display: grid; grid-template-columns: 48px 1fr; gap: 14px; align-items: center; padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+    .btn { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; background: #fff; color: #1d2a38; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
+    .btn.blue { color: #1f7ae0; }
+    .btn.fill { background: #1f7ae0; color: #fff; }
+    .mode b { display: block; }
+    .mode span { color: var(--muted); font-size: 15px; }
+
+    .note { padding: 14px 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); display: grid; gap: 8px; }
+    footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 18px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <img src="app/icons/icon-192.png" alt="" />
+      <h1>Garmin Map</h1>
+    </div>
+    <p class="lead">Your Garmin <code>.img</code> maps on iPhone and Mac, drawn straight from the map file and fully offline, with hillshading, search and GPS follow.</p>
+    <a class="open" href="app/">Open the map →</a>
+  </header>
+
+  <section>
+    <h2>What you need</h2>
+    <ul>
+      <li><b>A Garmin map in <code>.img</code> format</b>, unlocked (not encrypted). For example <a href="https://www.gpsmap.is/">GPSmap.is</a> Iceland: in its Android package the map is in the <span class="key">MAPS</span> folder.</li>
+      <li><b>Elevation files (optional)</b>: SRTM <code>.hgt</code> files, such as those in the package's <span class="key">HILLSHADE</span> folder. They add hill shading and the height where you stand.</li>
+      <li>Put the files where your device can open them: on iPhone, the Files app (AirDrop or iCloud Drive work); on Mac, any folder.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Install on iPhone</h2>
+    <ol class="steps">
+      <li><span>Open <a href="app/">atlipall.github.io/garmin-maps/app</a> in <b>Safari</b>.</span></li>
+      <li><span>Tap <b>Share</b>, then <b>Add to Home Screen</b>.</span></li>
+      <li><span>Open the map from its Home Screen icon from now on. The app then runs full screen, and iOS keeps its stored map more reliably than in a browser tab.</span></li>
+    </ol>
+    <p class="muted">On a Mac, open the same address in Safari or Chrome. In Safari you can use <b>File → Add to Dock</b>.</p>
+  </section>
+
+  <section>
+    <h2>Load your map</h2>
+    <ol class="steps">
+      <li><span>Under <b>Map (.img)</b>, choose your map file.</span></li>
+      <li><span>Under <b>Elevation</b>, select all the <code>.hgt</code> files at once (optional).</span></li>
+      <li><span>Tap <b>Import</b>. The files are copied into the app's storage on this device; a 100 MB map takes a few seconds.</span></li>
+    </ol>
+    <p class="muted">To switch maps later, use <b>⋯ → Load another map</b>. Your current map stays until the new one has finished importing.</p>
+  </section>
+
+  <section>
+    <h2>Find places</h2>
+    <p>Type in the search box at the top. Accents don't matter: <i>thorsmork</i> finds <i>Þórsmörk</i>. Each result shows what it is, where it is and how far away:</p>
+    <div class="note"><div><b>Hótel Edda</b><br /><span class="muted">Hotel · in Egilsstaðir</span><span style="float: right;">216 km →</span></div></div>
+    <p>Places near you come first. Tap a result to fly there and drop a pin; the <b>×</b> clears the search and the pin.</p>
+  </section>
+
+  <section>
+    <h2>Follow your position</h2>
+    <p>The locate button sits bottom-right. Each tap moves to the next mode:</p>
+    <div class="modes">
+      <div class="mode">
+        <div class="btn" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4" stroke="currentColor" stroke-width="2"/></svg></div>
+        <div><b>Off</b><span>No location. The first tap asks for location and compass access.</span></div>
+      </div>
+      <div class="mode">
+        <div class="btn blue" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 11 21 3l-8 18-2-8z" fill="currentColor"/></svg></div>
+        <div><b>Follow, north up</b><span>Zooms in and keeps you centred. The blue cone shows which way you face.</span></div>
+      </div>
+      <div class="mode">
+        <div class="btn fill" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2 20 21l-8-5-8 5z" fill="currentColor"/></svg></div>
+        <div><b>Follow, heading up</b><span>The map turns so the way you face points up. Tap again for north up.</span></div>
+      </div>
+      <div class="mode">
+        <div class="btn blue" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 11 21 3l-8 18-2-8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
+        <div><b>Paused</b><span>Dragging the map pauses following. Tap to jump back to your position.</span></div>
+      </div>
+    </div>
+    <ul>
+      <li>The <b>compass</b> button (top right) turns the map back to north up.</li>
+      <li><b>Press and hold</b> the locate button to turn location off.</li>
+      <li>Standing or walking, the direction comes from the compass; above about 7 km/h, from your direction of travel, which is more reliable in a car.</li>
+      <li>The <span class="key">▲ 611 m</span> label bottom-left is the <b>ground height</b> where you are, read from the elevation files.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Keep the screen on</h2>
+    <p>While location is on, the screen stays on so the map doesn't go dark as you walk. Turn this off in <b>⋯ → Keep screen on while locating</b>. It needs iOS 18.4 or later for Home Screen apps, and Low Power Mode may still let the screen sleep.</p>
+  </section>
+
+  <section>
+    <h2>Offline and privacy</h2>
+    <ul>
+      <li>After the first launch the app works without a connection, in airplane mode too.</li>
+      <li>Your map and elevation files are stored only on your device. Nothing is uploaded: there is no account, no server and no tracking, and your position never leaves the phone.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>If something goes wrong</h2>
+    <div class="note">
+      <h3>The map is gone and it asks for the files again</h3>
+      <p>iOS can clear the storage of web apps you haven't opened for a long time. Import the files again; adding the app to the Home Screen makes this much less likely.</p>
+    </div>
+    <div class="note">
+      <h3>The locate button is greyed out</h3>
+      <p>Location access was declined. Allow it in <b>Settings → Privacy &amp; Security → Location Services → Safari Websites</b>, then reopen the app.</p>
+    </div>
+    <div class="note">
+      <h3>No direction cone</h3>
+      <p>Without compass access the cone appears only once you're moving faster than walking pace. The app asks for compass access when you turn location on; to be asked again, close the app completely, reopen it and tap the locate button.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>Made for GPSmap.is maps but works with other unlocked Garmin IMG maps. Map data belongs to its publisher. <a href="https://github.com/atlipall/garmin-maps">Source code</a>.</p>
+  </footer>
+</main>
+</body>
+</html>
