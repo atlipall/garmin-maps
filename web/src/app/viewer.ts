@@ -8,6 +8,7 @@ import { cacheKey, readText, writeText, type Stored } from '../storage/store';
 import { buildStyle } from '../style/buildStyle';
 import { preloadImages } from '../ui/images';
 import { PerfStats } from '../ui/perf';
+import { HeightControl, LocationControl } from './location';
 import { TilePool, type OpenMeta } from '../worker/pool';
 import { showImport } from './importScreen';
 
@@ -117,19 +118,20 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   // within thumb reach.
   const touch = matchMedia('(pointer: coarse)').matches;
   map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: !touch }), 'top-right');
-  const geolocate = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true });
-  map.addControl(geolocate, 'bottom-right');
-  // Last GPS fix, as the reference for search-result distances (the map centre when none is recent).
-  let lastFix: { at: [number, number]; time: number } | null = null;
-  geolocate.on('geolocate', (pos) => {
-    lastFix = { at: [pos.coords.longitude, pos.coords.latitude], time: Date.now() };
-  });
+  // Locate button (bottom-right): follow with north up / heading up, direction cone, ground height.
+  const height = new HeightControl();
+  const locate = new LocationControl((lon, lat) => pool.elevation(lon, lat), height.element);
+  map.addControl(locate, 'bottom-right');
+  // Corner controls stack upwards in the order added: the height pill sits above the scale bar.
+  map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+  map.addControl(height, 'bottom-left');
+  // The last GPS fix is the reference for search-result distances (the map centre when none is recent).
   const searchFrom = (): { at: [number, number]; gps: boolean } => {
-    if (lastFix && Date.now() - lastFix.time < 10 * 60_000) return { at: lastFix.at, gps: true };
+    const fix = locate.lastFix;
+    if (fix && Date.now() - fix.time < 10 * 60_000) return { at: fix.at, gps: true };
     const c = map.getCenter();
     return { at: [c.lng, c.lat], gps: false };
   };
-  map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
 
   $('topbar').hidden = false;
   $('menu-button').hidden = false;
