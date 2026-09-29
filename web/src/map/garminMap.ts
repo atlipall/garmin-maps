@@ -90,4 +90,9 @@ export class GarminMap {
     const [main, pg, ln, pt] = await Promise.all([chunk(sd.rgnStart, sd.rgnEnd), ...sd.ext.map(([a, e]) => chunk(a, e))]);
     return { main, ext: [pg, ln, pt] };
   }
+
+  /** A whole subfile (e.g. `14057406.NOD`), or null when the map doesn't have it. */
+  async readSubfile(name: string): Promise<Uint8Array | null> {
+    return this.img.has(name) ? this.img.read(name) : null;
+  }
 }

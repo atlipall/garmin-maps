@@ -1,51 +1,55 @@
 import { describe, expect, test } from 'vitest';
-import { graphFromLines, type RoadLine } from '../src/routing/engineA';
-import { fastestRoute, NodeIndex, UNITS_PER_DEG } from '../src/routing/graph';
+import { EDGE_FROAD, fastestRoute, GraphBuilder, NodeIndex, UNITS_PER_DEG } from '../src/routing/graph';
+import { addTileNetwork } from '../src/routing/network';
+import type { NodNode } from '../src/routing/nod';
+import { roadClass } from '../src/routing/roadClass';
 
 const U = (deg: number) => Math.round(deg * UNITS_PER_DEG);
-/** A line through [lon, lat] points. */
-const line = (type: number, name: string | null, ...pts: Array<[number, number]>): RoadLine =>
-  ({ type, name, coords: pts.flatMap(([lo, la]) => [U(lo), U(la)]), net: null, tile: 't' });
 
-describe('engine A: graph from road lines', () => {
-  // Two roads between the same two ends: a fast highway on a long detour (~48 km at 80 km/h, about
-  // 36 min) and a slow but direct F-road (~6 km at 25 km/h, about 15 min).
-  const lines = [
-    line(0x01, 'Route 1', [0, 64], [0.5, 63.85], [0.1, 64.05]),
-    line(0x12, 'F208', [0, 64], [0.05, 64.02], [0.1, 64.05]),
-    line(0x06, 'Spur', [0.05, 64.02], [0.06, 64.02]), // meets the F-road mid-way: makes a junction
-  ];
-  const g = graphFromLines(lines);
-  const idx = new NodeIndex(g);
-  const at = (lon: number, lat: number) => idx.nearest(lon, lat, 2000)!.node;
-
-  test('joins lines at shared points; only junctions and line ends are nodes', () => {
-    // Nodes: the two shared ends, the F-road/spur junction, and the spur's far end. The highway's
-    // corner is a single line's interior point, so it is shape, not a node.
-    expect(g.nodeX.length).toBe(4);
-    expect(g.edgeTo.length).toBe(2 * 4); // highway, F-road in two halves, spur; both ways
+describe('road classes', () => {
+  test('F-roads by type or name, tracks, rough tracks, everything else normal', () => {
+    expect(roadClass(0x12, null)).toBe(1);
+    expect(roadClass(0x0d, 'F26')).toBe(1);
+    expect(roadClass(0x0a, 'F 208')).toBe(1);
+    expect(roadClass(0x11, null)).toBe(2);
+    expect(roadClass(0x13, 'VATNAHJALLALEIÐ')).toBe(3);
+    expect(roadClass(0x01, 'Hringvegur')).toBe(0);
+    expect(roadClass(0x06, 'Fálkagata')).toBe(0); // starts with F but isn't a road number
   });
+});
 
-  test('fastest route prefers the F-road when allowed and the highway when not', () => {
-    const a = at(0, 64);
-    const b = at(0.1, 64.05);
-    const withF = fastestRoute(g, a, b, true)!;
-    const noF = fastestRoute(g, a, b, false)!;
-    expect(withF.nodes).toEqual([a, at(0.05, 64.02), b]); // along the F-road, via its junction
-    expect(withF.coords).toHaveLength(3);
-    expect(noF.nodes).toEqual([a, b]);
-    expect(noF.coords).toHaveLength(3); // with the highway's corner
-    expect(noF.metres).toBeGreaterThan(withF.metres);
-    expect(noF.seconds).toBeGreaterThan(withF.seconds); // the F-road shortcut is faster when allowed
-  });
+describe('NOD network', () => {
+  /** Nodes of one tile: a–b on a one-way highway (NET 1), b–c on an F-road (NET 2). */
+  function tile(): Map<number, NodNode> {
+    const n = (offset: number, lon: number, lat: number, arcs: NodNode['arcs']): NodNode => ({ offset, flags: 0x40, x: U(lon), y: U(lat), arcs, end: 0 });
+    const arc = (target: number, length: number, forward: boolean, net: number, info: number) => ({ target, length, forward, direct: true, net, info, access: 0 });
+    return new Map([
+      [0, n(0, -21.0, 64.0, [arc(10, 1000, true, 1, 0x08 | 4)])],
+      [10, n(10, -20.95, 64.0, [arc(0, 1000, false, 1, 0x08 | 4), arc(20, 500, true, 2, 2), { ...arc(30, 900, true, 2, 2), direct: false }])],
+      [20, n(20, -20.95, 64.01, [arc(10, 500, false, 2, 2)])],
+      [30, n(30, -20.95, 64.02, [])],
+    ]);
+  }
+  const build = () => {
+    const b = new GraphBuilder();
+    addTileNetwork(b, tile(), new Map([[2, 1]]), 3);
+    return b.build();
+  };
 
-  test('snapping: only to the main network, and only within the limit', () => {
-    // An island road isn't joined to the main network, so positions on it don't snap to it (a
-    // route there would always fail); nor does a position far from any road.
-    const island = graphFromLines([...lines, line(0x06, 'Island', [1, 65], [1.01, 65])]);
-    const i2 = new NodeIndex(island);
-    expect(i2.nearest(1, 65, 2000)).toBeNull();
-    expect(i2.nearest(0, 64, 2000)).not.toBeNull();
-    expect(i2.nearest(0.5, 64.5, 2000)).toBeNull();
+  test('direct arcs become edges: length × 2.4 m, capped speed, F-road flag, road identity; one-way against is dropped', () => {
+    const g = build();
+    const idx = new NodeIndex(g);
+    const a = idx.nearest(-21.0, 64.0, 100)!.node;
+    const bN = idx.nearest(-20.95, 64.0, 100)!.node;
+    const c = idx.nearest(-20.95, 64.01, 100)!.node;
+    expect(fastestRoute(g, a, bN, true)!.metres).toBeCloseTo(2400, 3);
+    expect(fastestRoute(g, bN, a, true)).toBeNull(); // one-way
+    const f = fastestRoute(g, bN, c, true)!;
+    expect(f.metres).toBeCloseTo(1200, 3);
+    expect(f.seconds).toBeCloseTo(1200 / (25 / 3.6), 1); // class 2 (40 km/h) capped at 25
+    expect(g.edgeFlags[f.edges[0]] & EDGE_FROAD).toBe(EDGE_FROAD);
+    expect([g.edgeTile[f.edges[0]], g.edgeNet[f.edges[0]]]).toEqual([3, 2]);
+    expect(fastestRoute(g, bN, c, false)).toBeNull(); // F-roads not allowed
+    expect(g.edgeTo.length).toBe(3); // a→b, b→c, c→b (indirect b→d skipped, b→a one-way)
   });
 });

@@ -31,6 +31,9 @@ export interface RoadGraph {
   /** km/h used for travel time. */
   edgeSpeed: Float32Array;
   edgeFlags: Uint8Array;
+  /** The edge's road: map tile index and NET offset, −1 when unknown. */
+  edgeTile: Uint8Array;
+  edgeNet: Int32Array;
   /** Optional shape per edge: points geomStart[e] .. geomStart[e + 1] - 1 of geomX/geomY, from
    *  the source node to the target (exclusive of both ends). Absent: straight between nodes. */
   geomStart?: Int32Array;
@@ -49,6 +52,8 @@ export class GraphBuilder {
   private readonly len: number[] = [];
   private readonly speed: number[] = [];
   private readonly flags: number[] = [];
+  private readonly tile: number[] = [];
+  private readonly net: number[] = [];
   private readonly geom: Array<number[] | null> = [];
   private hasGeom = false;
 
@@ -65,13 +70,15 @@ export class GraphBuilder {
   }
 
   /** Adds a directed edge; `shape` is the interior points as a flat [x, y, x, y, …] list. */
-  edge(a: number, b: number, metres: number, kmh: number, flags: number, shape: number[] | null = null): void {
+  edge(a: number, b: number, metres: number, kmh: number, flags: number, shape: number[] | null = null, road: { tile: number; net: number } | null = null): void {
     if (a === b) return;
     this.from.push(a);
     this.to.push(b);
     this.len.push(metres);
     this.speed.push(kmh);
     this.flags.push(flags);
+    this.tile.push(road?.tile ?? 0);
+    this.net.push(road?.net ?? -1);
     this.geom.push(shape);
     if (shape) this.hasGeom = true;
   }
@@ -93,6 +100,8 @@ export class GraphBuilder {
     const edgeLen = new Float32Array(m);
     const edgeSpeed = new Float32Array(m);
     const edgeFlags = new Uint8Array(m);
+    const edgeTile = new Uint8Array(m);
+    const edgeNet = new Int32Array(m);
     let maxSpeed = 1;
     let geomPoints = 0;
     if (this.hasGeom) for (const g of this.geom) geomPoints += g ? g.length / 2 : 0;
@@ -106,6 +115,8 @@ export class GraphBuilder {
       edgeLen[i] = this.len[e];
       edgeSpeed[i] = this.speed[e];
       edgeFlags[i] = this.flags[e];
+      edgeTile[i] = this.tile[e];
+      edgeNet[i] = this.net[e];
       if (this.speed[e] > maxSpeed) maxSpeed = this.speed[e];
       if (geomStart) {
         geomStart[i] = gp;
@@ -117,7 +128,7 @@ export class GraphBuilder {
       }
     }
     if (geomStart) geomStart[m] = gp;
-    return { nodeX: Int32Array.from(this.xs), nodeY: Int32Array.from(this.ys), edgeStart, edgeTo, edgeLen, edgeSpeed, edgeFlags, geomStart, geomX, geomY, maxSpeed };
+    return { nodeX: Int32Array.from(this.xs), nodeY: Int32Array.from(this.ys), edgeStart, edgeTo, edgeLen, edgeSpeed, edgeFlags, edgeTile, edgeNet, geomStart, geomX, geomY, maxSpeed };
   }
 }
 
@@ -127,6 +138,7 @@ export interface Route {
   metres: number;
   seconds: number;
   nodes: number[];
+  edges: number[];
 }
 
 /** Binary min-heap of (key, value) pairs. */
@@ -238,7 +250,7 @@ export function fastestRoute(g: RoadGraph, from: number, to: number, allowFRoads
     coords.push([deg(g.nodeX[v]), deg(g.nodeY[v])]);
     nodes.push(v);
   }
-  return { coords, metres, seconds: best[to], nodes };
+  return { coords, metres, seconds: best[to], nodes, edges };
 }
 
 /** Grid index over the graph's nodes, for snapping a position to the nearest node. */
