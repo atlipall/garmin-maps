@@ -63,8 +63,18 @@ try {
 
   // 3b. location: a simulated GPS fix at Landmannalaugar; follow, heading up, pause on drag, height
   await browser.defaultBrowserContext().overridePermissions(`http://localhost:${PORT}`, ['geolocation', 'accelerometer', 'gyroscope', 'magnetometer']);
+  // Headless Chrome denies the screen wake lock unless granted (Safari grants it without a prompt).
+  await (await browser.target().createCDPSession()).send('Browser.grantPermissions', { origin: `http://localhost:${PORT}`, permissions: ['wakeLockScreen', 'geolocation', 'sensors'] });
   await page.setGeolocation({ latitude: 63.9913, longitude: -19.0605, accuracy: 15 });
   const locState = () => page.$eval('.locate-button', (b) => b.dataset.state);
+  // Count screen wake lock requests and whether the last lock is still held.
+  await page.evaluate(() => {
+    const wl = navigator.wakeLock;
+    const request = wl.request.bind(wl);
+    window.__wake = { requests: 0, last: null };
+    wl.request = async (type) => { window.__wake.requests++; try { const l = await request(type); window.__wake.last = l; return l; } catch (e) { window.__wake.error = e.name + ': ' + e.message; throw e; } };
+  });
+  const wake = () => page.evaluate(() => ({ requests: window.__wake.requests, held: !!window.__wake.last && !window.__wake.last.released, error: window.__wake.error }));
   await page.click('.locate-button');
   await page.waitForSelector('.you', { timeout: 10_000 });
   await page.waitForFunction(() => /^▲ \d+ m$/.test(document.querySelector('.height-pill')?.textContent ?? ''), { timeout: 10_000 });
@@ -77,6 +87,18 @@ try {
   const metres = Number(loc.height.replace(/\D/g, ''));
   if (metres < 500 || metres > 700) fail(`Landmannalaugar ground height ${loc.height}`);
   if ((await locState()) !== 'north') fail(`after one tap: ${await locState()}`);
+  let w = await wake();
+  if (w.requests !== 1 || !w.held) fail(`screen wake lock not held while locating: ${JSON.stringify(w)}`);
+  await page.click('#menu-button');
+  await page.click('#keep-awake'); // switch off: released
+  await new Promise((r) => setTimeout(r, 200));
+  w = await wake();
+  if (w.held || (await page.$eval('#keep-awake', (b) => b.getAttribute('aria-checked'))) !== 'false') fail(`keep-awake off did not release: ${JSON.stringify(w)}`);
+  await page.click('#keep-awake'); // back on: requested again
+  await new Promise((r) => setTimeout(r, 200));
+  w = await wake();
+  if (w.requests !== 2 || !w.held) fail(`keep-awake on did not re-request: ${JSON.stringify(w)}`);
+  await page.click('#menu-button');
   // A compass reading of 40° (alpha counts counter-clockwise): the cone shows, and heading-up turns the map.
   const compass = () => page.evaluate(() => window.dispatchEvent(new DeviceOrientationEvent('deviceorientationabsolute', { alpha: 320, beta: 0, gamma: 0, absolute: true })));
   await compass();
