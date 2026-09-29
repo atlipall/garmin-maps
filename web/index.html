@@ -23,6 +23,14 @@
       /* Top row: search (stretches) + menu button. */
       #topbar { position: absolute; z-index: 3; top: var(--top); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); max-width: 420px; }
       .search-row { position: relative; }
+      /* Collapsed: just the magnifier. The input stays laid out (only hidden) so a tap on the
+         magnifier can focus it at once, which iOS needs to bring up the keyboard. */
+      #topbar { transition: max-width 0.2s ease; }
+      #topbar.collapsed { max-width: var(--btn); }
+      #topbar.collapsed .search-row, #topbar.collapsed #results { visibility: hidden; }
+      #search-open { display: none; }
+      #topbar.collapsed #search-open { display: grid; place-items: center; position: absolute; inset: 0; z-index: 1; width: var(--btn); height: var(--btn); padding: 0; border: 0; border-radius: 10px; background: none; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      @media (prefers-reduced-motion: reduce) { #topbar { transition: none; } }
       #search { width: 100%; height: var(--btn); box-sizing: border-box; padding: 0 var(--btn) 0 12px; font-size: 16px; border: 0; border-radius: 10px; background: transparent; }
       /* Our own clear button (iOS shows none); hide the browser's so desktop doesn't show two. */
       #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
@@ -109,7 +117,10 @@
   </head>
   <body>
     <div id="map"></div>
-    <div id="topbar" class="panel" hidden>
+    <div id="topbar" class="panel collapsed" hidden>
+      <button id="search-open" type="button" aria-label="Search places" aria-controls="search">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </button>
       <div class="search-row">
         <input id="search" type="search" placeholder="Loading places…" aria-label="Search places" disabled autocomplete="off" enterkeyhint="search" />
         <button id="search-clear" type="button" aria-label="Clear search" hidden>×</button>

@@ -60,6 +60,25 @@ try {
   const hit = await page.evaluate(() => window.__app.search('landmannalaugar')[0]);
   if (!hit || Math.abs(hit.lon + 19.06) > 0.1 || Math.abs(hit.lat - 63.99) > 0.1) fail(`search landmannalaugar → ${JSON.stringify(hit)}`);
   console.log('search ok:', hit.name, hit.lon.toFixed(3), hit.lat.toFixed(3));
+  // The search bar: a magnifier that expands on tap and collapses when left empty.
+  const bar = () => page.evaluate(() => ({ collapsed: document.getElementById('topbar').classList.contains('collapsed'), focused: document.activeElement?.id, width: Math.round(document.getElementById('topbar').getBoundingClientRect().width) }));
+  let sb = await bar();
+  if (!sb.collapsed || sb.width > 50) fail(`search bar not collapsed at start: ${JSON.stringify(sb)}`);
+  await page.click('#search-open');
+  await new Promise((r) => setTimeout(r, 300));
+  sb = await bar();
+  if (sb.collapsed || sb.focused !== 'search' || sb.width < 200) fail(`search bar did not expand and focus: ${JSON.stringify(sb)}`);
+  await page.keyboard.type('hekla');
+  await page.waitForFunction(() => document.querySelectorAll('#results li').length > 0);
+  const mapBox = await page.$eval('#map', (m) => { const r = m.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height * 0.75 }; });
+  await page.mouse.click(mapBox.x, mapBox.y);
+  if ((await bar()).collapsed) fail('search bar collapsed while it still had text');
+  await page.click('#search-clear');
+  await page.mouse.click(mapBox.x, mapBox.y);
+  await new Promise((r) => setTimeout(r, 300));
+  sb = await bar();
+  if (!sb.collapsed) fail(`empty search bar did not collapse: ${JSON.stringify(sb)}`);
+  console.log('search bar ok');
 
   // 3b. location: a simulated GPS fix at Landmannalaugar; follow, heading up, pause on drag, height
   await browser.defaultBrowserContext().overridePermissions(`http://localhost:${PORT}`, ['geolocation', 'accelerometer', 'gyroscope', 'magnetometer']);

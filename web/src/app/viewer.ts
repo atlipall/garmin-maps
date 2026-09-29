@@ -160,6 +160,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   $('map-file').textContent = stored.meta.imgName.replace(/\.img$/i, '');
   $('map-dem').textContent = stored.hgt.length ? `${stored.hgt.length} elevation file${stored.hgt.length === 1 ? '' : 's'}` : 'No elevation files';
   $('topbar').hidden = false;
+  collapsibleSearch(map);
   $('menu-button').hidden = false;
   const setMenu = (open: boolean) => {
     $('menu').hidden = !open;
@@ -317,4 +318,23 @@ function writeSetting(key: string, value: boolean): void {
   } catch {
     // not remembered; the switch still works for this session
   }
+}
+
+/** The search bar is a magnifier until tapped; it collapses again when left empty (focus moves
+ *  elsewhere, or the map is touched, which on iOS doesn't take focus from the input by itself). */
+function collapsibleSearch(map: maplibregl.Map): void {
+  const bar = $('topbar');
+  const input = $<HTMLInputElement>('search');
+  const collapse = () => {
+    if (input.value === '' && document.activeElement !== input) bar.classList.add('collapsed');
+  };
+  $('search-open').onclick = () => {
+    bar.classList.remove('collapsed');
+    input.focus(); // in the tap itself, so iOS shows the keyboard
+  };
+  input.addEventListener('blur', () => setTimeout(collapse, 0));
+  map.getCanvasContainer().addEventListener('pointerdown', () => {
+    input.blur();
+    collapse();
+  });
 }
