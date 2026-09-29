@@ -1,4 +1,4 @@
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 import { preview } from 'vite';
@@ -128,10 +128,43 @@ try {
   await page.screenshot({ path: `${OUT}location.png` });
   console.log('location ok:', loc.height);
 
+  // 3c. GPX: import a track without heights (climb comes from the elevation files) and a bad file
+  const pts = Array.from({ length: 30 }, (_, i) => [63.9913 - i * 0.0006, -19.0605 - i * 0.0009]);
+  const gpxPath = `${OUT}laugavegur-start.gpx`;
+  const badPath = `${OUT}not-a-track.gpx`;
+  await writeFile(gpxPath, `<?xml version="1.0"?><gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>Laugavegur start</name></metadata>
+    <wpt lat="63.9913" lon="-19.0605"><name>Hut</name></wpt><trk><trkseg>${pts.map(([la, lo]) => `<trkpt lat="${la}" lon="${lo}"/>`).join('')}</trkseg></trk></gpx>`);
+  await writeFile(badPath, '<kml></kml>');
+  await page.click('#menu-button');
+  await page.click('#tracks-open');
+  await (await page.$('#gpx-file')).uploadFile(gpxPath, badPath);
+  await page.waitForFunction(() => document.querySelectorAll('#track-list .track').length === 1, { timeout: 10_000 });
+  const err = await page.$eval('#tracks-error', (e) => e.textContent);
+  if (!/not-a-track\.gpx: not a GPX file/.test(err)) fail(`bad GPX error: ${err}`);
+  await page.waitForFunction(() => /↑ \d/.test(document.querySelector('#track-list .stats')?.textContent ?? ''), { timeout: 15_000 });
+  const trk = await page.evaluate(() => ({
+    stats: document.querySelector('#track-list .stats').textContent,
+    features: window.__app.map.getStyle().sources.gpx.data.features.length,
+  }));
+  if (trk.features !== 2) fail(`GPX features on the map: ${trk.features}`);
+  await new Promise((r) => setTimeout(r, 1000)); // fitBounds
+  await page.screenshot({ path: `${OUT}tracks.png` });
+  console.log('gpx ok:', trk.stats);
+  await page.click('#tracks-close');
+
   // 4. reload opens straight from storage
   await page.reload();
   await waitReady();
   if (await page.$('#import:not([hidden])')) fail('import screen shown after reload');
+  await page.waitForFunction(() => window.__app?.tracks?.count === 1, { timeout: 10_000 }).catch(() => fail('GPX track not kept across reload'));
+  // Deleting asks for a second tap.
+  await page.click('#menu-button');
+  await page.click('#tracks-open');
+  await page.click('.track-delete');
+  if ((await page.evaluate(() => window.__app.tracks.count)) !== 1) fail('deleted a track without confirmation');
+  await page.click('.track-delete');
+  await page.waitForFunction(() => window.__app.tracks.count === 0 && !document.querySelector('#track-list .track'), { timeout: 5_000 }).catch(() => fail('track not deleted'));
+  await page.click('#tracks-close');
   console.log('reload from storage ok');
 
   // 5. offline reload
