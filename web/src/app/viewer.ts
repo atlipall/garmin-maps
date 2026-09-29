@@ -139,21 +139,6 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   };
   $('menu-button').onclick = () => setMenu($('menu').hidden !== false);
   map.on('movestart', () => setMenu(false));
-  $('screen-info').onclick = () => {
-    // Layout measurements for diagnosing iOS Home Screen sizing (e.g. an empty band at the bottom).
-    setMenu(false);
-    const probe = getComputedStyle($('inset-probe'));
-    const px = (v: string) => Math.round(parseFloat(v));
-    const rect = (id: string) => Math.round(document.getElementById(id)!.getBoundingClientRect().height);
-    alert([
-      `standalone: ${matchMedia('(display-mode: standalone)').matches} / ${(navigator as Navigator & { standalone?: boolean }).standalone}`,
-      `screen: ${screen.width}×${screen.height} @${devicePixelRatio}x`,
-      `window: ${innerWidth}×${innerHeight}`,
-      `visualViewport: ${Math.round(visualViewport?.width ?? 0)}×${Math.round(visualViewport?.height ?? 0)}`,
-      `html: ${document.documentElement.clientHeight}  body: ${Math.round(document.body.getBoundingClientRect().height)}  map: ${rect('map')}`,
-      `insets t/r/b/l: ${px(probe.paddingTop)}/${px(probe.paddingRight)}/${px(probe.paddingBottom)}/${px(probe.paddingLeft)}`,
-    ].join('\n'));
-  };
   let closed = false;
   $('replace').onclick = () => {
     // Nothing is deleted here: the stored map stays until a new import commits (and Cancel
@@ -265,13 +250,15 @@ function wireSearch(map: maplibregl.Map, index: PlaceIndex, searchFrom: () => { 
     clearTimeout(timer);
     timer = window.setTimeout(render, 120);
   });
-  // Clear the query and results but keep the keyboard up for a new search (the result marker stays).
+  // Clear the query, results and result pin, but keep the keyboard up for a new search.
   clear.addEventListener('pointerdown', (ev) => ev.preventDefault()); // don't steal focus from the input
   clear.onclick = () => {
     clearTimeout(timer);
     input.value = '';
     clear.hidden = true;
     list.replaceChildren();
+    marker?.remove();
+    marker = null;
     input.focus();
   };
 }
