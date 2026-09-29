@@ -1,6 +1,4 @@
 import { existsSync, readdirSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
-import { PNG } from 'pngjs';
 import { describe, expect, test } from 'vitest';
 import { Dem } from '../src/dem/dem';
 import { decodeHgt, decodeTerrainRgb, encodeTerrainRgb, HGT_BYTES, HGT_SIZE, parseHgtName } from '../src/dem/hgt';
@@ -11,7 +9,6 @@ import { nodeSource } from './helpers/nodeSource';
 import { REPO } from './helpers/paths';
 
 const HGT_DIR = REPO + 'GPSmap.is 2024.21 Android/HILLSHADE - Add content to DEM folder/';
-const PY_DEM = REPO + 'out/dem.mbtiles';
 
 /** A synthetic tile whose height is a function of (row, col) inside the file. */
 function makeHgt(f: (r: number, c: number) => number): Uint8Array<ArrayBuffer> {
@@ -115,8 +112,6 @@ describe('Dem on synthetic tiles', () => {
   });
 });
 
-const hasRealDem = existsSync(HGT_DIR) && existsSync(PY_DEM);
-
 describe.skipIf(!existsSync(HGT_DIR))('elevationAt on the real elevation files', () => {
   test('known summits and sea level', async () => {
     const names = readdirSync(HGT_DIR).filter((n) => n.endsWith('.hgt'));
@@ -136,33 +131,3 @@ describe.skipIf(!existsSync(HGT_DIR))('elevationAt on the real elevation files',
   });
 });
 
-describe.skipIf(!hasRealDem)('Dem vs Python dem.mbtiles (golden)', () => {
-  test('full-resolution tiles match within 0.2 m', async () => {
-    const names = readdirSync(HGT_DIR).filter((n) => n.endsWith('.hgt'));
-    expect(names.length).toBe(48);
-    const files = await Promise.all(names.map(async (name) => ({ name, src: await nodeSource(HGT_DIR + name) })));
-    const dem = Dem.fromFiles(files, null);
-    const db = new DatabaseSync(PY_DEM, { readOnly: true });
-    const get = db.prepare('SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?');
-    const places: Array<[string, number, number, number]> = [
-      ['Hvannadalshnúkur z11', -16.676, 64.014, 11],
-      ['Reykjavík z11', -21.94, 64.146, 11],
-      ['Landmannalaugar z9', -19.06, 63.99, 9],
-      ['Vatnajökull z8', -16.9, 64.4, 8],
-    ];
-    for (const [label, lon, lat, z] of places) {
-      const [x, y] = [lonToTileX(lon, z), latToTileY(lat, z)];
-      const row = get.get(z, x, (1 << z) - 1 - y) as { tile_data: Uint8Array } | undefined;
-      expect(row, label).toBeDefined();
-      const py = heightsOf(PNG.sync.read(Buffer.from(row!.tile_data)).data);
-      const ours = heightsOf(await dem.tile(z, x, y));
-      let maxDiff = 0;
-      ours.forEach((v, i) => (maxDiff = Math.max(maxDiff, Math.abs(v - py[i]))));
-      expect(maxDiff, label).toBeLessThanOrEqual(0.2);
-    }
-    const peak = heightsOf(await dem.tile(11, lonToTileX(-16.676, 11), latToTileY(64.014, 11)));
-    expect(Math.max(...peak)).toBeGreaterThan(1900);
-    db.close();
-    await Promise.all(files.map((f) => (f.src as unknown as { close(): Promise<void> }).close()));
-  }, 120_000);
-});

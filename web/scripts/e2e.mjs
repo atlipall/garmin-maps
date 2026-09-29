@@ -8,7 +8,7 @@ const REPO = fileURLToPath(new URL('../../', import.meta.url));
 const DATA = REPO + 'GPSmap.is 2024.21 Android/';
 const IMG = DATA + 'MAPS - Add content to MAPFILES folder/Iceland GPSmap.is 2024.21 Detailed.img';
 const HGT_DIR = DATA + 'HILLSHADE - Add content to DEM folder/';
-const OUT = REPO + 'out/web-samples/';
+const OUT = WEB + 'e2e-output/';
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = 5198;
 
