@@ -53,9 +53,6 @@ export interface NodArc {
   net: number;
   info: number;
   access: number;
-  /** Which length encoding was used (debugging): 0 = 10-bit, 1 = 14-bit, 2 = 15-bit, 3 = 22-bit. */
-  lenForm: number;
-  curve: boolean;
   /** The first arc of its road-and-direction group: a link to the adjacent node. The others in the
    *  group are "indirect" links further along the same road, whose length field is not the road
    *  length to their target; routing uses direct links only. */
@@ -121,7 +118,6 @@ export function parseNode(nod1: Uint8Array, off: number, hdr: NodHeader): NodNod
     if (newNet) indexA = nod1[p++];
     let length: number;
     let curve: boolean;
-    let lenForm = 0;
     if ((fa & 0x38) !== 0x38) {
       length = ((fa & 0x18) << 5) | nod1[p++];
       curve = (fa & 0x20) !== 0;
@@ -132,18 +128,15 @@ export function parseNode(nod1: Uint8Array, off: number, hdr: NodHeader): NodNod
           length = (b0 & 0x3f) | (nod1[p + 1] << 6) | (nod1[p + 2] << 14);
           p += 3;
           curve = true;
-          lenForm = 3;
         } else {
           length = (b0 & 0x3f) | (nod1[p + 1] << 6);
           p += 2;
           curve = false;
-          lenForm = 1;
         }
       } else {
         length = (b0 & 0x7f) | (nod1[p + 1] << 7);
         p += 2;
         curve = true;
-        lenForm = 2;
       }
     }
     const forward = (fa & 0x40) !== 0;
@@ -160,7 +153,7 @@ export function parseNode(nod1: Uint8Array, off: number, hdr: NodHeader): NodNod
       if ((c & 0xe0) === 0) p++;
     }
     const a = tableA + indexA * hdr.tableARecord;
-    node.arcs.push({ target, length, forward, net: u24(nod1, a) & 0x3fffff, info: nod1[a + 3], access: nod1[a + 4], lenForm, curve, direct });
+    node.arcs.push({ target, length, forward, direct, net: u24(nod1, a) & 0x3fffff, info: nod1[a + 3], access: nod1[a + 4] });
     prevForward = forward;
     first = false;
     if (fb & 0x80) break;
