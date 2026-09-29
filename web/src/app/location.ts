@@ -72,6 +72,9 @@ export class LocationControl implements maplibregl.IControl {
   private longPressed = false;
   /** The next fix is the first since location was turned on: zoom in to it. */
   private firstFix = false;
+  /** A zoom-in in progress: later follow moves (new fixes, heading turns) must keep aiming for it,
+   *  or each new easeTo restarts from the half-finished zoom and the zoom-in stalls. */
+  private targetZoom: number | null = null;
 
   /** `elevation` looks up the ground height (m) at a point, null when unknown. */
   constructor(private readonly elevation: (lon: number, lat: number) => Promise<number | null>, private readonly heightEl: HTMLElement) {
@@ -123,6 +126,13 @@ export class LocationControl implements maplibregl.IControl {
       if (e.originalEvent && this.state.mode === 'heading') this.setState(dragged(this.state));
     });
     map.on('zoom', () => this.sizeAccuracy());
+    // A zoom-in is done once reached; a pinch by the user overrides it.
+    map.on('zoomend', () => {
+      if (this.targetZoom !== null && Math.abs(map.getZoom() - this.targetZoom) < 0.01) this.targetZoom = null;
+    });
+    map.on('zoomstart', (e: { originalEvent?: Event }) => {
+      if (e.originalEvent) this.targetZoom = null;
+    });
     // The compass button returns to north up (it resets the bearing itself).
     map.getContainer().querySelector('.maplibregl-ctrl-compass')?.addEventListener('click', () => this.setState(compassReset(this.state)));
     return this.container;
@@ -175,6 +185,7 @@ export class LocationControl implements maplibregl.IControl {
     this.compass = null;
     this.heading = null;
     this.heightAt = null;
+    this.targetZoom = null;
     this.heightEl.hidden = true;
     this.button.classList.remove('unavailable');
   }
@@ -206,7 +217,8 @@ export class LocationControl implements maplibregl.IControl {
     this.updateHeading();
     if (this.firstFix && !this.state.paused) {
       this.firstFix = false;
-      map.easeTo({ center: at, zoom: Math.max(map.getZoom(), FOLLOW_ZOOM), bearing: this.state.mode === 'heading' ? (this.heading ?? 0) : 0, duration: 800 });
+      this.targetZoom = Math.max(map.getZoom(), FOLLOW_ZOOM);
+      map.easeTo({ center: at, zoom: this.targetZoom, bearing: this.state.mode === 'heading' ? (this.heading ?? 0) : 0, duration: 800 });
     } else {
       this.follow(false);
     }
@@ -245,7 +257,8 @@ export class LocationControl implements maplibregl.IControl {
     const map = this.map;
     if (!map || !this.fix || this.state.mode === 'off' || this.state.paused) return;
     const bearing = this.state.mode === 'heading' ? (this.heading ?? map.getBearing()) : 0;
-    const zoom = zoomIn ? Math.max(map.getZoom(), FOLLOW_ZOOM) : map.getZoom();
+    if (zoomIn) this.targetZoom = Math.max(this.targetZoom ?? map.getZoom(), FOLLOW_ZOOM);
+    const zoom = this.targetZoom ?? map.getZoom();
     map.easeTo({ center: this.fix.at, bearing, zoom, duration: jump ? 600 : 300, essential: true });
   }
 

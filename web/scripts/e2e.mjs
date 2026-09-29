@@ -77,6 +77,9 @@ try {
   const wake = () => page.evaluate(() => ({ requests: window.__wake.requests, held: !!window.__wake.last && !window.__wake.last.released, error: window.__wake.error }));
   await page.click('.locate-button');
   await page.waitForSelector('.you', { timeout: 10_000 });
+  // Phones often deliver a second fix right after the first; it must not stall the zoom-in.
+  await new Promise((r) => setTimeout(r, 150));
+  await page.setGeolocation({ latitude: 63.9913, longitude: -19.0605, accuracy: 10 });
   await page.waitForFunction(() => /^▲ \d+ m$/.test(document.querySelector('.height-pill')?.textContent ?? ''), { timeout: 10_000 });
   await new Promise((r) => setTimeout(r, 1200)); // let the first-fix zoom finish
   const loc = await page.evaluate(() => {
