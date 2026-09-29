@@ -136,6 +136,8 @@ try {
     <wpt lat="63.9913" lon="-19.0605"><name>Hut</name></wpt><trk><trkseg>${pts.map(([la, lo]) => `<trkpt lat="${la}" lon="${lo}"/>`).join('')}</trkseg></trk></gpx>`);
   await writeFile(badPath, '<kml></kml>');
   await page.click('#menu-button');
+  const mapName = await page.$eval('#map-name', (e) => e.innerText.replace(/\s+/g, ' ').trim());
+  if (!mapName.includes('Iceland GPSmap.is 2024.21 Detailed') || !mapName.includes('48 elevation files')) fail(`menu map name: ${mapName}`);
   await page.click('#tracks-open');
   await (await page.$('#gpx-file')).uploadFile(gpxPath, badPath);
   await page.waitForFunction(() => document.querySelectorAll('#track-list .track').length === 1, { timeout: 10_000 });

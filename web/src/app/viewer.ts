@@ -156,6 +156,9 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     return { at: [c.lng, c.lat], gps: false };
   };
 
+  // Which map file is loaded (the GPSmap.is package has several variants that look different).
+  $('map-file').textContent = stored.meta.imgName.replace(/\.img$/i, '');
+  $('map-dem').textContent = stored.hgt.length ? `${stored.hgt.length} elevation file${stored.hgt.length === 1 ? '' : 's'}` : 'No elevation files';
   $('topbar').hidden = false;
   $('menu-button').hidden = false;
   const setMenu = (open: boolean) => {
