@@ -181,6 +181,14 @@ export class TilePool {
     return this.call(live[0], { type: 'elevation', lon, lat }).then((msg) => msg.metres as number | null);
   }
 
+  /** `elevation` for many points in one message (e.g. a GPX track without heights). */
+  elevations(coords: Array<[number, number]>): Promise<Array<number | null>> {
+    if (this.disposed) return Promise.reject(new Error('pool disposed'));
+    const live = this.live();
+    if (!live.length) return Promise.reject(new Error('no workers available'));
+    return this.call(live[live.length - 1], { type: 'elevations', coords }).then((msg) => msg.metres as Array<number | null>);
+  }
+
   /** Builds the place list on the LAST live worker rather than the first: a simple way to keep
    *  this one-off, comparatively expensive decode off the routing slot ((0,0) tiles and low zooms
    *  hash to index 0) that's busiest with tile requests, so it doesn't starve tile serving. */

@@ -90,6 +90,12 @@ self.onmessage = async (e: MessageEvent) => {
         const buf = rgba.buffer.slice(rgba.byteOffset, rgba.byteOffset + rgba.byteLength) as ArrayBuffer;
         self.postMessage({ type: 'dem', id: msg.id, rgba: buf, ms }, [buf]);
       }
+    } else if (msg.type === 'elevations') {
+      const dem = demReady ? await demReady : null;
+      const coords = msg.coords as Array<[number, number]>;
+      const metres: Array<number | null> = [];
+      for (const [lon, lat] of coords) metres.push(dem ? await dem.elevationAt(lon, lat) : null);
+      self.postMessage({ type: 'elevations', id: msg.id, metres });
     } else if (msg.type === 'elevation') {
       const dem = demReady ? await demReady : null;
       const metres = dem ? await dem.elevationAt(msg.lon, msg.lat) : null;
