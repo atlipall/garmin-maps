@@ -88,6 +88,13 @@ export class Dem {
     return out;
   }
 
+  /** Ground height in metres at one point (bilinear, full resolution), or null outside the mosaic. */
+  async elevationAt(lon: number, lat: number): Promise<number | null> {
+    const [west, south, east, north] = this.bounds;
+    if (lon < west || lon > east || lat < south || lat > north) return null;
+    return (await this.fullResSampler([lon], [lat]))(lon, lat);
+  }
+
   /** Reads one row band per intersecting file into a patch covering exactly the rows/cols this tile needs. */
   private async fullResSampler(lons: number[], lats: number[]): Promise<(lon: number, lat: number) => number> {
     const [west, , , north] = this.bounds;

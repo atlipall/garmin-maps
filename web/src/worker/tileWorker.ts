@@ -90,6 +90,10 @@ self.onmessage = async (e: MessageEvent) => {
         const buf = rgba.buffer.slice(rgba.byteOffset, rgba.byteOffset + rgba.byteLength) as ArrayBuffer;
         self.postMessage({ type: 'dem', id: msg.id, rgba: buf, ms }, [buf]);
       }
+    } else if (msg.type === 'elevation') {
+      const dem = demReady ? await demReady : null;
+      const metres = dem ? await dem.elevationAt(msg.lon, msg.lat) : null;
+      self.postMessage({ type: 'elevation', id: msg.id, metres });
     } else if (msg.type === 'places') {
       if (!opened) throw new Error('map not opened');
       if (cancelled.delete(msg.id)) return;

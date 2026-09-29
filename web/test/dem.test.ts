@@ -69,6 +69,16 @@ describe('Dem on synthetic tiles', () => {
     for (const v of h) expect(v).toBeGreaterThan(1000);
   });
 
+  test('elevationAt samples one point bilinearly, and is null outside the mosaic', async () => {
+    const dem = Dem.fromFiles(files, null);
+    // Mosaic row = (65 - lat) * 1200; height = 1000 + row. Row 600.5 → 1600.5.
+    expect(await dem.elevationAt(-19.5, 65 - 600.5 / 1200)).toBeCloseTo(1600.5, 6);
+    // In the southern file: row 1200 + 300 → 2500.
+    expect(await dem.elevationAt(-19.25, 64 - 300 / 1200)).toBeCloseTo(2500, 6);
+    expect(await dem.elevationAt(-10, 64.5)).toBeNull();
+    expect(await dem.elevationAt(-19.5, 66)).toBeNull();
+  });
+
   test('outside the mosaic is zero', async () => {
     const dem = Dem.fromFiles(files, null);
     const t = await dem.tile(11, lonToTileX(-10, 11), latToTileY(64.5, 11));
@@ -106,6 +116,25 @@ describe('Dem on synthetic tiles', () => {
 });
 
 const hasRealDem = existsSync(HGT_DIR) && existsSync(PY_DEM);
+
+describe.skipIf(!existsSync(HGT_DIR))('elevationAt on the real elevation files', () => {
+  test('known summits and sea level', async () => {
+    const names = readdirSync(HGT_DIR).filter((n) => n.endsWith('.hgt'));
+    const dem = Dem.fromFiles(await Promise.all(names.map(async (name) => ({ name, src: await nodeSource(HGT_DIR + name) }))), null);
+    // Highest point on a ~100 m grid around each summit (SRTM's ~90 m grid smooths peaks a little):
+    // Hekla 1488 m (63.99 N, 19.67 W), Esja's Hábunga 914 m (64.25 N, 21.62 W).
+    const peak = async (lon: number, lat: number) => {
+      let best = -Infinity;
+      for (let dy = -0.02; dy <= 0.02; dy += 0.001) for (let dx = -0.04; dx <= 0.04; dx += 0.002) best = Math.max(best, (await dem.elevationAt(lon + dx, lat + dy))!);
+      return best;
+    };
+    expect(await peak(-19.67, 63.99)).toBeGreaterThan(1400);
+    expect(await peak(-19.67, 63.99)).toBeLessThan(1520);
+    expect(await peak(-21.62, 64.25)).toBeGreaterThan(850);
+    expect(await peak(-21.62, 64.25)).toBeLessThan(940);
+    expect(await dem.elevationAt(-23.0, 64.3)).toBe(0); // middle of Faxaflói, open sea
+  });
+});
 
 describe.skipIf(!hasRealDem)('Dem vs Python dem.mbtiles (golden)', () => {
   test('full-resolution tiles match within 0.2 m', async () => {
