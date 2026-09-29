@@ -1,3 +1,4 @@
+import type { RoadClasses } from '../routing/roadClass';
 import type { Place } from '../search/places';
 
 export interface OpenPayload {
@@ -192,12 +193,12 @@ export class TilePool {
   /** Builds the place list on the LAST live worker rather than the first: a simple way to keep
    *  this one-off, comparatively expensive decode off the routing slot ((0,0) tiles and low zooms
    *  hash to index 0) that's busiest with tile requests, so it doesn't starve tile serving. */
-  places(signal?: AbortSignal): Promise<Place[]> {
+  places(signal?: AbortSignal): Promise<{ places: Place[]; roads: RoadClasses }> {
     if (this.disposed) return Promise.reject(new Error('pool disposed'));
     const live = this.live();
     if (!live.length) return Promise.reject(new Error('no workers available'));
     const w = live[live.length - 1];
-    return this.call(w, { type: 'places' }, signal).then((msg) => msg.places as Place[]);
+    return this.call(w, { type: 'places' }, signal).then((msg) => ({ places: msg.places as Place[], roads: msg.roads as RoadClasses }));
   }
 
   /** Terminates every worker and rejects every pending call with Error('pool disposed'); any

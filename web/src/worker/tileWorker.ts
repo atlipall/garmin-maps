@@ -3,7 +3,7 @@ import { Dem, TILE_SIZE } from '../dem/dem';
 import { decodeOverview } from '../dem/overview';
 import { BlobSource } from '../img/source';
 import { GarminMap } from '../map/garminMap';
-import { collectPlaces } from '../search/places';
+import { collectIndex } from '../search/places';
 import { buildTile, SubdivisionCache } from '../tiles/buildTile';
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -104,12 +104,12 @@ self.onmessage = async (e: MessageEvent) => {
       if (!opened) throw new Error('map not opened');
       if (cancelled.delete(msg.id)) return;
       const m = await opened;
-      // collectPlaces (and the decodeAll it's built on) has no way to abort mid-decode short of
+      // collectIndex (and the decodeAll it's built on) has no way to abort mid-decode short of
       // changing its signature, which is out of scope here — this only skips starting the work,
       // or skips replying, for a request that's already been cancelled either side of it.
-      const places = await collectPlaces(m);
+      const { places, roads } = await collectIndex(m);
       if (cancelled.delete(msg.id)) return;
-      self.postMessage({ type: 'places', id: msg.id, places });
+      self.postMessage({ type: 'places', id: msg.id, places, roads });
     }
   } catch (err) {
     if (cancelled.delete(msg.id)) return;

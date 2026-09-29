@@ -194,7 +194,16 @@ describe('TilePool', () => {
     expect(w2.posted).toHaveLength(1);
     expect(w2.posted[0]).toMatchObject({ type: 'places' });
 
-    w2.reply({ type: 'places', id: w2.lastId(), places: [{ name: 'x', lon: 0, lat: 0, kind: 'point', type: 1 }] });
-    await expect(p).resolves.toEqual([{ name: 'x', lon: 0, lat: 0, kind: 'point', type: 1 }]);
+    w2.reply({ type: 'places', id: w2.lastId(), places: [{ name: 'x', lon: 0, lat: 0, kind: 'point', type: 1 }], roads: {} });
+    await expect(p).resolves.toEqual({ places: [{ name: 'x', lon: 0, lat: 0, kind: 'point', type: 1 }], roads: {} });
+  });
+
+  test('places() resolves with the places and the road classes', async () => {
+    const pool = new TilePool(payload, 1);
+    const p = pool.places();
+    const w = FakeWorker.instances[0];
+    const msg = w.posted.find((m) => m.type === 'places');
+    w.reply({ type: 'places', id: msg.id, places: [], roads: { t: [[5, 1]] } });
+    expect(await p).toEqual({ places: [], roads: { t: [[5, 1]] } });
   });
 });

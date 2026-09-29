@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { GarminMap } from '../src/map/garminMap';
+import type { RoadClasses } from '../src/routing/roadClass';
 import { normalize } from '../src/search/normalize';
 import { PlaceIndex } from '../src/search/placeIndex';
-import { bboxCenter, collectPlaces, type Place } from '../src/search/places';
+import { bboxCenter, collectIndex, type Place } from '../src/search/places';
 import { nodeSource } from './helpers/nodeSource';
 import { DETAILED, hasRealData } from './helpers/paths';
 
@@ -123,14 +124,21 @@ describe('bboxCenter', () => {
 describe.skipIf(!hasRealData)('search on real data', () => {
   let src: Awaited<ReturnType<typeof nodeSource>>;
   let places: Place[];
+  let roads: RoadClasses;
   let idx: PlaceIndex;
   beforeAll(async () => {
     src = await nodeSource(DETAILED);
-    places = await collectPlaces(await GarminMap.open(src));
+    ({ places, roads } = await collectIndex(await GarminMap.open(src)));
     console.log(`places: ${places.length}`);
     idx = new PlaceIndex(places);
   }, 300_000);
   afterAll(() => src.close());
+
+  test('collects F-road/track classes for roads across the island', () => {
+    const all = Object.values(roads).flat();
+    expect(all.length).toBeGreaterThan(3000); // F-roads and tracks across the island
+    expect(new Set(all.map(([, c]) => c))).toEqual(new Set([1, 2, 3]));
+  });
 
   test('finds well-known places', () => {
     const lm = idx.search('landmannalaugar')[0];

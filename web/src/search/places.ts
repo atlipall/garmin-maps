@@ -3,6 +3,7 @@ import type { Kind } from '../img/rgn';
 import { decodeAll } from '../map/decodeAll';
 import { objectName, type GarminMap } from '../map/garminMap';
 import { CONTOUR_LINE_TYPES, isNumber } from '../map/zoom';
+import { roadClass, type RoadClasses } from '../routing/roadClass';
 import { normalize } from './normalize';
 
 export interface Place {
@@ -18,7 +19,7 @@ const round5 = (v: number) => Math.round(v * 1e5) / 1e5;
 /**
  * Midpoint of a coordinate array's bounding box. Loops rather than spreading into `Math.min`/
  * `Math.max` — a spread of more than ~130k arguments overflows V8's call stack (fewer on some
- * mobile engines), which would otherwise reject the whole `collectPlaces` call on a large polygon
+ * mobile engines), which would otherwise reject the whole `collectIndex` call on a large polygon
  * or line.
  */
 export function bboxCenter(coords: Array<[number, number]>): [number, number] {
@@ -35,12 +36,18 @@ export function bboxCenter(coords: Array<[number, number]>): [number, number] {
   return [(minX + maxX) / 2, (minY + maxY) / 2];
 }
 
-/** Named objects of the most detailed level, deduplicated by name within ~0.05°. */
-export async function collectPlaces(map: GarminMap): Promise<Place[]> {
+/** Named objects of the most detailed level, deduplicated by name within ~0.05°, plus the F-road/
+ *  track class of every line whose class isn't 0, keyed by tile id and NET offset (Task 5). */
+export async function collectIndex(map: GarminMap): Promise<{ places: Place[]; roads: RoadClasses }> {
   const bits = Math.max(...map.bands.keys());
   const seen = new Set<string>();
   const out: Place[] = [];
+  const roads: RoadClasses = {};
   await decodeAll(map, (tile, _sd, obj) => {
+    if (obj.kind === 'line' && obj.labelSrc === 'net') {
+      const cls = roadClass(obj.type, objectName(tile, obj));
+      if (cls) (roads[tile.id] ??= []).push([obj.label, cls]);
+    }
     if (obj.kind === 'line' && CONTOUR_LINE_TYPES.has(obj.type)) return;
     const name = objectName(tile, obj);
     if (!name || isNumber(name)) return;
@@ -60,5 +67,5 @@ export async function collectPlaces(map: GarminMap): Promise<Place[]> {
     seen.add(key);
     out.push({ name, lon, lat, kind: obj.kind, type: obj.type });
   }, { bits });
-  return out;
+  return { places: out, roads };
 }
