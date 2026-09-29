@@ -83,7 +83,7 @@ try {
     const c = window.__app.map.getCenter();
     return { lon: c.lng, lat: c.lat, zoom: window.__app.map.getZoom(), height: document.querySelector('.height-pill').textContent };
   });
-  if (Math.abs(loc.lon + 19.0605) > 0.001 || Math.abs(loc.lat - 63.9913) > 0.001 || loc.zoom < 14) fail(`follow did not centre on the fix: ${JSON.stringify(loc)}`);
+  if (Math.abs(loc.lon + 19.0605) > 0.001 || Math.abs(loc.lat - 63.9913) > 0.001 || loc.zoom < 16) fail(`follow did not centre and zoom in on the fix: ${JSON.stringify(loc)}`);
   const metres = Number(loc.height.replace(/\D/g, ''));
   if (metres < 500 || metres > 700) fail(`Landmannalaugar ground height ${loc.height}`);
   if ((await locState()) !== 'north') fail(`after one tap: ${await locState()}`);
@@ -115,8 +115,12 @@ try {
   await page.mouse.move(box.x + 120, box.y + 60, { steps: 8 });
   await page.mouse.up();
   if ((await locState()) !== 'paused') fail(`after dragging: ${await locState()}`);
+  await page.evaluate(() => window.__app.map.jumpTo({ zoom: 11 })); // zoomed out while paused
   await page.click('.locate-button');
   if ((await locState()) !== 'heading') fail(`resume after pause: ${await locState()}`);
+  await new Promise((r) => setTimeout(r, 900));
+  const resumedZoom = await page.evaluate(() => window.__app.map.getZoom());
+  if (resumedZoom < 15.9) fail(`resuming did not zoom in: z${resumedZoom}`);
   await new Promise((r) => setTimeout(r, 800)); // let the resume animation finish
   await page.screenshot({ path: `${OUT}location.png` });
   console.log('location ok:', loc.height);

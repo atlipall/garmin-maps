@@ -9,6 +9,8 @@ const ROTATE_MIN_DEG = 3;
 const ROTATE_MIN_MS = 250;
 /** Hold the locate button this long (ms) to turn location off. */
 const LONG_PRESS_MS = 600;
+/** Starting or resuming following zooms in to at least this (≈ 100 m scale bar: paths and buildings). */
+const FOLLOW_ZOOM = 16;
 /** The height pill is refreshed once the position has moved this far (m). */
 const HEIGHT_MIN_MOVE = 10;
 
@@ -107,11 +109,13 @@ export class LocationControl implements maplibregl.IControl {
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) this.button.addEventListener(ev, () => clearTimeout(this.pressTimer));
     this.button.addEventListener('click', () => {
       if (this.longPressed) return; // the long press already turned location off
+      // Turning location on or resuming after a drag zooms in; switching north/heading up keeps the zoom.
+      const startsFollowing = this.state.mode === 'off' || this.state.paused;
       if (this.state.mode === 'off') {
         this.firstFix = true;
         this.start();
       }
-      this.setState(tap(this.state));
+      this.setState(tap(this.state), startsFollowing);
     });
     // A drag (or a rotate gesture) by the user pauses following; programmatic moves have no originalEvent.
     map.on('dragstart', () => this.setState(dragged(this.state)));
@@ -130,13 +134,13 @@ export class LocationControl implements maplibregl.IControl {
     this.map = null;
   }
 
-  private setState(next: LocationState): void {
+  private setState(next: LocationState, zoomIn = false): void {
     const prev = this.state;
     this.state = next;
     if (next.mode === 'off' && prev.mode !== 'off') this.stop();
     if ((next.mode === 'off') !== (prev.mode === 'off')) this.onActiveChange?.(next.mode !== 'off');
     this.render();
-    if (next.mode !== 'off' && !next.paused) this.follow(true);
+    if (next.mode !== 'off' && !next.paused) this.follow(true, zoomIn);
   }
 
   private render(): void {
@@ -202,7 +206,7 @@ export class LocationControl implements maplibregl.IControl {
     this.updateHeading();
     if (this.firstFix && !this.state.paused) {
       this.firstFix = false;
-      map.easeTo({ center: at, zoom: Math.max(map.getZoom(), 14), bearing: this.state.mode === 'heading' ? (this.heading ?? 0) : 0, duration: 800 });
+      map.easeTo({ center: at, zoom: Math.max(map.getZoom(), FOLLOW_ZOOM), bearing: this.state.mode === 'heading' ? (this.heading ?? 0) : 0, duration: 800 });
     } else {
       this.follow(false);
     }
@@ -235,12 +239,14 @@ export class LocationControl implements maplibregl.IControl {
     }
   }
 
-  /** Centres on the position (and turns the map in heading-up mode). `jump`: a mode change, animate longer. */
-  private follow(jump: boolean): void {
+  /** Centres on the position (and turns the map in heading-up mode). `jump`: a mode change, animate
+   *  longer. `zoomIn`: also zoom in to at least FOLLOW_ZOOM. */
+  private follow(jump: boolean, zoomIn = false): void {
     const map = this.map;
     if (!map || !this.fix || this.state.mode === 'off' || this.state.paused) return;
     const bearing = this.state.mode === 'heading' ? (this.heading ?? map.getBearing()) : 0;
-    map.easeTo({ center: this.fix.at, bearing, duration: jump ? 600 : 300, essential: true });
+    const zoom = zoomIn ? Math.max(map.getZoom(), FOLLOW_ZOOM) : map.getZoom();
+    map.easeTo({ center: this.fix.at, bearing, zoom, duration: jump ? 600 : 300, essential: true });
   }
 
   private sizeAccuracy(): void {
