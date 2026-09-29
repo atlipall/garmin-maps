@@ -1,5 +1,6 @@
 import * as maplibregl from 'maplibre-gl';
 import { angleDelta, chooseHeading, smoothAngle } from '../location/heading';
+import { zoomForSpeed } from '../location/followZoom';
 import { compassReset, dragged, INITIAL, longPress, tap, type LocationState } from '../location/modes';
 
 /** Fraction of each compass change applied per reading: damps sensor jitter without lagging. */
@@ -9,8 +10,11 @@ const ROTATE_MIN_DEG = 3;
 const ROTATE_MIN_MS = 250;
 /** Hold the locate button this long (ms) to turn location off. */
 const LONG_PRESS_MS = 600;
-/** Starting or resuming following zooms in to at least this (≈ 100 m scale bar: paths and buildings). */
-const FOLLOW_ZOOM = 16;
+/** In heading-up mode the position sits this fraction of the screen height below the centre
+ *  (about 70% of the way down), leaving more of the way ahead in view. */
+const LOOK_AHEAD = 0.2;
+/** Weight of each new GPS speed reading in the smoothed speed used for the follow zoom. */
+const SPEED_SMOOTHING = 0.4;
 /** The height pill is refreshed once the position has moved this far (m). */
 const HEIGHT_MIN_MOVE = 10;
 
@@ -75,6 +79,11 @@ export class LocationControl implements maplibregl.IControl {
   /** A zoom-in in progress: later follow moves (new fixes, heading turns) must keep aiming for it,
    *  or each new easeTo restarts from the half-finished zoom and the zoom-in stalls. */
   private targetZoom: number | null = null;
+  /** Zoom follows speed (see ../location/followZoom.ts) until the user zooms by hand. */
+  private autoZoom = false;
+  private followZoom: number | null = null;
+  /** Smoothed GPS speed (m/s), null when the GPS reports none. */
+  private speed: number | null = null;
 
   /** `elevation` looks up the ground height (m) at a point, null when unknown. */
   constructor(private readonly elevation: (lon: number, lat: number) => Promise<number | null>, private readonly heightEl: HTMLElement) {
@@ -130,9 +139,23 @@ export class LocationControl implements maplibregl.IControl {
     map.on('zoomend', () => {
       if (this.targetZoom !== null && Math.abs(map.getZoom() - this.targetZoom) < 0.01) this.targetZoom = null;
     });
-    map.on('zoomstart', (e: { originalEvent?: Event }) => {
-      if (e.originalEvent) this.targetZoom = null;
-    });
+    // Zooming by hand wins: no automatic zoom until the next tap on the locate button. Detected from
+    // the input itself: MapLibre's zoom events don't reliably say whether the user started them.
+    const manualZoom = () => {
+      this.targetZoom = null;
+      this.autoZoom = false;
+    };
+    const canvas = map.getCanvasContainer();
+    let lastTap = 0;
+    canvas.addEventListener('wheel', manualZoom, { passive: true });
+    canvas.addEventListener('dblclick', manualZoom);
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length >= 2) return manualZoom(); // pinch
+      const now = Date.now();
+      if (now - lastTap < 350) manualZoom(); // double tap
+      lastTap = now;
+    }, { passive: true });
+    for (const b of map.getContainer().querySelectorAll('.maplibregl-ctrl-zoom-in, .maplibregl-ctrl-zoom-out')) b.addEventListener('click', manualZoom);
     // The compass button returns to north up (it resets the bearing itself).
     map.getContainer().querySelector('.maplibregl-ctrl-compass')?.addEventListener('click', () => this.setState(compassReset(this.state)));
     return this.container;
@@ -186,6 +209,9 @@ export class LocationControl implements maplibregl.IControl {
     this.heading = null;
     this.heightAt = null;
     this.targetZoom = null;
+    this.autoZoom = false;
+    this.followZoom = null;
+    this.speed = null;
     this.heightEl.hidden = true;
     this.button.classList.remove('unavailable');
   }
@@ -215,11 +241,16 @@ export class LocationControl implements maplibregl.IControl {
     if (!this.marker.getElement().isConnected) this.marker.addTo(map);
     this.sizeAccuracy();
     this.updateHeading();
+    const v = pos.coords.speed;
+    if (v !== null && Number.isFinite(v)) this.speed = this.speed === null ? v : this.speed + (v - this.speed) * SPEED_SMOOTHING;
     if (this.firstFix && !this.state.paused) {
       this.firstFix = false;
-      this.targetZoom = Math.max(map.getZoom(), FOLLOW_ZOOM);
-      map.easeTo({ center: at, zoom: this.targetZoom, bearing: this.state.mode === 'heading' ? (this.heading ?? 0) : 0, duration: 800 });
+      this.follow(true, true);
     } else {
+      if (this.autoZoom && !this.state.paused) {
+        const z = zoomForSpeed(this.speed, this.followZoom);
+        if (z !== this.followZoom) this.followZoom = this.targetZoom = z;
+      }
       this.follow(false);
     }
     this.updateHeight(at);
@@ -251,15 +282,26 @@ export class LocationControl implements maplibregl.IControl {
     }
   }
 
-  /** Centres on the position (and turns the map in heading-up mode). `jump`: a mode change, animate
-   *  longer. `zoomIn`: also zoom in to at least FOLLOW_ZOOM. */
+  /** Starts the automatic follow zoom at the zoom for the current speed, unless the map is already
+   *  zoomed in closer than that (a closer zoom chosen by the user is kept, without auto zoom). */
+  private startZoom(map: maplibregl.Map): void {
+    const z = zoomForSpeed(this.speed, null);
+    this.autoZoom = map.getZoom() <= z + 0.01;
+    this.followZoom = this.autoZoom ? z : null;
+    this.targetZoom = this.autoZoom ? z : this.targetZoom;
+  }
+
+  /** Centres on the position (and turns the map in heading-up mode, with the position lower down
+   *  for look-ahead). `jump`: a mode change, animate longer. `zoomIn`: (re)start the follow zoom. */
   private follow(jump: boolean, zoomIn = false): void {
     const map = this.map;
     if (!map || !this.fix || this.state.mode === 'off' || this.state.paused) return;
-    const bearing = this.state.mode === 'heading' ? (this.heading ?? map.getBearing()) : 0;
-    if (zoomIn) this.targetZoom = Math.max(this.targetZoom ?? map.getZoom(), FOLLOW_ZOOM);
+    const heading = this.state.mode === 'heading';
+    const bearing = heading ? (this.heading ?? map.getBearing()) : 0;
+    if (zoomIn) this.startZoom(map);
     const zoom = this.targetZoom ?? map.getZoom();
-    map.easeTo({ center: this.fix.at, bearing, zoom, duration: jump ? 600 : 300, essential: true });
+    const offset: [number, number] = [0, heading ? map.getContainer().clientHeight * LOOK_AHEAD : 0];
+    map.easeTo({ center: this.fix.at, bearing, zoom, offset, duration: jump ? 600 : 300, essential: true });
   }
 
   private sizeAccuracy(): void {
