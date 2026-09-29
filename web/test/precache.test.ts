@@ -24,7 +24,7 @@ describe('injectPrecache', () => {
     const kept = FILES.filter((f) => f.path !== 'sw.js' && !f.path.endsWith('.map'));
     const { CACHE, PRECACHE } = constants(out);
     expect(CACHE).toBe(cacheName(kept));
-    expect(CACHE).toMatch(/^garmin-map-[0-9a-f]{12}$/);
+    expect(CACHE).toMatch(/^garmin-app-[0-9a-f]{12}$/);
     expect(PRECACHE.slice(0, 5)).toEqual([
       './',
       './assets/index-abc.js',
@@ -47,7 +47,7 @@ describe('injectPrecache', () => {
 
   test('the unstamped template has safe dev defaults', () => {
     const { CACHE, PRECACHE } = constants(TEMPLATE);
-    expect(CACHE).toBe('garmin-map-dev');
+    expect(CACHE).toBe('garmin-app-dev');
     expect(PRECACHE[0]).toBe('./');
     expect(PRECACHE).toContain('./manifest.webmanifest');
   });
@@ -59,5 +59,26 @@ describe('injectPrecache', () => {
 
   test('toUrl encodes each path segment', () => {
     expect(toUrl('fonts/Noto Sans Italic/256-511.pbf')).toBe('./fonts/Noto%20Sans%20Italic/256-511.pbf');
+  });
+});
+
+describe('activate', () => {
+  test("deletes only this app's older caches: not the old root app's, not other sites' on the origin", async () => {
+    const deleted: string[] = [];
+    let onActivate: ((e: { waitUntil(p: Promise<unknown>): void }) => void) | undefined;
+    const self = {
+      location: { origin: 'x' },
+      addEventListener: (type: string, fn: never) => { if (type === 'activate') onActivate = fn; },
+      clients: { claim: async () => {} },
+    };
+    const caches = {
+      keys: async () => ['garmin-app-dev', 'garmin-app-0123456789ab', 'garmin-map-0123456789ab', 'other-project-v1'],
+      delete: async (k: string) => { deleted.push(k); return true; },
+    };
+    new Function('self', 'caches', TEMPLATE)(self, caches);
+    let done: Promise<unknown> = Promise.resolve();
+    onActivate!({ waitUntil: (p) => { done = p; } });
+    await done;
+    expect(deleted).toEqual(['garmin-app-0123456789ab']);
   });
 });

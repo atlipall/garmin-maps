@@ -3,7 +3,7 @@ import type { Plugin, ResolvedConfig } from 'vite';
 import { defineConfig } from 'vitest/config';
 import { stampServiceWorker } from './scripts/precache.ts';
 
-/** After the bundle (and the public/ copy) is written, stamp dist/sw.js with the list of built
+/** After the bundle (and the public/ copy) is written, stamp dist/app/sw.js with the list of built
  *  files and a cache name derived from them (see scripts/precache.ts). */
 function precacheServiceWorker(): Plugin {
   let config: ResolvedConfig;
@@ -23,6 +23,8 @@ function precacheServiceWorker(): Plugin {
 
 export default defineConfig({
   base: './',
+  // The app is served from /garmin-maps/app/; the site root (instructions page) comes from site/.
+  build: { outDir: 'dist/app', emptyOutDir: true },
   worker: { format: 'es' },
   plugins: [precacheServiceWorker()],
   // maplibre-gl locates its own worker script via `import.meta.url`; excluding it from the

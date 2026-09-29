@@ -1,10 +1,13 @@
 /* Offline support: precache the whole app shell; cache everything else same-origin on first use.
  *
  * `npm run build` rewrites the two placeholders below (scripts/precache.ts, run by the Vite plugin
- * in vite.config.ts): CACHE becomes `garmin-map-<hash of the built files>` and PRECACHE lists every
+ * in vite.config.ts): CACHE becomes `garmin-app-<hash of the built files>` and PRECACHE lists every
  * built file, so each deploy installs a fresh complete copy and `activate` drops the old one. The
  * defaults keep an unbuilt copy (dev) working. */
-const CACHE = self.__CACHE__ || 'garmin-map-dev';
+const CACHE = self.__CACHE__ || 'garmin-app-dev';
+/** Caches this app owns. Others on the origin (other sites under atlipall.github.io, and the
+ *  pre-/app/ root app's `garmin-map-*` caches, which the root sw.js retires) are left alone. */
+const OWN = 'garmin-app-';
 const FONTS = ['Noto Sans Regular', 'Noto Sans Italic'].flatMap((f) =>
   ['0-255', '256-511', '8192-8447'].map((r) => `./fonts/${encodeURIComponent(f)}/${r}.pbf`));
 const PRECACHE = [...new Set([
@@ -26,7 +29,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    .then((keys) => Promise.all(keys.filter((k) => k.startsWith(OWN) && k !== CACHE).map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 

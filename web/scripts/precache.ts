@@ -25,7 +25,7 @@ export const toUrl = (path: string) => './' + path.split('/').map(encodeURICompo
 export function cacheName(files: BuiltFile[]): string {
   const h = createHash('sha256');
   for (const f of [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) h.update(`${f.path}\0${f.hash}\n`);
-  return `garmin-map-${h.digest('hex').slice(0, 12)}`;
+  return `garmin-app-${h.digest('hex').slice(0, 12)}`;
 }
 
 /** Pure: replaces the `self.__CACHE__ || '…'` and `self.__PRECACHE__ || […]` placeholders in the
