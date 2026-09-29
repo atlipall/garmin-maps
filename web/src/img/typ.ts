@@ -1,4 +1,4 @@
-/** TYP style file parser (port of imgconv/typ.py, itself ported from QMapShack's CGarminTyp). */
+/** TYP style file parser (after QMapShack's CGarminTyp). */
 import { ascii, ImgError, u16, u32, u8 } from './bytes';
 
 export interface RgbaImage {

@@ -1,9 +1,6 @@
-out/
 .DS_Store
-__pycache__/
 node_modules/
+# Map and elevation data are the user's own and never committed.
 *.img
 *.hgt
 .superpowers/
-.venv/
-*.egg-info/

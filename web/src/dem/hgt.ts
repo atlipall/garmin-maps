@@ -14,7 +14,7 @@ export function parseHgtName(name: string): { south: number; west: number } | nu
   };
 }
 
-/** Big-endian int16 samples; voids (-32768) and negative heights become 0, as in imgconv/hillshade.py. */
+/** Big-endian int16 samples; voids (-32768) and negative heights become 0 (sea level). */
 export function decodeHgt(bytes: Uint8Array): Int16Array {
   const out = new Int16Array(bytes.length >> 1);
   for (let i = 0; i < out.length; i++) {

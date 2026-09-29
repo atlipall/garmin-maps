@@ -1,52 +1,38 @@
-# GPSmap.is → MBTiles
+# Garmin Map
 
-Converts the GPSmap.is Garmin IMG maps (made for OruxMaps on Android) into raster MBTiles with hillshade,
-for offline use in iOS map apps that open MBTiles (for example Guru Maps).
+A web app that shows Garmin `.img` maps (such as GPSmap.is Iceland) on iPhone and Mac, drawn straight from the
+map file in the browser and fully offline: hillshading from SRTM `.hgt` files, place search, GPS follow with
+heading-up and ground height, and GPX tracks.
 
-## Setup
+Live at <https://atlipall.github.io/garmin-maps/> (instructions) and <https://atlipall.github.io/garmin-maps/app/>
+(the app). The map and elevation files stay on the user's device; nothing is uploaded.
 
-```bash
-brew install tippecanoe
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-(cd render && npm install)
-```
+## Development
 
-## Convert a map
+The app lives in `web/` (TypeScript, Vite, MapLibre GL JS).
 
 ```bash
-.venv/bin/imgconv convert "GPSmap.is 2024.21 Android/MAPS - Add content to MAPFILES folder/Iceland GPSmap.is 2024.21 Detailed.img"
-```
-
-The result is `out/<variant>/<variant>.mbtiles` (raster zooms 5–15). AirDrop it to the iPhone and open it with
-the map app. Rendering is resumable: re-running `imgconv render` continues where it stopped.
-
-Individual stages: `inspect`, `decode`, `style`, `tiles`, `dem`, `sample`, `render` (`imgconv --help`).
-
-## Tests
-
-```bash
-.venv/bin/pytest            # tests marked realdata use the GPSmap.is files when present
-(cd render && npm test)
-```
-
-## Phase 2 notes
-
-- `style.json` uses private URL schemes — `mbtiles://vector|dem/{z}/{x}/{y}`, `fonts://{fontstack}/{range}.pbf`,
-  and `sprite://sprite` — resolved by `render/lib/renderer.mjs`. A MapLibre iOS app must rewrite these to its
-  own tile/glyph/sprite sources before loading the style.
-- The sprite is 1x only.
-- Vector tiles use MapLibre zoom (z4-14); the DEM is terrain-RGB (Mapbox encoding) at z5-11 with tileSize 256.
-- Labels are placed per 8x8 metatile, so a label can occasionally be clipped at a metatile edge.
-
-## Web app (on-the-fly, iPhone and Mac)
-
-`web/` is a browser app that renders the Garmin `.img` directly, with no pre-rendered tiles. It adds hillshade from the `.hgt` files, place search and GPS, and works offline once installed.
-
-```bash
-cd web && npm install
+cd web
+npm install
 npm run dev        # http://localhost:5173
-npm test           # unit + golden tests (golden tests need the GPSmap.is files and out/ reference data)
-npm run e2e        # full headless-Chrome check: import, hillshade, search, offline
+npm test           # unit tests; real-data tests use the GPSmap.is files when present
+npm run typecheck
+npm run e2e        # headless-Chrome run on the real map: import, search, location, GPX, offline
 ```
 
-On the iPhone, open the GitHub Pages URL in Safari, then use Share → Add to Home Screen. Open the app, tap Import, and pick the `.img` and the `.hgt` files from the Files app. They stay on the device.
+Tests that need real data look for the GPSmap.is package in `GPSmap.is 2024.21 Android/` at the repo root
+(never committed). `npm run build` writes the site to `web/dist/`: the instructions page from `web/site/` at the
+root and the app under `app/`.
+
+Pushing to `main` deploys to GitHub Pages (`.github/workflows/pages.yml`) after typecheck, tests and build.
+
+## Layout
+
+- `web/src/img/`: Garmin IMG reader (container, TRE, RGN, LBL, TYP)
+- `web/src/tiles/`, `web/src/style/`: vector tiles built on demand in workers, and the MapLibre style
+- `web/src/dem/`: terrain tiles and ground height from `.hgt` files
+- `web/src/search/`: place index, descriptions and ranking
+- `web/src/location/`, `web/src/app/location.ts`: follow, heading-up, keep screen on
+- `web/src/gpx/`, `web/src/app/tracks.ts`: GPX import, storage and drawing
+- `web/src/storage/`: storing imported files on the device (OPFS)
+- `web/site/`: the instructions page served at the site root
