@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { GpxError, parseGpx } from '../src/gpx/parse';
-import { climb, formatDistance, formatDuration, summarize } from '../src/gpx/stats';
+import { nextColor, TRACK_COLORS, trackBounds, tracksGeoJson } from '../src/gpx/layers';
+import { climb, formatDistance, formatDuration, formatStats, summarize } from '../src/gpx/stats';
+import type { StoredTrack } from '../src/gpx/store';
 
 const GPX11 = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">
@@ -79,5 +81,31 @@ describe('stats', () => {
     expect(formatDuration((5 * 60 + 20) * 60_000)).toBe('5 h 20 min');
     expect(formatDuration(30 * 3600_000)).toBe('1 day 6 h');
     expect(formatDuration(52 * 3600_000)).toBe('2 days');
+  });
+});
+
+describe('track layers', () => {
+  const track = (id: string, color: string, visible = true): StoredTrack => ({
+    id, name: id, color, visible, added: 0, stats: summarize(parseGpx(GPX11)), gpx: parseGpx(GPX11),
+  });
+
+  test('each new track takes the first colour not in use', () => {
+    expect(nextColor([])).toBe(TRACK_COLORS[0]);
+    expect(nextColor([{ color: TRACK_COLORS[0] }, { color: TRACK_COLORS[2] }])).toBe(TRACK_COLORS[1]);
+    expect(nextColor(TRACK_COLORS.map((color) => ({ color })))).toBe(TRACK_COLORS[0]);
+  });
+
+  test('only visible tracks are drawn: their lines and named or unnamed waypoints, in their colour', () => {
+    const fc = tracksGeoJson([track('a', '#111111'), track('b', '#222222', false)]);
+    expect(fc.features.map((f) => [f.geometry.type, f.properties!.color])).toEqual([
+      ['LineString', '#111111'], ['LineString', '#111111'], ['LineString', '#111111'], ['Point', '#111111'], ['Point', '#111111'],
+    ]);
+    expect(fc.features[3].properties!.name).toBe('Landmannalaugar');
+  });
+
+  test('bounds cover lines and waypoints; stats read as one line', () => {
+    expect(trackBounds(track('a', '#111111'))).toEqual([[-19.45, 63.63], [-19.05, 63.996]]);
+    expect(formatStats({ distance: 54210, climb: 1850, duration: 52 * 3600_000 })).toBe('54 km · ↑ 1,850 m · 2 days');
+    expect(formatStats({ distance: 850, climb: null, duration: null })).toBe('850 m');
   });
 });

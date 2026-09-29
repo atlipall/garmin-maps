@@ -3,7 +3,7 @@ import type { LineStyle, RgbaImage, Typ } from '../img/typ';
 import { CONTOUR_LINE_TYPES, MAX_ZOOM, MIN_ZOOM } from '../map/zoom';
 import { BACKGROUND, DEFAULT_LINE, DEFAULT_LINE_PRIORITY, LINE_PRIORITY, LINE_STYLES, POLYGON_COLORS, SKIP_POLYGONS } from './fallback';
 
-const FONT_REGULAR = 'Noto Sans Regular';
+export const FONT_REGULAR = 'Noto Sans Regular';
 const FONT_ITALIC = 'Noto Sans Italic';
 const HALO = { 'text-halo-color': '#ffffff', 'text-halo-width': 1.2 };
 const CONTOURS = [...CONTOUR_LINE_TYPES].sort((a, b) => a - b);

@@ -5,11 +5,12 @@ import { collapseNearby, describePlace, titleCase, townsOf } from '../search/des
 import { PlaceIndex } from '../search/placeIndex';
 import type { Place } from '../search/places';
 import { cacheKey, readText, writeText, type Stored } from '../storage/store';
-import { buildStyle } from '../style/buildStyle';
+import { buildStyle, FONT_REGULAR } from '../style/buildStyle';
 import { preloadImages } from '../ui/images';
 import { PerfStats } from '../ui/perf';
 import { browserScreenAwake } from '../location/wakeLock';
 import { HeightControl, LocationControl } from './location';
+import { TracksPanel } from './tracks';
 import { TilePool, type OpenMeta } from '../worker/pool';
 import { showImport } from './importScreen';
 
@@ -30,6 +31,7 @@ declare global {
       placesReady: boolean;
       search: (q: string) => Place[] | null;
       samples: typeof SAMPLES;
+      tracks: TracksPanel | null;
     };
   }
 }
@@ -174,9 +176,18 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     showImport('', { hasMap: true, canCancel: true });
   };
 
-  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES };
+  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null };
   window.__app = app;
   map.once('idle', () => (app.ready = true));
+  // GPX tracks: drawn above the map once its style has loaded; ⋯ → Tracks lists and imports them.
+  map.once('load', () => {
+    const tracks = new TracksPanel(map, (coords) => pool.elevations(coords), FONT_REGULAR);
+    app.tracks = tracks;
+    $('tracks-open').onclick = () => {
+      setMenu(false);
+      tracks.show(true);
+    };
+  });
 
   void loadPlaces(stored, pool)
     .then((index) => {

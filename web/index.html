@@ -58,6 +58,24 @@
       #map .locate-button[data-state="heading"] { color: #fff; background: #1f7ae0; }
       #map .locate-button.unavailable { opacity: 0.45; }
       #map .height-pill { padding: 3px 10px; border-radius: 999px; background: #fff; box-shadow: 0 1px 4px #0003; font: 600 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink); }
+      /* Tracks panel (⋯ → Tracks): below the top row, scrolls when long. */
+      #tracks { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
+      .tracks-head { display: flex; align-items: center; justify-content: space-between; }
+      .tracks-head h2 { margin: 0; font-size: 18px; }
+      #tracks-close { width: var(--btn); height: var(--btn); margin-right: -10px; border: 0; background: none; font-size: 26px; color: #667; cursor: pointer; }
+      #tracks-empty { margin: 4px 0 8px; color: #556; font-size: 14px; }
+      #track-list { list-style: none; margin: 0; padding: 0; }
+      .track { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 8px; border-top: 1px solid #0001; }
+      .track .swatch { width: 14px; height: 14px; border-radius: 50%; }
+      .track-info { display: grid; gap: 1px; min-width: 0; padding: 8px 0; border: 0; background: none; text-align: left; color: var(--ink); cursor: pointer; font: inherit; }
+      .track-info .name { font-weight: 600; overflow-wrap: anywhere; }
+      .track-info .stats { font-size: 13px; color: #667; }
+      .track-eye, .track-delete { min-width: 40px; height: 40px; border: 0; border-radius: 8px; background: none; color: #445; cursor: pointer; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
+      .track-eye[aria-pressed="false"] { color: #99a; }
+      .track-delete.confirm { padding: 0 10px; background: #b00020; color: #fff; font-size: 14px; font-weight: 600; }
+      #tracks-error { color: #b00020; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+      #tracks-error:not(:empty) { margin-top: 8px; }
+      #import-gpx { margin-top: 10px; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 16px; cursor: pointer; }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {
         #map .maplibregl-ctrl-group button { width: var(--btn); height: var(--btn); }
@@ -96,10 +114,22 @@
     <div id="badge" class="panel" role="status" aria-live="polite" hidden></div>
     <button id="menu-button" class="panel" aria-label="Menu" aria-haspopup="true" aria-expanded="false" hidden>⋯</button>
     <div id="menu" class="panel" role="menu" hidden>
+      <button id="tracks-open" role="menuitem">Tracks (GPX)</button>
       <button id="keep-awake" role="menuitemcheckbox" aria-checked="true">Keep screen on while locating</button>
       <button id="replace" role="menuitem">Load another map</button>
     </div>
     <div id="perf" class="panel" hidden></div>
+    <section id="tracks" class="panel" aria-labelledby="tracks-title" hidden>
+      <div class="tracks-head">
+        <h2 id="tracks-title">Tracks</h2>
+        <button id="tracks-close" type="button" aria-label="Close tracks">×</button>
+      </div>
+      <p id="tracks-empty">No tracks yet. Import GPX files, for example ones recorded with another app, to see them on the map.</p>
+      <ul id="track-list"></ul>
+      <div id="tracks-error" role="alert"></div>
+      <button id="import-gpx" type="button">Import GPX…</button>
+      <input id="gpx-file" type="file" multiple hidden />
+    </section>
     <section id="import" hidden>
       <div class="card panel">
         <h2>Load your map</h2>
