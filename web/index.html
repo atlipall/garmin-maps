@@ -34,7 +34,10 @@
       #results .dist { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 13px; color: #445; white-space: nowrap; }
       #menu-button { position: absolute; z-index: 3; top: var(--top); right: calc(env(safe-area-inset-right) + var(--gap)); width: var(--btn); height: var(--btn); border: 0; font-size: 22px; line-height: 1; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
       #menu { position: absolute; z-index: 4; background: #fff; top: calc(var(--top) + var(--btn) + 6px); right: calc(env(safe-area-inset-right) + var(--gap)); min-width: 200px; padding: 4px 0; }
-      #menu button { display: block; width: 100%; padding: 12px 16px; border: 0; background: none; font-size: 16px; text-align: left; color: var(--ink); cursor: pointer; }
+      #menu button { display: block; width: 100%; padding: 12px 16px; border: 0; background: none; font-size: 16px; text-align: left; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      #menu [role="menuitemcheckbox"] { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+      #menu [role="menuitemcheckbox"]::after { content: ""; flex: none; width: 40px; height: 24px; border-radius: 12px; background: #c9ccd1 radial-gradient(circle at 12px 12px, #fff 9px, transparent 10px); transition: background-position 0.15s; }
+      #menu [role="menuitemcheckbox"][aria-checked="true"]::after { background: #1f7ae0 radial-gradient(circle at 28px 12px, #fff 9px, transparent 10px); }
       #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 64px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: 13px; color: #8a3b00; }
       #perf { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); top: calc(var(--top) + var(--btn) + var(--gap)); padding: 6px 8px; font: 11px ui-monospace, monospace; white-space: pre; }
       /* MapLibre's corner controls, kept clear of the notch / home indicator and our top row.
@@ -93,6 +96,7 @@
     <div id="badge" class="panel" role="status" aria-live="polite" hidden></div>
     <button id="menu-button" class="panel" aria-label="Menu" aria-haspopup="true" aria-expanded="false" hidden>⋯</button>
     <div id="menu" class="panel" role="menu" hidden>
+      <button id="keep-awake" role="menuitemcheckbox" aria-checked="true">Keep screen on while locating</button>
       <button id="replace" role="menuitem">Load another map</button>
     </div>
     <div id="perf" class="panel" hidden></div>

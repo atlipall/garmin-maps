@@ -87,6 +87,9 @@ export class LocationControl implements maplibregl.IControl {
     this.render();
   }
 
+  /** Called whenever location turns on or off (following or paused counts as on). */
+  onActiveChange: ((active: boolean) => void) | null = null;
+
   /** The latest position fix, if any. */
   get lastFix(): Fix | null {
     return this.fix;
@@ -131,6 +134,7 @@ export class LocationControl implements maplibregl.IControl {
     const prev = this.state;
     this.state = next;
     if (next.mode === 'off' && prev.mode !== 'off') this.stop();
+    if ((next.mode === 'off') !== (prev.mode === 'off')) this.onActiveChange?.(next.mode !== 'off');
     this.render();
     if (next.mode !== 'off' && !next.paused) this.follow(true);
   }
@@ -172,9 +176,11 @@ export class LocationControl implements maplibregl.IControl {
   }
 
   private unavailable(message: string): void {
+    const wasOn = this.state.mode !== 'off';
     this.stop();
     this.state = INITIAL;
     this.render();
+    if (wasOn) this.onActiveChange?.(false);
     this.button.classList.add('unavailable');
     this.button.title = message;
   }

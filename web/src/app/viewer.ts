@@ -8,6 +8,7 @@ import { cacheKey, readText, writeText, type Stored } from '../storage/store';
 import { buildStyle } from '../style/buildStyle';
 import { preloadImages } from '../ui/images';
 import { PerfStats } from '../ui/perf';
+import { browserScreenAwake } from '../location/wakeLock';
 import { HeightControl, LocationControl } from './location';
 import { TilePool, type OpenMeta } from '../worker/pool';
 import { showImport } from './importScreen';
@@ -122,6 +123,26 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   const height = new HeightControl();
   const locate = new LocationControl((lon, lat) => pool.elevation(lon, lat), height.element);
   map.addControl(locate, 'bottom-right');
+  // Keep the screen on while location is on (a ⋯ menu switch, remembered on this device).
+  const awake = browserScreenAwake();
+  let keepAwake = readSetting('keepAwake', true);
+  let locating = false;
+  const keepAwakeItem = $<HTMLButtonElement>('keep-awake');
+  const syncAwake = () => {
+    keepAwakeItem.setAttribute('aria-checked', String(keepAwake));
+    awake.setWanted(keepAwake && locating);
+  };
+  keepAwakeItem.hidden = !awake.supported;
+  keepAwakeItem.onclick = () => {
+    keepAwake = !keepAwake;
+    writeSetting('keepAwake', keepAwake);
+    syncAwake();
+  };
+  locate.onActiveChange = (active) => {
+    locating = active;
+    syncAwake();
+  };
+  syncAwake();
   // Corner controls stack upwards in the order added: the height pill sits above the scale bar.
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
   map.addControl(height, 'bottom-left');
@@ -263,4 +284,23 @@ function wireSearch(map: maplibregl.Map, index: PlaceIndex, searchFrom: () => { 
     marker = null;
     input.focus();
   };
+}
+
+/** Per-device preferences in localStorage; storage can be unavailable (private mode), so both
+ *  sides fail soft to the default. */
+function readSetting(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v === '1';
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSetting(key: string, value: boolean): void {
+  try {
+    localStorage.setItem(key, value ? '1' : '0');
+  } catch {
+    // not remembered; the switch still works for this session
+  }
 }
