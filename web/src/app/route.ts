@@ -4,7 +4,11 @@ import { readSetting, writeSetting } from '../ui/settings';
 import { offRoadText, routeMessage, type StartKind } from './routeMessage';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const LONG_PRESS_MS = 550;
+/** Hold time for a long press: below iOS's own ~0.5 s long-press gestures (selection loupe, callout). */
+const LONG_PRESS_MS = 450;
+/** iOS may cancel the touch when its own long-press gesture starts; a finger held still this long
+ *  by then already counts as a long press. */
+const LONG_PRESS_CANCEL_MS = 350;
 /** "Use my location" gives up on a first fix after this long. */
 const FIX_WAIT_MS = 20_000;
 
@@ -86,6 +90,13 @@ export class RoutePlanner {
     });
     let timer = 0;
     let startXY: [number, number] | null = null;
+    let startAt = 0;
+    const dropAt = (xy: [number, number]) => {
+      const r = canvas.getBoundingClientRect();
+      const ll = map.unproject([xy[0] - r.left, xy[1] - r.top]);
+      pressed = true;
+      this.pick({ name: null, lon: ll.lng, lat: ll.lat });
+    };
     const canvas = map.getCanvasContainer();
     // A new mouse press starts afresh (a right-click is followed by no click to clear the guard).
     canvas.addEventListener('pointerdown', (e) => {
@@ -96,19 +107,32 @@ export class RoutePlanner {
       pressed = false;
       if (e.touches.length !== 1) return;
       const t = e.touches[0];
-      startXY = [t.clientX, t.clientY];
+      const xy: [number, number] = [t.clientX, t.clientY];
+      startXY = xy;
+      startAt = Date.now();
       timer = window.setTimeout(() => {
-        const r = canvas.getBoundingClientRect();
-        const ll = map.unproject([startXY![0] - r.left, startXY![1] - r.top]);
-        pressed = true;
-        this.pick({ name: null, lon: ll.lng, lat: ll.lat });
+        timer = 0;
+        dropAt(xy);
       }, LONG_PRESS_MS);
     }, { passive: true });
+    const cancelPress = () => {
+      clearTimeout(timer);
+      timer = 0;
+      startXY = null;
+    };
     canvas.addEventListener('touchmove', (e) => {
       const t = e.touches[0];
-      if (startXY && Math.hypot(t.clientX - startXY[0], t.clientY - startXY[1]) > 10) clearTimeout(timer);
+      if (startXY && (e.touches.length !== 1 || Math.hypot(t.clientX - startXY[0], t.clientY - startXY[1]) > 10)) cancelPress();
     }, { passive: true });
-    for (const ev of ['touchend', 'touchcancel']) canvas.addEventListener(ev, () => clearTimeout(timer));
+    canvas.addEventListener('touchend', cancelPress);
+    // iOS cancels the touch when its own long-press gesture begins: if the finger had already been
+    // held still for most of a long press, take it as one rather than dropping the press.
+    canvas.addEventListener('touchcancel', () => {
+      const xy = startXY;
+      const held = timer !== 0 && xy !== null && Date.now() - startAt >= LONG_PRESS_CANCEL_MS;
+      cancelPress();
+      if (held) dropAt(xy!);
+    });
   }
 
   /** Shows the destination card for a place (from search or a long press). */

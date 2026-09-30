@@ -18,6 +18,9 @@
       /* The body is the positioning box for the map and every overlay. */
       body { position: fixed; top: 0; left: 0; right: 0; overflow: hidden; }
       #map { position: absolute; inset: 0; }
+      /* No text selection, loupe or callout on the map: iOS would otherwise start its own long-press
+         gesture and cancel the touch that drops a pin. */
+      #map, #map * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
       .panel { background: #fffffff0; border-radius: 10px; box-shadow: 0 1px 6px #0003; }
       :root { --gap: 8px; --btn: 44px; --top: calc(env(safe-area-inset-top) + var(--gap)); --bottom: calc(env(safe-area-inset-bottom) + var(--gap)); }
       /* Top row: search (stretches) + menu button. */
