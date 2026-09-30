@@ -55,7 +55,7 @@ highland estimates are realistic (Selfoss → Landmannalaugar should come out ne
 
 | Road | Cap (km/h) |
 |---|---|
-| F-road (type 0x12, or a name like "F208") | 25 |
+| F-road (type 0x12, or a name like "F208") | 35 (was 25; raised 2026-09-30 so highland routes aren't passed over) |
 | Track (0x11) | 20 |
 | Rough 4×4 track (0x13) | 15 |
 

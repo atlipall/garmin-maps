@@ -56,7 +56,7 @@ describe('NOD network', () => {
     expect(fastestRoute(g, bN, a, true)).toBeNull(); // one-way
     const f = fastestRoute(g, bN, c, true)!;
     expect(f.metres).toBeCloseTo(1200, 3);
-    expect(f.seconds).toBeCloseTo(1200 / (25 / 3.6), 1); // class 2 (40 km/h) capped at 25
+    expect(f.seconds).toBeCloseTo(1200 / (35 / 3.6), 1); // class 2 (40 km/h) capped at 35
     expect(g.edgeFlags[f.edges[0]] & EDGE_FROAD).toBe(EDGE_FROAD);
     expect([g.edgeTile[f.edges[0]], g.edgeNet[f.edges[0]]]).toEqual([3, 2]);
     expect(fastestRoute(g, bN, c, false)).toBeNull(); // F-roads not allowed
