@@ -346,10 +346,16 @@ try {
   // its numbered circle removes it again.
   const direct = await page.$eval('#route-info', (e) => e.textContent);
   const km = (t) => Number(/^(\d+) km/.exec(t)?.[1]);
+  // Zoomed in where the waypoint goes: the view stays there (only a new route zooms to fit).
+  await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-20.39, 63.845], zoom: 12 }); m.once('idle', r); }));
+  const viewBefore = await page.evaluate(() => { const m = window.__app.map; return [m.getCenter().lng, m.getCenter().lat, m.getZoom()]; });
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Near Hella', lon: -20.397, lat: 63.845 }));
   await page.click('#route-confirm-via');
   await page.waitForFunction(() => /via 1 waypoint$/.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 }).catch(async () => fail(`no route via the waypoint: ${await page.$eval('#route-msg', (e) => e.textContent)}`));
   const viaInfo = await page.$eval('#route-info', (e) => e.textContent);
+  await new Promise((r) => setTimeout(r, 1000));
+  const viewAfter = await page.evaluate(() => { const m = window.__app.map; return [m.getCenter().lng, m.getCenter().lat, m.getZoom()]; });
+  if (viewAfter.some((v, i) => Math.abs(v - viewBefore[i]) > 1e-6)) fail(`adding a waypoint moved the map: ${viewBefore} → ${viewAfter}`);
   const nearHella = await page.evaluate(() => {
     const line = window.__app.map.getStyle().sources.route.data.features.find((f) => f.properties.kind === 'route').geometry.coordinates;
     return Math.min(...line.map(([lon, lat]) => Math.hypot((lon + 20.397) * Math.cos((63.834 * Math.PI) / 180), lat - 63.834) * 111_195));
@@ -365,7 +371,6 @@ try {
     return { onRoute: Math.min(...line.map(([lon, lat]) => Math.hypot((lon - vlon) * k, lat - vlat) * 111_195)), moved: Math.hypot((vlon + 20.397) * k, vlat - 63.845) * 111_195, offroad: feats.filter((f) => f.properties.kind === 'offroad').length };
   });
   if (snapped.onRoute > 5 || snapped.moved < 5 || snapped.offroad > 2) fail(`waypoint not snapped to the road: ${JSON.stringify(snapped)}`);
-  await new Promise((r) => setTimeout(r, 1200)); // fitBounds
   await page.screenshot({ path: `${OUT}route-waypoint.png` });
   const viaXY = await page.evaluate(() => { const m = window.__app.map; const p = m.project(m.getStyle().sources['route-vias'].data.features[0].geometry.coordinates); const b = m.getCanvas().getBoundingClientRect(); return [b.left + p.x, b.top + p.y]; });
   await page.mouse.click(viaXY[0], viaXY[1]);

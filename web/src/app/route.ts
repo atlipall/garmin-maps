@@ -66,7 +66,8 @@ export class RoutePlanner {
   private seq = 0;
   /** The route start when it was the map centre (remembered as a point across restarts). */
   private fromCentre: [number, number] | null = null;
-  /** The next route found moves the map to show it (not a route restored at startup). */
+  /** The next route found moves the map to show it: a new route or start, not a route restored at
+   *  startup or one changed by a waypoint or switch. */
   private fitRoute = true;
   /** Called when the place, start or route changes (for remembering them across restarts). */
   onChange: (() => void) | null = null;
@@ -130,15 +131,21 @@ export class RoutePlanner {
       this.allow = (e.target as HTMLInputElement).checked;
       writeSetting('allowFRoads', this.allow);
       this.showSwitches();
-      // While waiting for a position, the route that follows uses the new setting.
-      if (this.started && !this.waiting) void this.route();
+      // While waiting for a position, the route that follows uses the new setting. The view stays.
+      if (this.started && !this.waiting) {
+        this.fitRoute = false;
+        void this.route();
+      }
     };
     // Prefer F-roads (only offered while they're allowed): they count for less when choosing.
     $<HTMLInputElement>('route-prefer').onchange = (e) => {
       this.prefer = (e.target as HTMLInputElement).checked;
       writeSetting('preferFRoads', this.prefer);
-      // While waiting for a position, the route that follows uses the new setting.
-      if (this.started && !this.waiting) void this.route();
+      // While waiting for a position, the route that follows uses the new setting. The view stays.
+      if (this.started && !this.waiting) {
+        this.fitRoute = false;
+        void this.route();
+      }
     };
     $('route-change').onclick = () => this.showChoices($('route-choices').hidden === true);
     $('route-use-gps').onclick = () => void this.useMyLocation();
@@ -332,11 +339,13 @@ export class RoutePlanner {
     const vias = [...this.vias];
     vias.splice(bestInsert(stops, [p.lon, p.lat]), 0, p);
     this.setVias(vias);
+    this.fitRoute = false; // keep the view where the waypoint was picked
     void this.route();
   }
 
   private removeVia(i: number): void {
     this.setVias(this.vias.filter((_, k) => k !== i));
+    this.fitRoute = false;
     void this.route();
   }
 
