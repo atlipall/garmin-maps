@@ -256,6 +256,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
         map.easeTo({ center: [p.lon, p.lat], zoom: Math.max(map.getZoom(), 12), duration: 600 });
       },
       (r) => routePlanner.openSaved(r),
+      () => tracks.reload(),
     );
     app.saved = saved;
     routePlanner.onSave = (item) => saved.add(item);

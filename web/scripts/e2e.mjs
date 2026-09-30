@@ -527,12 +527,28 @@ try {
   if (routingTitle !== 'Routing to Hekla view') fail(`title routing to a saved pin: ${routingTitle}`);
   await page.click('#route-close');
   await page.click('#route-confirm-yes');
+  // Back up (a download here) with both items and the GPX track; delete them; restore brings them back.
+  const backupName = `Garmin Map backup ${new Date().toISOString().slice(0, 10)}.json`;
+  await rm(`${dl}${backupName}`, { force: true });
+  await page.click('#backup-save');
+  let backupText = '';
+  for (let t = 0; t < 50 && !backupText; t++) {
+    await new Promise((r) => setTimeout(r, 100));
+    backupText = await readFile(`${dl}${backupName}`, 'utf8').catch(() => '');
+  }
+  const backup = JSON.parse(backupText || '{}');
+  if (backup.saved?.length !== 2 || backup.tracks?.length !== 1) fail(`backup file: ${backupText.slice(0, 200)}`);
   for (const left of [1, 0]) {
     await page.click('#saved-list li:first-child .track-delete');
     await page.click('#saved-list li:first-child .track-delete');
     await page.waitForFunction((n) => window.__app.saved.count === n && document.querySelectorAll('#saved-list li').length === n, { timeout: 5_000 }, left);
   }
   await page.waitForFunction(() => window.__app.saved.count === 0 && !document.querySelector('#saved-list li'), { timeout: 5_000 }).catch(() => fail('saved items not deleted'));
+  await (await page.$('#backup-file')).uploadFile(`${dl}${backupName}`);
+  await page.waitForFunction(() => window.__app.saved.count === 2, { timeout: 5_000 }).catch(() => fail('restore did not bring the saved items back'));
+  const restored = await page.$eval('#backup-status', (e) => e.textContent);
+  if (restored !== 'Restored 2 saved items and 0 tracks.') fail(`restore status: ${restored}`);
+  console.log('backup and restore ok:', restored);
   await page.click('#saved-close');
   console.log('saved list ok:', opened.info);
   if (await page.$('#import:not([hidden])')) fail('import screen shown after reload');

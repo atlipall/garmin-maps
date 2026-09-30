@@ -3,6 +3,7 @@ import { addTrackLayers, nextColor, trackBounds, tracksGeoJson } from '../gpx/la
 import { parseGpx } from '../gpx/parse';
 import { climb, formatStats, summarize } from '../gpx/stats';
 import { deleteTrack, listTracks, putTrack, type StoredTrack } from '../gpx/store';
+import { noteDeleted } from '../saved/deleted';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -50,11 +51,18 @@ export class TracksPanel {
       void this.importFiles(files);
     };
     $('tracks-close').onclick = () => this.show(false);
-    listTracks().then((t) => {
-      this.tracks = t;
+    void this.reload();
+  }
+
+  /** Reads the tracks from storage again (after a restore or a sync). */
+  async reload(): Promise<void> {
+    try {
+      this.tracks = await listTracks();
       this.refresh();
-      for (const tr of t) if (tr.stats.climb === null) void this.fillClimb(tr);
-    }, (err) => this.fail(err));
+      for (const tr of this.tracks) if (tr.stats.climb === null) void this.fillClimb(tr);
+    } catch (err) {
+      this.fail(err);
+    }
   }
 
   show(open: boolean): void {
@@ -107,6 +115,7 @@ export class TracksPanel {
       const value = climb(lines.map((l) => l.map(() => heights[k++])));
       if (value === null) return;
       track.stats = { ...track.stats, climb: value };
+      track.updated = Date.now();
       await putTrack(track);
       this.refresh();
     } catch {
@@ -184,6 +193,7 @@ export class TracksPanel {
 
   private async setVisible(t: StoredTrack, visible: boolean): Promise<void> {
     t.visible = visible;
+    t.updated = Date.now();
     this.refresh();
     await putTrack(t).catch((err) => this.fail(err));
   }
@@ -191,6 +201,7 @@ export class TracksPanel {
   private async remove(t: StoredTrack): Promise<void> {
     try {
       await deleteTrack(t.id);
+      noteDeleted(t.id);
       this.tracks = this.tracks.filter((x) => x.id !== t.id);
       this.refresh();
     } catch (err) {

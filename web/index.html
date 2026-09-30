@@ -88,6 +88,12 @@
       #tracks-empty, #saved-empty { margin: 4px 0 8px; color: #556; font-size: 14px; }
       #track-list, #saved-list { list-style: none; margin: 0; padding: 0; }
       .track { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 8px; border-top: 1px solid #0001; }
+      #backup { margin-top: 12px; padding-top: 10px; border-top: 1px solid #0001; display: grid; gap: 8px; font-size: 14px; color: #556; }
+      #backup p { margin: 0; }
+      .backup-buttons { display: flex; gap: 8px; }
+      .backup-buttons button { flex: 1; min-height: 44px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+      #backup-status:empty { display: none; }
+      #backup-status { color: #1d5e2a; }
       .saved-item { grid-template-columns: 18px 1fr auto; }
       .saved-item:has(.saved-export) { grid-template-columns: 18px 1fr auto auto; }
       .saved-icon { display: grid; place-items: center; font-size: 17px; color: #d49b00; }
@@ -242,9 +248,15 @@
         <h2 id="saved-title">Saved</h2>
         <button id="saved-close" type="button" aria-label="Close saved">×</button>
       </div>
-      <p id="saved-empty">Nothing saved yet. Tap <b>☆ Save</b> on a place or route card to keep it here.</p>
+      <p id="saved-empty">Nothing saved yet. Tap <b>Save</b> on a place or route card to keep it here.</p>
       <ul id="saved-list"></ul>
       <div id="saved-error" role="alert"></div>
+      <div id="backup">
+        <p>Keep a copy of your saved places and routes and your GPX tracks, or bring them to another device (for example through iCloud Drive in Files).</p>
+        <div class="backup-buttons"><button id="backup-save" type="button">Back up…</button><button id="backup-restore" type="button">Restore…</button></div>
+        <p id="backup-status" role="status"></p>
+        <input id="backup-file" type="file" accept=".json,application/json" hidden />
+      </div>
     </section>
     <section id="route-card" aria-live="polite" hidden>
       <div id="route-head">

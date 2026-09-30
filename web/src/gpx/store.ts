@@ -10,6 +10,8 @@ export interface StoredTrack {
   visible: boolean;
   /** When it was imported (ms): the list order. */
   added: number;
+  /** When it was last changed (ms; shown or hidden, climb filled in), for syncing. */
+  updated?: number;
   stats: GpxStats;
   gpx: Gpx;
 }

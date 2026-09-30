@@ -12,6 +12,8 @@ interface Common {
   name: string;
   /** When it was saved (ms): the list order. */
   added: number;
+  /** When it was last changed (ms), for syncing; none: never changed. */
+  updated?: number;
 }
 
 export interface SavedPin extends Common {

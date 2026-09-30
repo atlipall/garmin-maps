@@ -1,5 +1,8 @@
 import type * as maplibregl from 'maplibre-gl';
 import { deleteSaved, listSaved, putSaved, type Saved, type SavedPin, type SavedRoute } from '../saved/saved';
+import { listTracks, putTrack } from '../gpx/store';
+import { backupFileName, makeBackup, parseBackup, toStore } from '../saved/backup';
+import { deletions, noteDeleted } from '../saved/deleted';
 import { gpxFileName, routeGpx, shareFile } from '../gpx/export';
 import { coordsText, fmtKm, fmtTime } from './route';
 
@@ -56,6 +59,8 @@ export class SavedPanel {
     font: string,
     private readonly openPin: (p: SavedPin) => void,
     private readonly openRoute: (r: SavedRoute) => void,
+    /** Reads the GPX tracks again after a restore brought some in. */
+    private readonly reloadTracks: () => Promise<void>,
   ) {
     map.addImage('saved-star', starImage(), { pixelRatio: 2 });
     map.addSource('saved', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -83,10 +88,51 @@ export class SavedPanel {
     map.on('mouseenter', 'saved-pins', () => (map.getCanvas().style.cursor = 'pointer'));
     map.on('mouseleave', 'saved-pins', () => (map.getCanvas().style.cursor = ''));
     $('saved-close').onclick = () => this.show(false);
-    listSaved().then((items) => {
-      this.items = items;
+    $('backup-save').onclick = () => void this.backup().catch((err) => this.fail(err));
+    const input = $<HTMLInputElement>('backup-file');
+    $('backup-restore').onclick = () => input.click();
+    input.onchange = () => {
+      const file = input.files?.[0];
+      input.value = '';
+      if (file) void this.restore(file).catch((err) => this.fail(err));
+    };
+    void this.reload();
+  }
+
+  /** Reads the saved items from storage again (after a restore or a sync). */
+  async reload(): Promise<void> {
+    try {
+      this.items = await listSaved();
       this.refresh();
-    }, (err) => this.fail(err));
+    } catch (err) {
+      this.fail(err);
+    }
+  }
+
+  /** Everything saved plus the GPX tracks, as one file (the share sheet on a phone, else a download). */
+  private async backup(): Promise<void> {
+    this.status('');
+    const text = JSON.stringify(makeBackup(await listSaved(), await listTracks(), deletions()));
+    await shareFile(backupFileName(), text, 'application/json');
+  }
+
+  /** Brings in what a backup has that this device doesn't (or has an older copy of); deletes nothing. */
+  private async restore(file: File): Promise<void> {
+    this.status('');
+    const b = parseBackup(await file.text());
+    const saved = toStore(await listSaved(), b.saved);
+    const tracks = toStore(await listTracks(), b.tracks);
+    for (const s of saved) await putSaved(s);
+    for (const t of tracks) await putTrack(t);
+    await this.reload();
+    if (tracks.length) await this.reloadTracks();
+    const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+    this.status(saved.length || tracks.length ? `Restored ${n(saved.length, 'saved item', 'saved items')} and ${n(tracks.length, 'track', 'tracks')}.` : 'Nothing new in this backup: everything in it is already here.');
+  }
+
+  private status(text: string): void {
+    $('backup-status').textContent = text;
+    this.error.textContent = '';
   }
 
   show(open: boolean): void {
@@ -181,6 +227,7 @@ export class SavedPanel {
   private async remove(s: Saved): Promise<void> {
     try {
       await deleteSaved(s.id);
+      noteDeleted(s.id);
       this.items = this.items.filter((x) => x.id !== s.id);
       this.refresh();
     } catch (err) {
