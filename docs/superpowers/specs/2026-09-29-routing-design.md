@@ -69,11 +69,22 @@ network builds in about a tenth of a second.
 
 ### Route search
 
-- Start: the GPS position if a fix is under 10 minutes old, else the map centre. End: the chosen
-  place. Both snap to the nearest node of the main network (the largest connected part) within
-  2 km; otherwise the panel explains which end has no road nearby.
-- A* over travel time; with the switch off, F-road and track edges are skipped.
-- Result: node path, metres, seconds.
+- Start: the GPS position if a fix is under 10 minutes old, else the map centre, or a point chosen
+  on the map ("Change" in the panel). End: the chosen place.
+- Each end snaps to the nearest point on a routable road line (finest level, NET-labelled; with the
+  switch off, normal roads only), searching 2, 10, then 50 km out (`web/src/routing/snap.ts`).
+  From that point the road is followed both ways to the nearest graph nodes (line vertices and NOD
+  nodes share exact coordinates; a line that ends short of a node continues in the next line of the
+  same road), giving the stretch's two nodes, their road distances and, from the graph's edges for
+  that road, its speed and one-way direction. If no line leads to main-network nodes, the nearest
+  node that can be left (start) or reached (end) is used. Nothing within 50 km: the panel says
+  which end has no road.
+- A* over travel time from the start's usable nodes (with the partial stretch's time as their
+  initial cost) to the destination's (with the partial time as an extra cost); with the switch off,
+  F-road and track edges are skipped. Both ends on one stretch: straight along the road when its
+  direction allows. Ends closer than 5 m: "You're already there".
+- Result: shape (partial stretch, the edges along their road lines, partial stretch), road metres
+  and seconds, and a straight off-road leg for an end more than 30 m from its road.
 
 ### Drawing the route along the roads
 
@@ -88,13 +99,16 @@ drawn straight.
 - **Destination card.** Tapping a search result (flies there and drops the pin, as now) or a long
   press on the map (right-click on the Mac; drops a pin) shows a card at the bottom: the name (or
   "Dropped pin" and coordinates) and **Route here**. Tapping the map elsewhere or × closes it.
-- **Route panel.** "To ‹name›", "186 km · 3 h 05 min · from your position" (or "from the map
-  centre"), and the switch "Allow F-roads and tracks". The first route of a session shows "Preparing
-  roads…". Messages instead of silent failure: "No road within 2 km of the destination", "No road
+- **Route panel.** "To ‹name›", "From your position" (or "the map centre", "the chosen point") with
+  **Change** ("Use my location", "Choose on the map"), "186 km · 3 h 05 min · from your position",
+  "+ 1.3 km off-road at the start" when an end is away from the road, and the switch "Allow F-roads
+  and tracks". The first route of a session shows "Preparing roads…". Messages instead of silent
+  failure: "No road within 50 km of the destination", "No road
   near your position", "No route without F-roads and tracks: turn the switch on to allow them". ×
   clears the route and pin.
 - **On the map.** A thick dark-blue line with a white casing, above the map and GPX tracks, below
-  the position dot; a white start dot and the red destination pin. The map fits the route above the
+  the position dot; off-road legs thinner and dashed; a white start dot (or a white start pin for a
+  start chosen on the map) and the red destination pin. The map fits the route above the
   panel. The route doesn't change as you move (no guidance); follow and heading-up work as usual.
 - **Instructions page.** A short "Plan a route" section.
 
