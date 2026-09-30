@@ -2,7 +2,7 @@
 
 A web app that shows Garmin `.img` maps (such as GPSmap.is Iceland) on iPhone and Mac, drawn straight from the
 map file in the browser and fully offline: hillshading from SRTM `.hgt` files, place search, GPS follow with
-heading-up and ground height, and GPX tracks.
+heading-up and ground height, GPX tracks, and route planning by road.
 
 Live at <https://atlipall.github.io/garmin-maps/> (instructions) and <https://atlipall.github.io/garmin-maps/app/>
 (the app). The map and elevation files stay on the user's device; nothing is uploaded.
@@ -34,5 +34,6 @@ Pushing to `main` deploys to GitHub Pages (`.github/workflows/pages.yml`) after 
 - `web/src/search/`: place index, descriptions and ranking
 - `web/src/location/`, `web/src/app/location.ts`: follow, heading-up, keep screen on
 - `web/src/gpx/`, `web/src/app/tracks.ts`: GPX import, storage and drawing
+- `web/src/routing/`, `web/src/app/route.ts`: route planning over the map's NOD road network, and the route card
 - `web/src/storage/`: storing imported files on the device (OPFS)
 - `web/site/`: the instructions page served at the site root

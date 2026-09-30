@@ -201,14 +201,33 @@ try {
   console.log('gpx ok:', trk.stats);
   await page.click('#tracks-close');
 
-  // 3d. Routing: long press → Route here → panel numbers; the switch; ×
+  // 3d. Routing: right-click drops a pin, a tap closes it; Route here → panel numbers; the switch; ×
   await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-19.06, 63.99], zoom: 12 }); m.once('idle', r); }));
   await gps.send('Emulation.setGeolocationOverride', { latitude: 63.936, longitude: -21.0, accuracy: 10 }); // Selfoss
+  // Right-click (the Mac's long press) drops a pin with a "Route here" card; a plain click closes it.
+  const markers = () => page.evaluate(() => document.querySelectorAll('.maplibregl-marker').length);
+  const markersBefore = await markers();
+  await page.mouse.click(600, 500, { button: 'right' });
+  await page.waitForFunction(() => !document.querySelector('#route-card').hidden, { timeout: 5_000 }).catch(() => fail('no card after right-click'));
+  const dropped = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, go: document.querySelector('#route-go').hidden ? '' : document.querySelector('#route-go').textContent }));
+  if (!/^Dropped pin · 6\d\.\d{4}, -1\d\.\d{4}$/.test(dropped.title) || dropped.go !== 'Route here') fail(`dropped pin card: ${JSON.stringify(dropped)}`);
+  await page.mouse.click(400, 400);
+  await page.waitForFunction(() => document.querySelector('#route-card').hidden, { timeout: 5_000 }).catch(() => fail('a map tap did not close the dropped-pin card'));
+  if ((await markers()) !== markersBefore) fail('a map tap did not remove the dropped pin');
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
   await page.click('#route-go');
   await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
   const withF = await page.$eval('#route-info', (e) => e.textContent);
   if (!/^1[2-5]\d km · [23] h/.test(withF)) fail(`Selfoss → Landmannalaugar: ${withF}`);
+  const kinds = await page.evaluate(() => window.__app.map.getStyle().sources.route.data.features.map((f) => f.geometry.type).join(','));
+  if (kinds !== 'LineString,Point') fail(`route features: ${kinds}`);
+  await new Promise((r) => setTimeout(r, 1500)); // fitBounds
+  await page.screenshot({ path: `${OUT}route.png` });
+  console.log('wrote', `${OUT}route.png`);
+  // Once a route is shown, a map tap leaves it (only × clears it).
+  await page.mouse.click(400, 400);
+  await new Promise((r) => setTimeout(r, 500));
+  if (await page.$eval('#route-card', (e) => e.hidden)) fail('a map tap cleared the shown route');
   await page.click('#route-froads');
   await page.waitForFunction(() => /No route without F-roads/.test(document.querySelector('#route-msg')?.textContent ?? ''), { timeout: 30_000 });
   await page.click('#route-close');
