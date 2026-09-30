@@ -32,6 +32,15 @@ const cache = new SubdivisionCache(750_000);
  *  and again right before posting a result, so a cancelled tile does as little wasted work as
  *  practical; entries are removed once consumed so the set can't grow without bound. */
 const cancelled = new Set<number>();
+/** Tiles are built one at a time: building several at once holds all their decoded subdivisions in
+ *  memory together (a pinch-out requests dozens of tiles, most cancelled moments later), and a tile
+ *  cancelled while waiting its turn is skipped without being decoded at all. */
+let tileTurn: Promise<unknown> = Promise.resolve();
+function oneTileAtATime<T>(job: () => Promise<T>): Promise<T> {
+  const run = tileTurn.then(job);
+  tileTurn = run.catch(() => {});
+  return run;
+}
 
 self.onmessage = async (e: MessageEvent) => {
   const msg = e.data;
@@ -71,9 +80,13 @@ self.onmessage = async (e: MessageEvent) => {
       if (cancelled.delete(msg.id)) return;
       const m = await opened;
       if (cancelled.delete(msg.id)) return;
-      const t0 = performance.now();
-      const r = await buildTile(m, cache, msg.z, msg.x, msg.y);
-      if (cancelled.delete(msg.id)) return;
+      const r = await oneTileAtATime(async () => {
+        if (cancelled.has(msg.id)) return null;
+        const t0 = performance.now();
+        return { ...(await buildTile(m, cache, msg.z, msg.x, msg.y)), t0 };
+      });
+      if (cancelled.delete(msg.id) || !r) return;
+      const { t0 } = r;
       const buf = r.data.buffer.slice(r.data.byteOffset, r.data.byteOffset + r.data.byteLength) as ArrayBuffer;
       self.postMessage({ type: 'tile', id: msg.id, data: buf, ms: performance.now() - t0, badSections: r.badSections, features: r.features }, [buf]);
     } else if (msg.type === 'dem') {
