@@ -352,7 +352,14 @@ try {
   const chosenKinds = await routeKinds();
   if (!/^\d+ km · .*min$/.test(chosen.info) || chosen.from !== 'From the chosen point' || chosen.pins !== 1 || chosenKinds.includes('start:Point')) fail(`chosen start: ${JSON.stringify(chosen)} ${chosenKinds}`);
   console.log('start ok:', chosen.info);
+  // With a route, × asks first: Keep route leaves everything; Clear route closes the card.
   await page.click('#route-close');
+  const closeAsk = await page.evaluate(() => ({ confirm: !document.querySelector('#route-confirm').hidden, text: document.querySelector('#route-confirm-text').textContent, drawn: window.__app.map.getStyle().sources.route.data.features.length }));
+  if (!closeAsk.confirm || closeAsk.text !== 'Clear the current route?' || !closeAsk.drawn) fail(`× with a route: ${JSON.stringify(closeAsk)}`);
+  await page.click('#route-confirm-no');
+  if (await page.$eval('#route-card', (e) => e.hidden) || !(await page.$eval('#route-confirm', (e) => e.hidden)) || !(await page.$('.start-pin'))) fail('Keep route after × did not keep the route');
+  await page.click('#route-close');
+  await page.click('#route-confirm-yes');
   if (await page.$eval('#route-card', (e) => !e.hidden)) fail('route card still open after ×');
   if (await page.$('.start-pin')) fail('start pin still shown after ×');
   console.log('routing ok:', withF);
@@ -376,6 +383,7 @@ try {
   // Without location on, the view is exactly as left (following would move it to the position).
   if (was.locate === 'off' && (Math.abs(now.center[0] + 19.5) > 0.001 || Math.abs(now.center[1] - 64.05) > 0.001 || Math.abs(now.zoom - 9.5) > 0.01)) fail(`view not restored: ${JSON.stringify(now)}`);
   await page.click('#route-close');
+  await page.click('#route-confirm-yes');
   console.log('restore after reload ok');
   if (await page.$('#import:not([hidden])')) fail('import screen shown after reload');
   await page.waitForFunction(() => window.__app?.tracks?.count === 1, { timeout: 10_000 }).catch(() => fail('GPX track not kept across reload'));

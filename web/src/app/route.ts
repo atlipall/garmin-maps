@@ -50,8 +50,9 @@ export class RoutePlanner {
   private shown = false;
   /** A route is being planned (reset when it's superseded or cleared). */
   private planning = false;
-  /** A new place waiting for "Clear route" / "Keep route", with its grey marker. */
-  private pending: { dest: { name: string | null; lon: number; lat: number }; marker: maplibregl.Marker } | null = null;
+  /** A "clear the current route?" question: what "Clear route" does, and the grey marker of the new
+   *  place it's about (none when it's the × asking). */
+  private pending: { yes: () => void; marker: maplibregl.Marker | null } | null = null;
   /** "Use my location" is waiting for a first fix (a switch change keeps waiting). */
   private waiting = false;
   private seq = 0;
@@ -83,7 +84,11 @@ export class RoutePlanner {
     map.addLayer({ id: 'route-start', type: 'circle', source: 'route', filter: kind('start'), paint: { 'circle-color': '#ffffff', 'circle-radius': 6, 'circle-stroke-color': '#1d3f8f', 'circle-stroke-width': 3 } });
     $<HTMLInputElement>('route-froads').checked = this.allow;
     $('route-go').onclick = () => void this.route();
-    $('route-close').onclick = () => this.clear();
+    // With a route on the map (or on its way), × asks first; a card with just a place closes.
+    $('route-close').onclick = () => {
+      if (this.shown || this.planning) this.ask('Clear the current route?', null, () => this.clear());
+      else this.clear();
+    };
     $('route-min').onclick = (e) => {
       e.stopPropagation();
       this.setMinimized(!this.minimized, true);
@@ -92,9 +97,9 @@ export class RoutePlanner {
       if (this.minimized) this.setMinimized(false, true);
     });
     $('route-confirm-yes').onclick = () => {
-      const dest = this.pending?.dest;
+      const yes = this.pending?.yes;
       this.dropPending();
-      if (dest) { this.clearRoute(); this.pick(dest); }
+      yes?.();
     };
     $('route-confirm-no').onclick = () => this.dropPending();
     $<HTMLInputElement>('route-froads').onchange = (e) => {
@@ -171,12 +176,11 @@ export class RoutePlanner {
   pick(dest: { name: string | null; lon: number; lat: number }): void {
     // With a route on the map (or on its way), ask before a new pin replaces it.
     if (this.shown || this.planning) {
-      $('route-confirm-text').textContent = `Drop a pin ${dest.name ? `at ${dest.name}` : 'here'} and clear the current route?`;
-      this.pending?.marker.remove();
-      this.pending = { dest, marker: new maplibregl.Marker({ color: '#8a8f98' }).setLngLat([dest.lon, dest.lat]).addTo(this.map) };
-      $('route-confirm').hidden = false;
-      $('route-card').hidden = false;
-      this.setMinimized(false);
+      const marker = new maplibregl.Marker({ color: '#8a8f98' }).setLngLat([dest.lon, dest.lat]).addTo(this.map);
+      this.ask(`Drop a pin ${dest.name ? `at ${dest.name}` : 'here'} and clear the current route?`, marker, () => {
+        this.clearRoute();
+        this.pick(dest);
+      });
       return;
     }
     this.dropPending();
@@ -212,9 +216,19 @@ export class RoutePlanner {
     else void this.useMyLocation();
   }
 
+  /** Asks `question` in the card; "Clear route" runs `yes`. `marker`: the new place's grey pin. */
+  private ask(question: string, marker: maplibregl.Marker | null, yes: () => void): void {
+    this.dropPending();
+    this.pending = { yes, marker };
+    $('route-confirm-text').textContent = question;
+    $('route-confirm').hidden = false;
+    $('route-card').hidden = false;
+    this.setMinimized(false);
+  }
+
   /** Closes the "clear the route?" question and removes its grey marker. */
   private dropPending(): void {
-    this.pending?.marker.remove();
+    this.pending?.marker?.remove();
     this.pending = null;
     $('route-confirm').hidden = true;
   }
