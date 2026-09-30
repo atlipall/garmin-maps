@@ -201,6 +201,20 @@ try {
   console.log('gpx ok:', trk.stats);
   await page.click('#tracks-close');
 
+  // 3d. Routing: long press → Route here → panel numbers; the switch; ×
+  await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-19.06, 63.99], zoom: 12 }); m.once('idle', r); }));
+  await gps.send('Emulation.setGeolocationOverride', { latitude: 63.936, longitude: -21.0, accuracy: 10 }); // Selfoss
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
+  await page.click('#route-go');
+  await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
+  const withF = await page.$eval('#route-info', (e) => e.textContent);
+  if (!/^1[2-5]\d km · [23] h/.test(withF)) fail(`Selfoss → Landmannalaugar: ${withF}`);
+  await page.click('#route-froads');
+  await page.waitForFunction(() => /No route without F-roads/.test(document.querySelector('#route-msg')?.textContent ?? ''), { timeout: 30_000 });
+  await page.click('#route-close');
+  if (await page.$eval('#route-card', (e) => !e.hidden)) fail('route card still open after ×');
+  console.log('routing ok:', withF);
+
   // 4. reload opens straight from storage
   await page.reload();
   await waitReady();
