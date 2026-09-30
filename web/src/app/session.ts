@@ -1,10 +1,11 @@
 import type { LocationState } from '../location/modes';
 
-/** A place a route goes to (a search result or a dropped pin). */
+/** A place a route goes to (a search result, a dropped pin or a saved pin: `saved`). */
 export interface Place {
   name: string | null;
   lon: number;
   lat: number;
+  saved?: boolean;
 }
 
 /** The route card as it was: the place, and when routed, where from (a point, or null for your

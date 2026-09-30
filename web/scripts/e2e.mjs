@@ -436,7 +436,12 @@ try {
   await page.click('#saved-list li:nth-child(1) .track-info');
   const pinCard = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, go: !document.querySelector('#route-go').hidden }));
   if (pinCard.title !== 'Hekla view' || !pinCard.go) fail(`opened saved pin: ${JSON.stringify(pinCard)}`);
+  // Routing to a saved pin says so by its name.
+  await page.click('#route-go');
+  const routingTitle = await page.$eval('#route-title', (e) => e.textContent);
+  if (routingTitle !== 'Routing to Hekla view') fail(`title routing to a saved pin: ${routingTitle}`);
   await page.click('#route-close');
+  await page.click('#route-confirm-yes');
   for (const left of [1, 0]) {
     await page.click('#saved-list li:first-child .track-delete');
     await page.click('#saved-list li:first-child .track-delete');

@@ -2,7 +2,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { RouteReply } from '../worker/pool';
 import { readSetting, writeSetting } from '../ui/settings';
 import { offRoadText, routeMessage, type StartKind } from './routeMessage';
-import type { SessionRoute } from './session';
+import type { Place, SessionRoute } from './session';
 import { newId, type RouteOk, type Saved, type SavedRoute } from '../saved/saved';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -39,7 +39,7 @@ function startPinElement(): HTMLElement {
 /** Destination card, route panel and route line (route planning without guidance). */
 export class RoutePlanner {
   private pin: maplibregl.Marker | null = null;
-  private dest: { name: string | null; lon: number; lat: number } | null = null;
+  private dest: Place | null = null;
   /** A start chosen on the map; null: your position or the map centre. */
   private start: [number, number] | null = null;
   private startPin: maplibregl.Marker | null = null;
@@ -198,7 +198,7 @@ export class RoutePlanner {
   }
 
   /** Shows the destination card for a place (from search or a long press). */
-  pick(dest: { name: string | null; lon: number; lat: number }): void {
+  pick(dest: Place): void {
     // With a route on the map (or on its way), ask before a new pin replaces it.
     if (this.shown || this.planning) {
       const marker = new maplibregl.Marker({ color: '#8a8f98' }).setLngLat([dest.lon, dest.lat]).addTo(this.map);
@@ -411,7 +411,8 @@ export class RoutePlanner {
     this.started = true;
     $('route-go').hidden = true;
     this.showSwitches();
-    $('route-title').textContent = `To ${this.dest.name ?? `dropped pin · ${coordsText(this.dest)}`}`;
+    const place = this.dest.name ?? `dropped pin · ${coordsText(this.dest)}`;
+    $('route-title').textContent = this.dest.saved ? `Routing to ${place}` : `To ${place}`;
     this.showSave();
     this.onChange?.();
   }
