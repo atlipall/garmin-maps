@@ -4,4 +4,6 @@ import { fileURLToPath } from 'node:url';
 export const REPO = fileURLToPath(new URL('../../../', import.meta.url));
 export const DETAILED =
   REPO + 'GPSmap.is 2024.21 Android/MAPS - Add content to MAPFILES folder/Iceland GPSmap.is 2024.21 Detailed.img';
+export const F_ROAD_DETAILED =
+  REPO + 'GPSmap.is 2024.21 Android/MAPS - Add content to MAPFILES folder/Iceland GPSmap.is 2024.21 F-Road Detailed.img';
 export const hasRealData = existsSync(DETAILED);

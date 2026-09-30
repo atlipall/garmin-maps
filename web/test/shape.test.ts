@@ -7,7 +7,7 @@ import { buildNetwork } from '../src/routing/network';
 import { routeShape, sliceBetween } from '../src/routing/shape';
 import { collectIndex } from '../src/search/places';
 import { nodeSource } from './helpers/nodeSource';
-import { DETAILED, hasRealData } from './helpers/paths';
+import { DETAILED, F_ROAD_DETAILED, hasRealData } from './helpers/paths';
 
 describe('sliceBetween', () => {
   const line: Array<[number, number]> = [[0, 0], [1, 0], [2, 1], [3, 1], [4, 0]];
@@ -70,4 +70,52 @@ describe.skipIf(!hasRealData)('routeShape on real data', () => {
     console.log(`shape points on a decoded road-line vertex: ${onRoad}/${shape.length} (${pct.toFixed(1)}%)`);
     expect(pct).toBeGreaterThanOrEqual(95);
   }, 300_000);
+});
+
+describe.skipIf(!hasRealData)('fastestRoute on real data (F-Road Detailed)', () => {
+  let src: Awaited<ReturnType<typeof nodeSource>>;
+  let map: GarminMap;
+  let g: Awaited<ReturnType<typeof buildNetwork>>;
+  let idx: NodeIndex;
+  beforeAll(async () => {
+    src = await nodeSource(F_ROAD_DETAILED);
+    map = await GarminMap.open(src);
+    const { roads } = await collectIndex(map);
+    g = await buildNetwork(map, roads);
+    idx = new NodeIndex(g);
+  }, 300_000);
+  afterAll(() => src.close());
+
+  test('Reykjavík → Akureyri: found, 380-395 km', () => {
+    const from = idx.nearest(-21.94, 64.146, 2000)!.node;
+    const to = idx.nearest(-18.09, 65.68, 2000)!.node;
+    const route = fastestRoute(g, from, to, true);
+    expect(route).not.toBeNull();
+    const km = route!.metres / 1000;
+    console.log(`Reykjavík → Akureyri: ${km.toFixed(1)} km, ${(route!.seconds / 60).toFixed(0)} min`);
+    expect(km).toBeGreaterThanOrEqual(380);
+    expect(km).toBeLessThanOrEqual(395);
+  });
+
+  test('Selfoss → Landmannalaugar: found with F-roads in 2.2-3.3 h; null without', () => {
+    const from = idx.nearest(-21.0, 63.936, 2000)!.node;
+    const to = idx.nearest(-19.06, 63.991, 2000)!.node;
+    const withFRoads = fastestRoute(g, from, to, true);
+    expect(withFRoads).not.toBeNull();
+    const hours = withFRoads!.seconds / 3600;
+    console.log(`Selfoss → Landmannalaugar: ${(withFRoads!.metres / 1000).toFixed(1)} km, ${hours.toFixed(2)} h (F-roads allowed)`);
+    expect(hours).toBeGreaterThanOrEqual(2.2);
+    expect(hours).toBeLessThanOrEqual(3.3);
+
+    const withoutFRoads = fastestRoute(g, from, to, false);
+    expect(withoutFRoads).toBeNull();
+  });
+
+  test('Húsavík → Dettifoss: found', () => {
+    const from = idx.nearest(-17.34, 66.045, 2000)!.node;
+    const to = idx.nearest(-16.39, 65.81, 2000)!.node;
+    const route = fastestRoute(g, from, to, true);
+    expect(route).not.toBeNull();
+    console.log(`Húsavík → Dettifoss: ${(route!.metres / 1000).toFixed(1)} km, ${(route!.seconds / 60).toFixed(0)} min`);
+  });
 });
