@@ -27,7 +27,9 @@
          magnifier can focus it at once, which iOS needs to bring up the keyboard. */
       #topbar { transition: max-width 0.2s ease; }
       #topbar.collapsed { max-width: var(--btn); }
-      #topbar.collapsed .search-row, #topbar.collapsed #results { visibility: hidden; }
+      #topbar.collapsed .search-row, #topbar.collapsed #results, #topbar.collapsed #search-hint { visibility: hidden; }
+      #search-hint { padding: 8px 12px; border-top: 1px solid #0001; font-size: 13px; color: #667; }
+      #search-hint[hidden] { display: none; }
       #search-open { display: none; }
       #topbar.collapsed #search-open { display: grid; place-items: center; position: absolute; inset: 0; z-index: 1; width: var(--btn); height: var(--btn); padding: 0; border: 0; border-radius: 10px; background: none; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
       @media (prefers-reduced-motion: reduce) { #topbar { transition: none; } }
@@ -143,6 +145,7 @@
         <button id="search-clear" type="button" aria-label="Clear search" hidden>×</button>
       </div>
       <ul id="results"></ul>
+      <div id="search-hint" hidden></div>
     </div>
     <div id="badge" class="panel" role="status" aria-live="polite" hidden></div>
     <button id="menu-button" class="panel" aria-label="Menu" aria-haspopup="true" aria-expanded="false" hidden>⋯</button>

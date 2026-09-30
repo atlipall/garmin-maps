@@ -287,7 +287,15 @@ function wireSearch(
     );
   };
   const clear = $<HTMLButtonElement>('search-clear');
+  // While the box is focused and empty: how to pick a place that search can't find.
+  const hint = $('search-hint');
+  hint.textContent = matchMedia('(pointer: coarse)').matches ? 'Press and hold on the map to pick any place' : 'Right-click the map (Ctrl+Click on a Mac) to pick any place';
+  const syncHint = () => (hint.hidden = !(document.activeElement === input && input.value === ''));
+  input.addEventListener('focus', syncHint);
+  input.addEventListener('blur', syncHint);
+  syncHint();
   input.addEventListener('input', () => {
+    syncHint();
     clear.hidden = input.value === '';
     clearTimeout(timer);
     timer = window.setTimeout(render, 120);
@@ -301,6 +309,7 @@ function wireSearch(
     list.replaceChildren();
     onClear();
     input.focus();
+    syncHint();
   };
 }
 

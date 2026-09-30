@@ -205,6 +205,17 @@ try {
   // numbers; the switch; an off-road destination; a start chosen on the map; ×
   await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-19.06, 63.99], zoom: 12 }); m.once('idle', r); }));
   await gps.send('Emulation.setGeolocationOverride', { latitude: 63.936, longitude: -21.0, accuracy: 10 }); // Selfoss
+  // The empty search box says how to pick any place.
+  const hint = await page.evaluate(() => {
+    document.querySelector('#topbar').classList.remove('collapsed');
+    const input = document.querySelector('#search');
+    input.focus();
+    const h = document.querySelector('#search-hint');
+    const shown = { hidden: h.hidden, text: h.textContent };
+    input.blur();
+    return { ...shown, hiddenAfterBlur: h.hidden };
+  });
+  if (hint.hidden || hint.text !== 'Right-click the map (Ctrl+Click on a Mac) to pick any place' || !hint.hiddenAfterBlur) fail(`search hint: ${JSON.stringify(hint)}`);
   // Right-click (the Mac's long press) drops a pin with a "Route here" card; a plain click closes it.
   const markers = () => page.evaluate(() => document.querySelectorAll('.maplibregl-marker').length);
   const markersBefore = await markers();
