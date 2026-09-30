@@ -256,6 +256,23 @@ try {
   await page.click('#route-froads');
   await page.waitForFunction(() => /No route without F-roads/.test(document.querySelector('#route-msg')?.textContent ?? ''), { timeout: 30_000 });
   await page.click('#route-froads'); // back on
+  // With a route shown, a new pin asks first: Keep route leaves it; Clear route drops the pin.
+  const confirmState = () => page.evaluate(() => ({ confirm: !document.querySelector('#route-confirm').hidden, drawn: window.__app.map.getStyle().sources.route.data.features.length, title: document.querySelector('#route-title').textContent, markers: document.querySelectorAll('.maplibregl-marker').length }));
+  await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
+  const drawnBefore = (await confirmState()).drawn;
+  if (!drawnBefore) fail('no route drawn before the pin-over-route check');
+  const markersWithRoute = await markers();
+  await page.mouse.click(600, 500, { button: 'right' });
+  let cs = await confirmState();
+  if (!cs.confirm || cs.drawn !== drawnBefore || cs.title !== 'To Landmannalaugar' || cs.markers !== markersWithRoute + 1) fail(`pin over a route: ${JSON.stringify(cs)}`);
+  await page.click('#route-confirm-no');
+  cs = await confirmState();
+  if (cs.confirm || cs.drawn !== drawnBefore || cs.markers !== markersWithRoute) fail(`Keep route: ${JSON.stringify(cs)}`);
+  await page.mouse.click(600, 500, { button: 'right' });
+  await page.click('#route-confirm-yes');
+  cs = await confirmState();
+  if (cs.confirm || cs.drawn !== 0 || !/^Dropped pin/.test(cs.title) || await page.$eval('#route-go', (e) => e.hidden)) fail(`Clear route: ${JSON.stringify(cs)}`);
+  console.log('pin-over-route confirm ok');
   // A destination 1.5 km from the nearest road (a highland spot from a user report): a dashed
   // off-road leg and a "+ … off-road at the end" line.
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Off the road', lon: -19.31, lat: 64.18 }));

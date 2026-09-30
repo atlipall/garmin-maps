@@ -43,6 +43,8 @@ export class RoutePlanner {
   private choosing = false;
   private allow = readSetting('allowFRoads', true);
   private started = false;
+  /** A new place waiting for "Clear route" / "Keep route", with its grey marker. */
+  private pending: { dest: { name: string | null; lon: number; lat: number }; marker: maplibregl.Marker } | null = null;
   /** "Use my location" is waiting for a first fix (a switch change keeps waiting). */
   private waiting = false;
   private seq = 0;
@@ -65,6 +67,12 @@ export class RoutePlanner {
     $<HTMLInputElement>('route-froads').checked = this.allow;
     $('route-go').onclick = () => void this.route();
     $('route-close').onclick = () => this.clear();
+    $('route-confirm-yes').onclick = () => {
+      const dest = this.pending?.dest;
+      this.dropPending();
+      if (dest) { this.clearRoute(); this.pick(dest); }
+    };
+    $('route-confirm-no').onclick = () => this.dropPending();
     $<HTMLInputElement>('route-froads').onchange = (e) => {
       this.allow = (e.target as HTMLInputElement).checked;
       writeSetting('allowFRoads', this.allow);
@@ -137,6 +145,15 @@ export class RoutePlanner {
 
   /** Shows the destination card for a place (from search or a long press). */
   pick(dest: { name: string | null; lon: number; lat: number }): void {
+    // With a route on the map, ask before a new pin replaces it.
+    if (this.started) {
+      this.pending?.marker.remove();
+      this.pending = { dest, marker: new maplibregl.Marker({ color: '#8a8f98' }).setLngLat([dest.lon, dest.lat]).addTo(this.map) };
+      $('route-confirm').hidden = false;
+      $('route-card').hidden = false;
+      return;
+    }
+    this.dropPending();
     this.clearRoute();
     this.dest = dest;
     this.pin?.remove();
@@ -150,7 +167,15 @@ export class RoutePlanner {
     $('route-card').hidden = false;
   }
 
+  /** Closes the "clear the route?" question and removes its grey marker. */
+  private dropPending(): void {
+    this.pending?.marker.remove();
+    this.pending = null;
+    $('route-confirm').hidden = true;
+  }
+
   clear(): void {
+    this.dropPending();
     this.clearRoute();
     this.pin?.remove();
     this.pin = null;

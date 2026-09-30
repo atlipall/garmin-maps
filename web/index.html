@@ -104,10 +104,12 @@
       #route-off { font-size: 14px; color: #445; }
       #route-from { display: flex; align-items: center; gap: 8px; font-size: 15px; color: #445; }
       #route-change { padding: 2px 4px; border: 0; background: none; color: var(--accent); font-size: 15px; font-weight: 600; cursor: pointer; }
-      #route-choices { display: flex; flex-wrap: wrap; gap: 8px; }
-      #route-choices[hidden] { display: none; }
-      #route-choices button { padding: 8px 12px; border: 1px solid #0003; border-radius: 8px; background: #fff; color: var(--ink); font-size: 15px; cursor: pointer; }
-      #route-choices button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+      #route-choices, #route-confirm { display: flex; flex-wrap: wrap; gap: 8px; }
+      #route-confirm { align-items: center; margin: 6px 0; padding: 8px; border-radius: 8px; background: #fdecea; }
+      #route-confirm > div { flex-basis: 100%; font-weight: 600; }
+      #route-choices[hidden], #route-confirm[hidden] { display: none; }
+      #route-choices button, #route-confirm button { padding: 8px 12px; border: 1px solid #0003; border-radius: 8px; background: #fff; color: var(--ink); font-size: 15px; cursor: pointer; }
+      #route-choices button.primary, #route-confirm button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
       .start-pin { cursor: default; filter: drop-shadow(0 1px 2px #0005); }
       #route-msg:empty { display: none; }
       #route-switch { display: flex; align-items: center; gap: 8px; font-size: 15px; }
@@ -177,6 +179,7 @@
       <div id="route-title"></div>
       <div id="route-from"><span id="route-from-text"></span> <button id="route-change" type="button" aria-expanded="false" aria-controls="route-choices">Change</button></div>
       <div id="route-choices" hidden><button id="route-use-gps" type="button">Use my location</button><button id="route-choose" type="button">Choose on the map</button></div>
+      <div id="route-confirm" hidden><div>Drop a pin here and clear the current route?</div><button id="route-confirm-yes" type="button" class="primary">Clear route</button><button id="route-confirm-no" type="button">Keep route</button></div>
       <div id="route-info"></div>
       <div id="route-off"></div>
       <div id="route-msg"></div>
