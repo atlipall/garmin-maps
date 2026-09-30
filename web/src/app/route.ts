@@ -7,6 +7,7 @@ import { titleCase } from '../search/describe';
 import { FONT_REGULAR } from '../style/buildStyle';
 import type { LonLat } from '../routing/plan';
 import { bestInsert, joinLegs, type JoinedRoute } from '../routing/waypoints';
+import { gpxFileName, routeGpx, shareFile } from '../gpx/export';
 import { newId, type RouteOk, type Saved, type SavedRoute } from '../saved/saved';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -151,6 +152,7 @@ export class RoutePlanner {
     $('route-use-gps').onclick = () => void this.useMyLocation();
     $('route-choose').onclick = () => this.chooseOnMap();
     $('route-save').onclick = () => this.showSaveForm(true);
+    $('route-export').onclick = () => void this.exportGpx();
     $('route-save-cancel').onclick = () => this.showSaveForm(false);
     $<HTMLFormElement>('route-save-form').onsubmit = (e) => {
       e.preventDefault();
@@ -410,6 +412,8 @@ export class RoutePlanner {
     button.disabled = this.saved;
     button.textContent = this.saved ? '★ Saved' : '☆ Save';
     if (button.hidden) this.showSaveForm(false);
+    // Export only for a drawn route.
+    $('route-export').hidden = !this.last;
     // No empty row on a route panel that's still being planned.
     if ($('route-save-form').hidden) $('route-actions').hidden = $('route-go').hidden && button.hidden;
   }
@@ -439,6 +443,14 @@ export class RoutePlanner {
     } catch (err) {
       this.setInfo($('route-info').textContent ?? '', $('route-off').textContent ?? '', `Couldn't save: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /** The drawn route as a GPX file, handed to the share sheet (or downloaded). */
+  private async exportGpx(): Promise<void> {
+    if (!this.last || !this.dest) return;
+    const name = $('route-title').textContent || 'Route';
+    const gpx = routeGpx({ name, summary: $('route-info').textContent ?? '', route: this.last.route, start: this.last.route.offRoadStart?.[0] ?? this.last.from, vias: this.vias, dest: this.dest });
+    await shareFile(gpxFileName(name), gpx).catch((err) => this.setInfo($('route-info').textContent ?? '', $('route-off').textContent ?? '', `Couldn't export: ${err instanceof Error ? err.message : String(err)}`));
   }
 
   /** Shows a saved route as it was drawn (no planning), with its start and switches; changing

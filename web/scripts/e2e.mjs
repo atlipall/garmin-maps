@@ -1,4 +1,4 @@
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 import { preview } from 'vite';
@@ -448,6 +448,19 @@ try {
   await page.click('#route-go');
   await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
   const savedInfo = await page.$eval('#route-info', (e) => e.textContent);
+  // Export GPX (a download on a computer): a track along the route with the stops as waypoints.
+  const dl = `${OUT}downloads/`;
+  await rm(dl, { recursive: true, force: true });
+  await (await browser.target().createCDPSession()).send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dl });
+  await page.click('#route-export');
+  let gpxText = '';
+  for (let t = 0; t < 50 && !gpxText; t++) {
+    await new Promise((r) => setTimeout(r, 100));
+    gpxText = await readFile(`${dl}To Landmannalaugar.gpx`, 'utf8').catch(() => '');
+  }
+  const trkpts = (gpxText.match(/<trkpt /g) ?? []).length;
+  if (trkpts < 50 || !/<wpt [^>]*><name>Landmannalaugar<\/name>/.test(gpxText) || !gpxText.includes(`<desc>${savedInfo}</desc>`)) fail(`exported GPX: ${trkpts} track points, ${gpxText.slice(0, 300)}`);
+  console.log('export ok:', trkpts, 'track points');
   await page.click('#route-save');
   if (await page.$eval('#route-save-name', (e) => e.value) !== 'To Landmannalaugar') fail('route save name not prefilled');
   await page.click('#route-save-form button[type="submit"]');

@@ -1,5 +1,6 @@
 import type * as maplibregl from 'maplibre-gl';
 import { deleteSaved, listSaved, putSaved, type Saved, type SavedPin, type SavedRoute } from '../saved/saved';
+import { gpxFileName, routeGpx, shareFile } from '../gpx/export';
 import { coordsText, fmtKm, fmtTime } from './route';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -8,6 +9,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const CONFIRM_MS = 3000;
 const TRASH = '<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const STAR = '★';
+const SHARE = '<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ROUTE_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="6" cy="18" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="6" r="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 17c6 0 2-9 8-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
 const dateText = (ms: number) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -156,8 +158,24 @@ export class SavedPanel {
       clearTimeout(timer);
       void this.remove(s);
     };
-    li.append(icon, info, del);
+    if (s.kind === 'route') {
+      const share = document.createElement('button');
+      share.type = 'button';
+      share.className = 'track-eye saved-export';
+      share.setAttribute('aria-label', `Export ${s.name} as GPX`);
+      share.title = 'Export GPX';
+      share.innerHTML = SHARE;
+      share.onclick = () => void this.exportRoute(s).catch((err) => this.fail(err));
+      li.append(icon, info, share, del);
+    } else li.append(icon, info, del);
     return li;
+  }
+
+  private async exportRoute(r: SavedRoute): Promise<void> {
+    const vias = r.vias ?? [];
+    const via = vias.length ? ` · via ${vias.length} waypoint${vias.length === 1 ? '' : 's'}` : '';
+    const gpx = routeGpx({ name: r.name, summary: `${fmtKm(r.route.metres)} · ${fmtTime(r.route.seconds)}${via}`, route: r.route, start: r.route.offRoadStart?.[0] ?? r.from, vias, dest: r.dest });
+    await shareFile(gpxFileName(r.name), gpx);
   }
 
   private async remove(s: Saved): Promise<void> {

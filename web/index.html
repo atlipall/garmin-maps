@@ -89,6 +89,7 @@
       #track-list, #saved-list { list-style: none; margin: 0; padding: 0; }
       .track { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 8px; border-top: 1px solid #0001; }
       .saved-item { grid-template-columns: 18px 1fr auto; }
+      .saved-item:has(.saved-export) { grid-template-columns: 18px 1fr auto auto; }
       .saved-icon { display: grid; place-items: center; font-size: 17px; color: #d49b00; }
       .saved-icon.route { color: #1d3f8f; }
       .track .swatch { width: 14px; height: 14px; border-radius: 50%; }
@@ -129,7 +130,7 @@
       #route-msg:empty { display: none; }
       #route-switch, #route-prefer-switch { display: flex; align-items: center; gap: 8px; font-size: 15px; }
       #route-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-      #route-save { padding: 9px 14px; border: 1px solid #0003; border-radius: 8px; background: #fff; color: var(--ink); font-size: 16px; cursor: pointer; }
+      #route-save, #route-export { padding: 9px 14px; border: 1px solid #0003; border-radius: 8px; background: #fff; color: var(--ink); font-size: 16px; cursor: pointer; }
       #route-save:disabled { color: #8a6d00; border-color: #e3c75a; background: #fff8dc; cursor: default; }
       #route-save-form { display: flex; gap: 8px; }
       #route-save-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid #0003; border-radius: 8px; font-size: 16px; }
@@ -218,7 +219,7 @@
       <div id="route-msg"></div>
       <label id="route-switch" hidden><input id="route-froads" type="checkbox" checked /> Allow F-roads and tracks</label>
       <label id="route-prefer-switch" hidden><input id="route-prefer" type="checkbox" /> Prefer F-roads and tracks</label>
-      <div id="route-actions"><button id="route-go" type="button">Route here</button><button id="route-save" type="button">☆ Save</button></div>
+      <div id="route-actions"><button id="route-go" type="button">Route here</button><button id="route-save" type="button">☆ Save</button><button id="route-export" type="button">Export GPX</button></div>
       <form id="route-save-form" hidden><input id="route-save-name" type="text" maxlength="80" aria-label="Name" autocomplete="off" /><button type="submit" class="primary">Save</button><button id="route-save-cancel" type="button">Cancel</button></form>
     </section>
     <section id="import" hidden>
