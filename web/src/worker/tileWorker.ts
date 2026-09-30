@@ -5,19 +5,21 @@ import { decodeSubdivision } from '../img/rgn';
 import { BlobSource } from '../img/source';
 import type { Subdivision } from '../img/tre';
 import { GarminMap, type MapTile } from '../map/garminMap';
+import { NodeIndex, type RoadGraph, type Route } from '../routing/graph';
 import { buildNetwork } from '../routing/network';
-import { fastestRoute, NodeIndex, type RoadGraph } from '../routing/graph';
+import { planRoute } from '../routing/plan';
 import type { RoadClasses } from '../routing/roadClass';
 import { routeShape } from '../routing/shape';
 import { collectIndex } from '../search/places';
 import { buildTile, SubdivisionCache } from '../tiles/buildTile';
-import type { RouteReply } from './pool';
 
 declare const self: DedicatedWorkerGlobalScope;
 
 let opened: Promise<GarminMap> | null = null;
 /** The road network built from NOD, plus a spatial index over its nodes for snapping; built once
- *  per open map, on the first `route` request, and reset whenever a new map is opened. */
+ *  per open map, on the first `route` request, and reset whenever a new map is opened. The road
+ *  classes (`msg.roads`) of that first request are the ones used for the whole session — a later
+ *  `route` call with different classes still gets the network built from the first call's. */
 let network: Promise<{ graph: RoadGraph; index: NodeIndex }> | null = null;
 /** Set synchronously when `open` arrives, so a `dem` request that lands while `open` is still
  *  building the DEM (e.g. right after the pool respawned this worker) waits instead of failing. */
@@ -124,22 +126,24 @@ self.onmessage = async (e: MessageEvent) => {
     } else if (msg.type === 'route') {
       if (!opened) throw new Error('map not opened');
       const m = await opened;
-      network ??= buildNetwork(m, msg.roads as RoadClasses).then((graph) => ({ graph, index: new NodeIndex(graph) }));
-      const { graph, index } = await network;
-      const [from, to] = [msg.from as [number, number], msg.to as [number, number]];
-      const a = index.nearest(from[0], from[1], 2000);
-      const b = index.nearest(to[0], to[1], 2000);
-      let result: RouteReply;
-      if (!a) result = { status: 'no-road-start' };
-      else if (!b) result = { status: 'no-road-end' };
-      else {
-        const r = fastestRoute(graph, a.node, b.node, msg.allowFRoads as boolean);
-        if (!r) result = { status: 'no-route' };
-        else {
-          const decode = (tile: MapTile, sd: Subdivision) => cache.get(`${tile.id}:${sd.index}`, async () => decodeSubdivision(await m.readSubdivision(tile, sd), sd, { sections: 0, badSections: 0 }));
-          result = { status: 'ok', coords: await routeShape(m, graph, r, decode), metres: r.metres, seconds: r.seconds };
-        }
+      if (!network) {
+        // A rejected build (I/O error, malformed NOD) must not stick around forever: clear
+        // `network` — but only if nothing else already replaced it (a later 'open') — so the
+        // next 'route' request retries instead of failing until the worker is reopened. Mirrors
+        // SubdivisionCache.get()'s retry-on-rejection in ../tiles/buildTile.ts.
+        const building: Promise<{ graph: RoadGraph; index: NodeIndex }> = buildNetwork(m, msg.roads as RoadClasses).then(
+          (graph) => ({ graph, index: new NodeIndex(graph) }),
+          (err) => {
+            if (network === building) network = null;
+            throw err;
+          },
+        );
+        network = building;
       }
+      const { graph, index } = await network;
+      const decode = (tile: MapTile, sd: Subdivision) => cache.get(`${tile.id}:${sd.index}`, async () => decodeSubdivision(await m.readSubdivision(tile, sd), sd, { sections: 0, badSections: 0 }));
+      const shape = (route: Route) => routeShape(m, graph, route, decode);
+      const result = await planRoute(graph, index, msg.from as [number, number], msg.to as [number, number], msg.allowFRoads as boolean, shape);
       self.postMessage({ type: 'route', id: msg.id, result });
     }
   } catch (err) {

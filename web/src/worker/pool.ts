@@ -1,5 +1,8 @@
+import type { RouteReply } from '../routing/plan';
 import type { RoadClasses } from '../routing/roadClass';
 import type { Place } from '../search/places';
+
+export type { RouteReply };
 
 export interface OpenPayload {
   file: File;
@@ -30,10 +33,6 @@ export interface DemResult {
   rgba?: ArrayBuffer;
   ms: number;
 }
-
-export type RouteReply =
-  | { status: 'ok'; coords: Array<[number, number]>; metres: number; seconds: number }
-  | { status: 'no-road-start' | 'no-road-end' | 'no-route' };
 
 type Pending = { worker: Worker; resolve: (v: any) => void; reject: (e: Error | DOMException) => void };
 
