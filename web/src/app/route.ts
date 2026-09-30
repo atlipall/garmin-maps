@@ -576,8 +576,15 @@ export class RoutePlanner {
     for (let i = 0; i + 1 < stops.length; i++) {
       const reply = await this.plan(stops[i], stops[i + 1], this.allow, this.prefer).catch((err) => ({ status: 'error' as const, err }));
       if (seq !== this.seq) return; // superseded
-      if (reply.status === 'ok') legs.push(reply);
-      else if (reply.status !== 'same-place' || stops.length === 2) {
+      if (reply.status === 'ok') {
+        legs.push(reply);
+        // A waypoint snaps to the road: it moves to where the route passes it.
+        if (i + 2 < stops.length) {
+          const [lon, lat] = reply.coords[reply.coords.length - 1];
+          this.vias[i] = { ...this.vias[i], lon, lat };
+          stops[i + 1] = [lon, lat];
+        }
+      } else if (reply.status !== 'same-place' || stops.length === 2) {
         this.planning = false;
         this.drawRoute(EMPTY);
         const leg = stops.length === 2 ? '' : i + 2 < stops.length ? `To waypoint ${i + 1}: ` : 'To the destination: ';
@@ -591,6 +598,7 @@ export class RoutePlanner {
       this.setInfo('', '', routeMessage({ status: 'same-place' }, kind));
       return;
     }
+    this.setVias(this.vias);
     this.showRoute(legs.length === 1 ? legs[0] : joinLegs(legs), from, kind, fit);
   }
 
@@ -598,7 +606,8 @@ export class RoutePlanner {
   private showRoute(reply: JoinedRoute, from: [number, number], kind: StartKind, fit: boolean): void {
     const feature = (k: string, geometry: GeoJSON.Geometry): GeoJSON.Feature => ({ type: 'Feature', properties: { kind: k }, geometry });
     const features = [feature('route', { type: 'LineString', coordinates: reply.coords })];
-    for (const leg of [reply.offRoadStart, reply.offRoadEnd, ...(reply.offRoadVia ?? [])]) if (leg) features.push(feature('offroad', { type: 'LineString', coordinates: leg }));
+    // Waypoints sit on the road (see route()), so only the start and end have off-road legs.
+    for (const leg of [reply.offRoadStart, reply.offRoadEnd]) if (leg) features.push(feature('offroad', { type: 'LineString', coordinates: leg }));
     // A chosen start has its pin; otherwise a dot marks where the route starts.
     if (kind !== 'chosen') features.push(feature('start', { type: 'Point', coordinates: reply.coords[0] }));
     this.drawRoute({ type: 'FeatureCollection', features });

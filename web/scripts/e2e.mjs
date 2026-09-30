@@ -346,7 +346,7 @@ try {
   // its numbered circle removes it again.
   const direct = await page.$eval('#route-info', (e) => e.textContent);
   const km = (t) => Number(/^(\d+) km/.exec(t)?.[1]);
-  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Hella', lon: -20.397, lat: 63.834 }));
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Near Hella', lon: -20.397, lat: 63.845 }));
   await page.click('#route-confirm-via');
   await page.waitForFunction(() => /via 1 waypoint$/.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 }).catch(async () => fail(`no route via the waypoint: ${await page.$eval('#route-msg', (e) => e.textContent)}`));
   const viaInfo = await page.$eval('#route-info', (e) => e.textContent);
@@ -354,17 +354,27 @@ try {
     const line = window.__app.map.getStyle().sources.route.data.features.find((f) => f.properties.kind === 'route').geometry.coordinates;
     return Math.min(...line.map(([lon, lat]) => Math.hypot((lon + 20.397) * Math.cos((63.834 * Math.PI) / 180), lat - 63.834) * 111_195));
   });
-  if (!(km(viaInfo) > km(direct)) || nearHella > 1000) fail(`route via Hella: ${viaInfo} (direct ${direct}), passes ${Math.round(nearHella)} m from it`);
+  if (!(km(viaInfo) > km(direct)) || nearHella > 2500) fail(`route via Hella: ${viaInfo} (direct ${direct}), passes ${Math.round(nearHella)} m from it`);
+  // The waypoint (dropped beside the road) snapped onto the route; no dashed legs out to it.
+  const snapped = await page.evaluate(() => {
+    const src = window.__app.map.getStyle().sources;
+    const [vlon, vlat] = src['route-vias'].data.features[0].geometry.coordinates;
+    const feats = src.route.data.features;
+    const line = feats.find((f) => f.properties.kind === 'route').geometry.coordinates;
+    const k = Math.cos((vlat * Math.PI) / 180);
+    return { onRoute: Math.min(...line.map(([lon, lat]) => Math.hypot((lon - vlon) * k, lat - vlat) * 111_195)), moved: Math.hypot((vlon + 20.397) * k, vlat - 63.845) * 111_195, offroad: feats.filter((f) => f.properties.kind === 'offroad').length };
+  });
+  if (snapped.onRoute > 5 || snapped.moved < 5 || snapped.offroad > 2) fail(`waypoint not snapped to the road: ${JSON.stringify(snapped)}`);
   await new Promise((r) => setTimeout(r, 1200)); // fitBounds
   await page.screenshot({ path: `${OUT}route-waypoint.png` });
-  const viaXY = await page.evaluate(() => { const m = window.__app.map; const p = m.project([-20.397, 63.834]); const b = m.getCanvas().getBoundingClientRect(); return [b.left + p.x, b.top + p.y]; });
+  const viaXY = await page.evaluate(() => { const m = window.__app.map; const p = m.project(m.getStyle().sources['route-vias'].data.features[0].geometry.coordinates); const b = m.getCanvas().getBoundingClientRect(); return [b.left + p.x, b.top + p.y]; });
   await page.mouse.click(viaXY[0], viaXY[1]);
   const removeQ = await page.evaluate(() => ({ q: document.querySelector('#route-confirm-text').textContent, yes: document.querySelector('#route-confirm-yes').textContent }));
   if (removeQ.q !== 'Remove waypoint 1?' || removeQ.yes !== 'Remove') fail(`tap on a waypoint: ${JSON.stringify(removeQ)}`);
   await page.click('#route-confirm-yes');
   await page.waitForFunction((d) => document.querySelector('#route-info')?.textContent === d, { timeout: 60_000 }, direct).catch(async () => fail(`route after removing the waypoint: ${await page.$eval('#route-info', (e) => e.textContent)} (expected ${direct})`));
   if (await page.evaluate(() => window.__app.map.getStyle().sources['route-vias'].data.features.length)) fail('waypoint circle still shown after removing it');
-  console.log('waypoint ok:', viaInfo, '→', direct);
+  console.log('waypoint ok:', viaInfo, '→', direct, `(snapped ${Math.round(snapped.moved)} m onto the road)`);
   // New route: the pin replaces the route.
   await page.mouse.click(600, 500, { button: 'right' });
   await page.click('#route-confirm-yes');
