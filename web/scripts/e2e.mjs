@@ -249,6 +249,17 @@ try {
   await new Promise((r) => setTimeout(r, 1500)); // fitBounds
   await page.screenshot({ path: `${OUT}route.png` });
   console.log('wrote', `${OUT}route.png`);
+  // On a phone the card spans the width and sits above the height pill, scale and locate button.
+  await page.setViewport({ width: 390, height: 844 });
+  await new Promise((r) => setTimeout(r, 1500));
+  const phone = await page.evaluate(() => {
+    const card = document.querySelector('#route-card').getBoundingClientRect();
+    const tops = [...document.querySelectorAll('.maplibregl-ctrl-bottom-left > *, .maplibregl-ctrl-bottom-right > *')].filter((e) => !e.hidden && e.offsetHeight).map((e) => e.getBoundingClientRect().top);
+    return { left: card.left, right: card.right, bottom: card.bottom, controlsTop: Math.min(...tops) };
+  });
+  await page.screenshot({ path: `${OUT}route-phone.png` });
+  if (phone.bottom > phone.controlsTop - 4 || phone.left > 12 || phone.right < 378) fail(`route card on a phone: ${JSON.stringify(phone)}`);
+  await page.setViewport({ width: 1024, height: 1024 });
   // Once a route is shown, a map tap leaves it (only × clears it).
   await page.mouse.click(400, 400);
   await new Promise((r) => setTimeout(r, 500));
@@ -293,7 +304,7 @@ try {
   if (prompt !== "Tap the map where you'll start") fail(`choose-on-map prompt: ${prompt}`);
   if ((await routeKinds()).length) fail('the previous route is still drawn while choosing a start');
   await page.mouse.click(420, 360);
-  await page.waitForFunction(() => /from the chosen point/.test(document.querySelector('#route-info')?.textContent ?? '') || document.querySelector('#route-msg')?.textContent, { timeout: 60_000 });
+  await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? '') || document.querySelector('#route-msg')?.textContent, { timeout: 60_000 });
   const chosen = await page.evaluate(() => ({
     info: document.querySelector('#route-info').textContent,
     msg: document.querySelector('#route-msg').textContent,
@@ -301,7 +312,7 @@ try {
     pins: document.querySelectorAll('.start-pin').length,
   }));
   const chosenKinds = await routeKinds();
-  if (!/km · .* · from the chosen point$/.test(chosen.info) || chosen.from !== 'From the chosen point' || chosen.pins !== 1 || chosenKinds.includes('start:Point')) fail(`chosen start: ${JSON.stringify(chosen)} ${chosenKinds}`);
+  if (!/^\d+ km · .*min$/.test(chosen.info) || chosen.from !== 'From the chosen point' || chosen.pins !== 1 || chosenKinds.includes('start:Point')) fail(`chosen start: ${JSON.stringify(chosen)} ${chosenKinds}`);
   console.log('start ok:', chosen.info);
   await page.click('#route-close');
   if (await page.$eval('#route-card', (e) => !e.hidden)) fail('route card still open after ×');

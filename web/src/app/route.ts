@@ -299,7 +299,7 @@ export class RoutePlanner {
     // A chosen start has its pin; otherwise a dot marks where the route starts.
     if (kind !== 'chosen') features.push(feature('start', { type: 'Point', coordinates: reply.coords[0] }));
     source.setData({ type: 'FeatureCollection', features });
-    this.setInfo(`${fmtKm(reply.metres)} · ${fmtTime(reply.seconds)} · from ${FROM_TEXT[kind]}`, offRoadText(reply.offRoadStartM, reply.offRoadEndM), '');
+    this.setInfo(`${fmtKm(reply.metres)} · ${fmtTime(reply.seconds)}`, offRoadText(reply.offRoadStartM, reply.offRoadEndM), '');
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
     for (const [lon, lat] of [...reply.coords, ...(reply.offRoadStart ?? []), ...(reply.offRoadEnd ?? [])]) {
       if (lon < w) w = lon;
