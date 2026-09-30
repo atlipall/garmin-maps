@@ -442,6 +442,9 @@ export async function buildTile(
         }
         if (!feature) continue;
         feature.tags.t = obj.type;
+        // A named area keeps its name as `n` (not `name`, which the label layer draws; its label is a
+        // separate point): what a pin dropped inside it is called.
+        if (obj.kind === 'polygon' && name) feature.tags.n = name;
         if (obj.kind !== 'polygon') {
           const lineOrPointName = objectName(tile, obj);
           if (lineOrPointName) feature.tags.name = lineOrPointName;

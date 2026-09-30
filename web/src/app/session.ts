@@ -6,6 +6,8 @@ export interface Place {
   lon: number;
   lat: number;
   saved?: boolean;
+  /** For a dropped pin: the named feature it was dropped on (a peak, river, lake…). */
+  near?: string;
 }
 
 /** The route card as it was: the place, and when routed, where from (a point, or null for your

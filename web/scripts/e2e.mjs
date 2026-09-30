@@ -225,7 +225,7 @@ try {
   await page.mouse.click(600, 500, { button: 'right' });
   await page.waitForFunction(() => !document.querySelector('#route-card').hidden, { timeout: 5_000 }).catch(() => fail('no card after right-click'));
   const dropped = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, go: document.querySelector('#route-go').hidden ? '' : document.querySelector('#route-go').textContent, from: document.querySelector('#route-from-text').textContent }));
-  if (!/^Dropped pin · 6\d\.\d{4}, -1\d\.\d{4}$/.test(dropped.title) || dropped.go !== 'Route here' || dropped.from !== 'From your position') fail(`dropped pin card: ${JSON.stringify(dropped)}`);
+  if (!/^Dropped pin · (6\d\.\d{4}, -1\d\.\d{4}|\D.*)$/.test(dropped.title) || dropped.go !== 'Route here' || dropped.from !== 'From your position') fail(`dropped pin card: ${JSON.stringify(dropped)}`);
   await page.mouse.click(400, 400);
   await page.waitForFunction(() => document.querySelector('#route-card').hidden, { timeout: 5_000 }).catch(() => fail('a map tap did not close the dropped-pin card'));
   if ((await markers()) !== markersBefore) fail('a map tap did not remove the dropped pin');
@@ -238,6 +238,23 @@ try {
   if (await page.$eval('#route-card', (e) => e.hidden)) fail('the click of a Ctrl+Click closed its own card');
   if ((await markers()) !== markersBefore + 1) fail('Ctrl+Click: the dropped pin is gone');
   await page.click('#route-close');
+  // A pin dropped on a named feature is called after it: a peak (a named point), a lake (the area
+  // it's in); the name is also what Save suggests.
+  const dropOn = async (lonLat, zoom) => {
+    const xy = await page.evaluate((c, z) => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: c, zoom: z }); m.once('idle', () => { const p = m.project(c); const b = m.getCanvas().getBoundingClientRect(); r([b.left + p.x, b.top + p.y]); }); }), lonLat, zoom);
+    await page.mouse.click(xy[0], xy[1], { button: 'right' });
+    const title = await page.$eval('#route-title', (e) => e.textContent);
+    await page.click('#route-save');
+    const suggested = await page.$eval('#route-save-name', (e) => e.value);
+    await page.click('#route-save-cancel');
+    await page.click('#route-close');
+    return { title, suggested };
+  };
+  const peak = await dropOn([-19.6694, 63.9922], 12);
+  if (peak.title !== 'Dropped pin · Hekla 1491m' || peak.suggested !== 'Hekla 1491m') fail(`pin on Hekla: ${JSON.stringify(peak)}`);
+  const lake = await dropOn([-18.93, 64.25], 11);
+  if (!/^Dropped pin · \D/.test(lake.title) || lake.suggested !== lake.title.replace('Dropped pin · ', '')) fail(`pin in a lake: ${JSON.stringify(lake)}`);
+  console.log('pin names ok:', peak.title, '|', lake.title);
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
   await page.click('#route-go');
   await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });

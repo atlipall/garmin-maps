@@ -3,6 +3,7 @@ import type { RouteReply } from '../worker/pool';
 import { readSetting, writeSetting } from '../ui/settings';
 import { offRoadText, routeMessage, type StartKind } from './routeMessage';
 import type { Place, SessionRoute } from './session';
+import { titleCase } from '../search/describe';
 import { newId, type RouteOk, type Saved, type SavedRoute } from '../saved/saved';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -141,7 +142,7 @@ export class RoutePlanner {
     let pressed = false;
     map.on('contextmenu', (e) => {
       pressed = true;
-      this.pick({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat });
+      this.pick({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat, near: this.nameAt(e.point) });
     });
     map.on('click', (e) => {
       // A tap on a saved star opens its card (the Saved panel handles it).
@@ -155,9 +156,10 @@ export class RoutePlanner {
     let startAt = 0;
     const dropAt = (xy: [number, number]) => {
       const r = canvas.getBoundingClientRect();
-      const ll = map.unproject([xy[0] - r.left, xy[1] - r.top]);
+      const p = new maplibregl.Point(xy[0] - r.left, xy[1] - r.top);
+      const ll = map.unproject(p);
       pressed = true;
-      this.pick({ name: null, lon: ll.lng, lat: ll.lat });
+      this.pick({ name: null, lon: ll.lng, lat: ll.lat, near: this.nameAt(p) });
     };
     const canvas = map.getCanvasContainer();
     // A new mouse press starts afresh (a right-click is followed by no click to clear the guard).
@@ -216,7 +218,7 @@ export class RoutePlanner {
     this.dest = dest;
     this.pin?.remove();
     this.pin = new maplibregl.Marker({ color: '#c0392b' }).setLngLat([dest.lon, dest.lat]).addTo(this.map);
-    $('route-title').textContent = dest.name ?? `Dropped pin · ${coordsText(dest)}`;
+    $('route-title').textContent = dest.name ?? `Dropped pin · ${dest.near ?? coordsText(dest)}`;
     this.setInfo('', '', '');
     this.showChoices(false);
     this.showFrom();
@@ -251,6 +253,38 @@ export class RoutePlanner {
     $('route-confirm').hidden = false;
     $('route-card').hidden = false;
     this.setMinimized(false);
+  }
+
+  /** The named map feature at screen point `p`, for naming a dropped pin: the nearest named point
+   *  (peak, hut…) within 30 px, else a named line (river, road) within 12 px, else the named area
+   *  (lake, glacier…) it's in. Numbers (contour heights, house numbers) don't count. */
+  private nameAt(p: maplibregl.Point): string | undefined {
+    const named = (f: maplibregl.MapGeoJSONFeature, key: string) => {
+      const v = f.properties?.[key];
+      if (f.source !== 'garmin' || typeof v !== 'string' || /^[\d\s.,-]+$/.test(v)) return null;
+      // Map labels are often in capitals with a height: "HEKLA 1491m" → "Hekla 1491m".
+      const m = /^(.*?)(\s+\d+\s?m)?$/.exec(v)!;
+      return titleCase(m[1]) + (m[2] ?? '');
+    };
+    const box = (r: number): [maplibregl.PointLike, maplibregl.PointLike] => [[p.x - r, p.y - r], [p.x + r, p.y + r]];
+    let best: { name: string; d: number } | null = null;
+    for (const f of this.map.queryRenderedFeatures(box(30))) {
+      const name = named(f, 'name');
+      if (!name || f.sourceLayer !== 'points' || f.geometry.type !== 'Point') continue;
+      const q = this.map.project(f.geometry.coordinates as [number, number]);
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d <= 30 && (!best || d < best.d)) best = { name, d };
+    }
+    if (best) return best.name;
+    for (const f of this.map.queryRenderedFeatures(box(12))) {
+      const name = f.sourceLayer === 'lines' ? named(f, 'name') : null;
+      if (name) return name;
+    }
+    for (const f of this.map.queryRenderedFeatures(p)) {
+      const name = f.sourceLayer === 'polygons' ? named(f, 'n') : null;
+      if (name) return name;
+    }
+    return undefined;
   }
 
   /** Closes the "clear the route?" question and removes its grey marker. */
@@ -321,9 +355,9 @@ export class RoutePlanner {
     $('route-save-form').hidden = !open;
     $('route-actions').hidden = open;
     if (!open || !this.dest) return;
-    const place = this.dest.name ?? coordsText(this.dest);
+    const place = this.dest.name ?? this.dest.near ?? coordsText(this.dest);
     const input = $<HTMLInputElement>('route-save-name');
-    input.value = input.placeholder = this.last ? `To ${place}` : this.dest.name ?? `Pin ${place}`;
+    input.value = input.placeholder = this.last ? `To ${place}` : this.dest.name ?? this.dest.near ?? `Pin ${place}`;
     input.focus();
     input.select();
   }
@@ -411,7 +445,7 @@ export class RoutePlanner {
     this.started = true;
     $('route-go').hidden = true;
     this.showSwitches();
-    const place = this.dest.name ?? `dropped pin · ${coordsText(this.dest)}`;
+    const place = this.dest.name ?? `dropped pin · ${this.dest.near ?? coordsText(this.dest)}`;
     $('route-title').textContent = this.dest.saved ? `Routing to ${place}` : `To ${place}`;
     this.showSave();
     this.onChange?.();
