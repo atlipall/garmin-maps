@@ -245,6 +245,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     app.routePlanner = routePlanner;
     if (session?.route) routePlanner.restore(session.route);
     routePlanner.onChange = remember;
+    locate.onSpeed = (mps) => routePlanner.moving(mps);
   });
 
   void loadPlaces(stored, pool)

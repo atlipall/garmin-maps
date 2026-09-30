@@ -98,7 +98,16 @@
       #tracks-error { color: #b00020; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
       #tracks-error:not(:empty) { margin-top: 8px; }
       #import-gpx { margin-top: 10px; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 16px; cursor: pointer; }
-      #route-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; padding: 10px 44px 12px 14px; background: #fff; display: grid; gap: 6px; }
+      #route-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; padding: 10px 84px 12px 14px; background: #fff; display: grid; gap: 6px; }
+      #route-min { position: absolute; top: 2px; right: 40px; width: var(--btn); height: var(--btn); display: grid; place-items: center; border: 0; background: none; color: #667; cursor: pointer; }
+      /* Minimized: one line, "To … · 140 km · 2 h 32 min"; a tap anywhere on it opens the card. */
+      #route-card.min { display: flex; align-items: center; gap: 6px; padding: 10px 48px 10px 14px; cursor: pointer; }
+      #route-card.min > :not(#route-title):not(#route-info):not(#route-min) { display: none !important; }
+      #route-card.min #route-min { right: 2px; }
+      #route-card.min #route-min svg { transform: rotate(180deg); }
+      #route-card.min #route-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #route-card.min #route-info { flex: none; white-space: nowrap; }
+      #route-card.min #route-info::before { content: '· '; }
       #route-close { position: absolute; top: 2px; right: 2px; width: var(--btn); height: var(--btn); border: 0; background: none; font-size: 24px; color: #667; cursor: pointer; }
       #route-title { font-weight: 600; overflow-wrap: anywhere; }
       #route-info { font-size: 15px; }
@@ -178,6 +187,7 @@
       <input id="gpx-file" type="file" multiple hidden />
     </section>
     <section id="route-card" class="panel" aria-live="polite" hidden>
+      <button id="route-min" type="button" aria-label="Minimize" aria-expanded="true"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button id="route-close" type="button" aria-label="Close">×</button>
       <div id="route-title"></div>
       <div id="route-from"><span id="route-from-text"></span> <button id="route-change" type="button" aria-expanded="false" aria-controls="route-choices">Change</button></div>

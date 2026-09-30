@@ -12,6 +12,8 @@ const LONG_PRESS_MS = 450;
 const LONG_PRESS_CANCEL_MS = 350;
 /** "Use my location" gives up on a first fix after this long. */
 const FIX_WAIT_MS = 20_000;
+/** Moving faster than this (m/s, about 9 km/h: faster than walking) minimizes the route card. */
+const MOVING_MPS = 2.5;
 
 const fmtKm = (m: number) => (m < 10_000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 1000)} km`);
 function fmtTime(s: number): string {
@@ -59,6 +61,10 @@ export class RoutePlanner {
   private fitRoute = true;
   /** Called when the place, start or route changes (for remembering them across restarts). */
   onChange: (() => void) | null = null;
+  /** The card is shrunk to one line. */
+  private minimized = false;
+  /** Opened again by hand: not minimized automatically again for this route. */
+  private keepOpen = false;
 
   /** `searchFrom`: your recent GPS position, else the map centre. `useLocation` turns location on. */
   constructor(
@@ -78,6 +84,13 @@ export class RoutePlanner {
     $<HTMLInputElement>('route-froads').checked = this.allow;
     $('route-go').onclick = () => void this.route();
     $('route-close').onclick = () => this.clear();
+    $('route-min').onclick = (e) => {
+      e.stopPropagation();
+      this.setMinimized(!this.minimized, true);
+    };
+    $('route-card').addEventListener('click', () => {
+      if (this.minimized) this.setMinimized(false, true);
+    });
     $('route-confirm-yes').onclick = () => {
       const dest = this.pending?.dest;
       this.dropPending();
@@ -163,10 +176,13 @@ export class RoutePlanner {
       this.pending = { dest, marker: new maplibregl.Marker({ color: '#8a8f98' }).setLngLat([dest.lon, dest.lat]).addTo(this.map) };
       $('route-confirm').hidden = false;
       $('route-card').hidden = false;
+      this.setMinimized(false);
       return;
     }
     this.dropPending();
     this.clearRoute();
+    this.keepOpen = false;
+    this.setMinimized(false);
     this.dest = dest;
     this.pin?.remove();
     this.pin = new maplibregl.Marker({ color: '#c0392b' }).setLngLat([dest.lon, dest.lat]).addTo(this.map);
@@ -211,7 +227,25 @@ export class RoutePlanner {
     this.dest = null;
     this.clearStart();
     $('route-card').hidden = true;
+    this.keepOpen = false;
+    this.setMinimized(false);
     this.onChange?.();
+  }
+
+  /** The current speed (m/s, from the GPS): once moving with a route, the card gets out of the way
+   *  (unless it was opened again by hand). */
+  moving(mps: number): void {
+    if (mps < MOVING_MPS || !this.started || this.minimized || this.keepOpen || this.pending || this.choosing || !$('route-choices').hidden) return;
+    this.setMinimized(true);
+  }
+
+  private setMinimized(min: boolean, byHand = false): void {
+    if (byHand && !min) this.keepOpen = true;
+    this.minimized = min;
+    $('route-card').classList.toggle('min', min);
+    const button = $('route-min');
+    button.setAttribute('aria-expanded', String(!min));
+    button.setAttribute('aria-label', min ? 'Show route details' : 'Minimize');
   }
 
   private clearRoute(): void {
@@ -254,6 +288,7 @@ export class RoutePlanner {
     $('route-info').textContent = info;
     $('route-off').textContent = off;
     $('route-msg').textContent = msg;
+    if (msg && this.minimized) this.setMinimized(false);
   }
 
   /** The card as a route panel (title "To …", the F-road switch), for a route or its preparations. */

@@ -264,6 +264,28 @@ try {
   await page.mouse.click(400, 400);
   await new Promise((r) => setTimeout(r, 500));
   if (await page.$eval('#route-card', (e) => e.hidden)) fail('a map tap cleared the shown route');
+  // Moving (GPS speed above walking pace) minimizes the card to one line; opened again by hand it
+  // stays open; the chevron minimizes and opens it too.
+  const isMin = () => page.$eval('#route-card', (e) => e.classList.contains('min'));
+  const fixAt = (dLat, speed) => gps.send('Emulation.setGeolocationOverride', { latitude: 63.936 + dLat, longitude: -21.0, accuracy: 10, speed });
+  await fixAt(0.0002, 10);
+  await page.waitForFunction(() => document.querySelector('#route-card').classList.contains('min'), { timeout: 5_000 }).catch(() => fail('moving did not minimize the route card'));
+  const minCard = await page.evaluate(() => ({ h: Math.round(document.querySelector('#route-card').getBoundingClientRect().height), text: `${document.querySelector('#route-title').textContent} | ${document.querySelector('#route-info').textContent}`, sep: getComputedStyle(document.querySelector('#route-info'), '::before').content }));
+  if (minCard.h > 60 || !/^To Landmannalaugar \| 1\d\d km · \d h \d+ min$/.test(minCard.text) || minCard.sep !== '"· "') fail(`minimized card: ${JSON.stringify(minCard)}`);
+  await page.screenshot({ path: `${OUT}route-min.png` });
+  await page.click('#route-title');
+  if (await isMin()) fail('tapping the minimized card did not open it');
+  await fixAt(0.0004, 10);
+  await new Promise((r) => setTimeout(r, 500));
+  if (await isMin()) fail('the card, opened by hand, was minimized again while moving');
+  await page.click('#route-min');
+  if (!(await isMin())) fail('the chevron did not minimize the card');
+  await page.click('#route-min');
+  if (await isMin()) fail('the chevron did not open the card');
+  // Standing still again (the speed is smoothed over fixes), back at the start position.
+  for (const d of [0.0003, 0.0001, 0.0002, 0.0001, 0]) await fixAt(d, 0);
+  await new Promise((r) => setTimeout(r, 300));
+  console.log('route card minimize ok:', minCard.text);
   await page.click('#route-froads');
   const noRoute = () => page.waitForFunction(() => /No route without F-roads/.test(document.querySelector('#route-msg')?.textContent ?? ''), { timeout: 30_000 });
   await noRoute();

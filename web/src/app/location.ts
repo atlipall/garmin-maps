@@ -105,6 +105,8 @@ export class LocationControl implements maplibregl.IControl {
   onActiveChange: ((active: boolean) => void) | null = null;
   /** Called on every mode change (for remembering it across restarts). */
   onStateChange: ((state: LocationState) => void) | null = null;
+  /** Called with the smoothed GPS speed (m/s) on each fix that has one. */
+  onSpeed: ((mps: number) => void) | null = null;
 
   /** The latest position fix, if any. */
   get lastFix(): Fix | null {
@@ -276,6 +278,7 @@ export class LocationControl implements maplibregl.IControl {
     this.updateHeading();
     const v = pos.coords.speed;
     if (v !== null && Number.isFinite(v)) this.speed = this.speed === null ? v : this.speed + (v - this.speed) * SPEED_SMOOTHING;
+    if (this.speed !== null) this.onSpeed?.(this.speed);
     if (this.firstFix && !this.state.paused) {
       this.firstFix = false;
       this.follow(true, true);
