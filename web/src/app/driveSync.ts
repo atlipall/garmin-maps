@@ -16,6 +16,8 @@ const timeText = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour
  * account, through one file in the hidden app-data folder of the user's Google Drive. Syncs when the
  * app starts, comes back to the screen or back online, and a few seconds after a change here; the
  * copy changed last wins, and deletions carry over. Offered only when the app has a Google client ID.
+ * Entirely optional: off until turned on, never loads anything from Google before that, and never
+ * holds up the app — everything is read from and saved to the device first, offline or not.
  */
 export class DriveSync {
   private running: Promise<void> | null = null;
@@ -98,6 +100,9 @@ export class DriveSync {
         setSyncState({ ...syncState(), token: undefined, expires: undefined });
         return this.render('Sign in again to keep syncing.');
       }
+      // A request that never got an answer (no connection, or one that only looks connected): try
+      // again when the connection comes back or the app is opened again.
+      if (err instanceof TypeError) return this.render("Offline: syncs when you're back online.");
       this.render(`Couldn't sync: ${err instanceof Error ? err.message : String(err)}`);
     }
   }

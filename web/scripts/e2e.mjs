@@ -595,6 +595,19 @@ try {
   fakeDrive.file = JSON.stringify(other);
   await page.evaluate(() => window.__app.sync.syncNow());
   if ((await page.evaluate(() => window.__app.saved.count)) !== 1) fail('a deletion on another device did not reach this one');
+  // Offline (or a connection that doesn't answer): the app carries on; sync says it'll try later.
+  await page.setOfflineMode(true);
+  await page.evaluate(() => window.__app.sync.syncNow());
+  const offlineText = await page.$eval('#sync-text', (e) => e.textContent);
+  if (offlineText !== "Offline: syncs when you're back online.") fail(`sync offline: ${offlineText}`);
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Offline pin', lon: -19.5, lat: 64.1 }));
+  await page.click('#route-save');
+  await page.click('#route-save-form button[type="submit"]');
+  await page.waitForFunction(() => window.__app.saved.count === 2, { timeout: 5_000 }).catch(() => fail('saving offline did not work'));
+  await page.click('#route-close');
+  await page.setOfflineMode(false);
+  await page.evaluate(() => window.__app.sync.syncNow());
+  if (!remote().saved.some((x) => x.name === 'Offline pin')) fail('what was saved offline did not sync once back online');
   // An expired sign-in asks to sign in again; Stop syncing turns it off.
   fakeDrive.status = 401;
   await page.evaluate(() => window.__app.sync.syncNow());
