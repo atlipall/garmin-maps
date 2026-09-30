@@ -103,6 +103,8 @@ export class LocationControl implements maplibregl.IControl {
 
   /** Called whenever location turns on or off (following or paused counts as on). */
   onActiveChange: ((active: boolean) => void) | null = null;
+  /** Called on every mode change (for remembering it across restarts). */
+  onStateChange: ((state: LocationState) => void) | null = null;
 
   /** The latest position fix, if any. */
   get lastFix(): Fix | null {
@@ -171,6 +173,19 @@ export class LocationControl implements maplibregl.IControl {
     this.setState(tap(this.state), startsFollowing);
   }
 
+  /** The mode, to remember across restarts. */
+  get current(): LocationState {
+    return this.state;
+  }
+
+  /** Brings back a remembered mode at startup (no tap: the compass is asked for on the next touch). */
+  restore(state: LocationState): void {
+    if (state.mode === 'off' || this.state.mode !== 'off') return;
+    this.firstFix = true;
+    this.start();
+    this.setState(state);
+  }
+
   onRemove(): void {
     this.stop();
     this.container.remove();
@@ -183,6 +198,7 @@ export class LocationControl implements maplibregl.IControl {
     if (next.mode === 'off' && prev.mode !== 'off') this.stop();
     if ((next.mode === 'off') !== (prev.mode === 'off')) this.onActiveChange?.(next.mode !== 'off');
     this.render();
+    this.onStateChange?.(next);
     if (next.mode !== 'off' && !next.paused) this.follow(true, zoomIn);
   }
 
@@ -202,7 +218,13 @@ export class LocationControl implements maplibregl.IControl {
       const absolute = 'ondeviceorientationabsolute' in window;
       window.addEventListener(absolute ? 'deviceorientationabsolute' : 'deviceorientation', this.onOrientation as EventListener);
     };
-    if (DOE?.requestPermission) DOE.requestPermission().then((r) => r === 'granted' && listen(), () => {});
+    // Without a tap (a mode restored at startup) iOS refuses: ask again on the next touch.
+    const ask = (requestPermission: () => Promise<'granted' | 'denied'>) => requestPermission().then((r) => r === 'granted' && listen(), () => {
+      document.addEventListener('touchend', () => {
+        if (this.watchId !== null) ask(requestPermission);
+      }, { once: true });
+    });
+    if (DOE?.requestPermission) ask(DOE.requestPermission.bind(DOE));
     else listen();
     if (!('geolocation' in navigator)) return this.unavailable('This device has no location service.');
     this.watchId = navigator.geolocation.watchPosition(this.onPosition, this.onError, { enableHighAccuracy: true, maximumAge: 5000 });
@@ -231,6 +253,7 @@ export class LocationControl implements maplibregl.IControl {
     this.stop();
     this.state = INITIAL;
     this.render();
+    this.onStateChange?.(this.state);
     if (wasOn) this.onActiveChange?.(false);
     this.button.classList.add('unavailable');
     this.button.title = message;

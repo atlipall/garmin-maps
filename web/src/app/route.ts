@@ -2,6 +2,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { RouteReply } from '../worker/pool';
 import { readSetting, writeSetting } from '../ui/settings';
 import { offRoadText, routeMessage, type StartKind } from './routeMessage';
+import type { SessionRoute } from './session';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 /** Hold time for a long press: below iOS's own ~0.5 s long-press gestures (selection loupe, callout). */
@@ -52,6 +53,12 @@ export class RoutePlanner {
   /** "Use my location" is waiting for a first fix (a switch change keeps waiting). */
   private waiting = false;
   private seq = 0;
+  /** The route start when it was the map centre (remembered as a point across restarts). */
+  private fromCentre: [number, number] | null = null;
+  /** The next route found moves the map to show it (not a route restored at startup). */
+  private fitRoute = true;
+  /** Called when the place, start or route changes (for remembering them across restarts). */
+  onChange: (() => void) | null = null;
 
   /** `searchFrom`: your recent GPS position, else the map centre. `useLocation` turns location on. */
   constructor(
@@ -170,6 +177,23 @@ export class RoutePlanner {
     $('route-switch').hidden = true;
     $('route-go').hidden = false;
     $('route-card').hidden = false;
+    this.fitRoute = true;
+    this.onChange?.();
+  }
+
+  /** The card to remember across restarts: the place and, once routed, where from. */
+  snapshot(): SessionRoute | null {
+    if (!this.dest) return null;
+    return { dest: this.dest, routed: this.started, from: this.start ?? this.fromCentre };
+  }
+
+  /** Brings back a remembered card; a route is planned again without moving the map. */
+  restore(r: SessionRoute): void {
+    this.pick(r.dest);
+    if (!r.routed) return;
+    this.fitRoute = false;
+    if (r.from) this.setStart(r.from);
+    else void this.useMyLocation();
   }
 
   /** Closes the "clear the route?" question and removes its grey marker. */
@@ -187,6 +211,7 @@ export class RoutePlanner {
     this.dest = null;
     this.clearStart();
     $('route-card').hidden = true;
+    this.onChange?.();
   }
 
   private clearRoute(): void {
@@ -238,6 +263,7 @@ export class RoutePlanner {
     $('route-go').hidden = true;
     $('route-switch').hidden = false;
     $('route-title').textContent = `To ${this.dest.name ?? `dropped pin · ${coordsText(this.dest)}`}`;
+    this.onChange?.();
   }
 
   private async useMyLocation(): Promise<void> {
@@ -295,6 +321,9 @@ export class RoutePlanner {
     this.waiting = false;
     const kind = this.startKind();
     const from = this.start ?? this.searchFrom().at;
+    this.fromCentre = kind === 'centre' ? from : null;
+    const fit = this.fitRoute;
+    this.fitRoute = true;
     this.showStarted();
     this.showFrom();
     this.setInfo('Preparing roads…', '', '');
@@ -321,6 +350,7 @@ export class RoutePlanner {
       if (lat < s) s = lat;
       if (lat > n) n = lat;
     }
+    if (!fit) return;
     const card = $('route-card').getBoundingClientRect();
     const bottom = this.map.getContainer().getBoundingClientRect().bottom - card.top + 20;
     this.map.fitBounds([[w, s], [e, n]], { padding: { top: 80, bottom: Math.max(60, bottom), left: 40, right: 40 }, maxZoom: 15, duration: 800 });

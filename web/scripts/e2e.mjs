@@ -335,9 +335,26 @@ try {
   if (await page.$('.start-pin')) fail('start pin still shown after ×');
   console.log('routing ok:', withF);
 
-  // 4. reload opens straight from storage
+  // 4. reload opens straight from storage, where the app was: view, location mode and route
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
+  await page.click('#route-go');
+  await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
+  await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-19.5, 64.05], zoom: 9.5, bearing: 0 }); m.once('idle', r); }));
+  await new Promise((r) => setTimeout(r, 800)); // the save waits for the map to settle
+  const was = await page.evaluate(() => ({ locate: document.querySelector('.locate-button').dataset.state }));
   await page.reload();
   await waitReady();
+  await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 }).catch(() => fail('route not restored after reload'));
+  const now = await page.evaluate(() => {
+    const m = window.__app.map;
+    return { title: document.querySelector('#route-title').textContent, center: m.getCenter().toArray(), zoom: m.getZoom(), locate: document.querySelector('.locate-button').dataset.state, drawn: m.getStyle().sources.route.data.features.length };
+  });
+  console.log('restored:', JSON.stringify({ was, now }));
+  if (now.title !== 'To Landmannalaugar' || !now.drawn || now.locate !== was.locate) fail(`restore after reload: ${JSON.stringify({ was, now })}`);
+  // Without location on, the view is exactly as left (following would move it to the position).
+  if (was.locate === 'off' && (Math.abs(now.center[0] + 19.5) > 0.001 || Math.abs(now.center[1] - 64.05) > 0.001 || Math.abs(now.zoom - 9.5) > 0.01)) fail(`view not restored: ${JSON.stringify(now)}`);
+  await page.click('#route-close');
+  console.log('restore after reload ok');
   if (await page.$('#import:not([hidden])')) fail('import screen shown after reload');
   await page.waitForFunction(() => window.__app?.tracks?.count === 1, { timeout: 10_000 }).catch(() => fail('GPX track not kept across reload'));
   // Deleting asks for a second tap.

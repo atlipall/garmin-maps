@@ -14,6 +14,7 @@ import { browserScreenAwake } from '../location/wakeLock';
 import { readSetting, writeSetting } from '../ui/settings';
 import { HeightControl, LocationControl } from './location';
 import { RoutePlanner } from './route';
+import { loadSession, saveSession } from './session';
 import { TracksPanel } from './tracks';
 import { TilePool, type OpenMeta } from '../worker/pool';
 import { showImport } from './importScreen';
@@ -113,7 +114,10 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     ...(meta.demBounds ? { dem: 'dem://{z}/{x}/{y}', demBounds: meta.demBounds } : {}),
   });
   const [w, s, e, n] = meta.bounds;
-  const map = new maplibregl.Map({ container: 'map', style, bounds: [[w, s], [e, n]], maxZoom: 18, attributionControl: false });
+  // Where the app was last time (iOS may close it in the background or when memory runs short).
+  const session = loadSession(stored.meta.imgName);
+  const view = session ? { center: session.view.center, zoom: session.view.zoom, bearing: session.view.bearing } : { bounds: [[w, s], [e, n]] as [[number, number], [number, number]] };
+  const map = new maplibregl.Map({ container: 'map', style, ...view, maxZoom: 18, attributionControl: false });
   // Register every icon/pattern before any tile is fetched (see src/ui/images.ts); the
   // styleimagemissing handler stays as a defensive fallback.
   preloadImages(map, images);
@@ -130,6 +134,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   const height = new HeightControl();
   const locate = new LocationControl((lon, lat) => pool.elevation(lon, lat), height.element);
   map.addControl(locate, 'bottom-right');
+  if (session) locate.restore(session.location);
   // Keep the screen on while location is on (a ⋯ menu switch, remembered on this device).
   const awake = browserScreenAwake();
   let keepAwake = readSetting('keepAwake', true);
@@ -202,6 +207,28 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   map.once('idle', () => (app.ready = true));
   // GPX tracks: drawn above the map once its style has loaded; ⋯ → Tracks lists and imports them.
   // The route planner is built after it so its route line draws above GPX tracks.
+  // Remember the view, location mode and route card as they change, and when the app is hidden.
+  let rememberTimer = 0;
+  const saveNow = () => {
+    clearTimeout(rememberTimer);
+    if (closed) return;
+    const c = map.getCenter();
+    saveSession({
+      map: stored.meta.imgName,
+      view: { center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing() },
+      location: locate.current,
+      route: app.routePlanner ? app.routePlanner.snapshot() : session?.route ?? null,
+    });
+  };
+  const remember = () => {
+    clearTimeout(rememberTimer);
+    rememberTimer = window.setTimeout(saveNow, 500);
+  };
+  map.on('moveend', remember);
+  locate.onStateChange = remember;
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && saveNow());
+  window.addEventListener('pagehide', saveNow);
+
   map.once('load', () => {
     const tracks = new TracksPanel(map, (coords) => pool.elevations(coords), FONT_REGULAR);
     app.tracks = tracks;
@@ -216,6 +243,8 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       () => locate.activate(),
     );
     app.routePlanner = routePlanner;
+    if (session?.route) routePlanner.restore(session.route);
+    routePlanner.onChange = remember;
   });
 
   void loadPlaces(stored, pool)
