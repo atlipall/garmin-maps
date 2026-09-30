@@ -203,29 +203,34 @@ export class Snapper {
     return { at, offM: 0, sides: [{ node: n, metres: lengthOf(found.path), path: found.path, leave, arrive }], stretch: null };
   }
 
-  /** Follows the road from `at` through vertex `i` of `line` in direction `dir` to the first graph
-   *  node, continuing onto the next line of the same road when a line ends first. */
-  private async walk(line: RoadLine, i: number, dir: 1 | -1, at: [number, number]): Promise<{ node: number; path: Array<[number, number]> } | null> {
-    const path: Array<[number, number]> = [at];
-    let cur = line;
-    for (let joins = 0; joins <= MAX_JOINS; joins++) {
-      const c = cur.coords;
-      for (; i >= 0 && i < c.length; i += dir) {
-        if (!sameXY(path[path.length - 1], c[i])) path.push(c[i]);
-        const node = this.index.nodeAt(c[i][0], c[i][1]);
-        if (node >= 0) return { node, path };
-      }
-      // The line ends short of a node: the road goes on in another line starting or ending here.
-      const end = path[path.length - 1];
-      const next = (await this.lines(end[0], end[1], 0)).find((l) => l !== cur && l.tile === cur.tile && l.net === cur.net && (sameXY(l.coords[0], end) || sameXY(l.coords[l.coords.length - 1], end)));
-      if (!next) return null;
-      cur = next;
-      const forward = sameXY(next.coords[0], end);
-      dir = forward ? 1 : -1;
-      i = forward ? 1 : next.coords.length - 2;
-    }
-    return null;
+  private walk(line: RoadLine, i: number, dir: 1 | -1, at: [number, number]): Promise<{ node: number; path: Array<[number, number]> } | null> {
+    return followRoad(this.lines, this.index, line, i, dir, at);
   }
+}
+
+/** Follows the road from `at` through vertex `i` of `line` in direction `dir` to the first graph
+ *  node, continuing onto the next line of the same road when a line ends first. Null when the road
+ *  runs out first. */
+export async function followRoad(lines: RoadLines, index: NodeIndex, line: RoadLine, i: number, dir: 1 | -1, at: [number, number]): Promise<{ node: number; path: Array<[number, number]> } | null> {
+  const path: Array<[number, number]> = [at];
+  let cur = line;
+  for (let joins = 0; joins <= MAX_JOINS; joins++) {
+    const c = cur.coords;
+    for (; i >= 0 && i < c.length; i += dir) {
+      if (!sameXY(path[path.length - 1], c[i])) path.push(c[i]);
+      const node = index.nodeAt(c[i][0], c[i][1]);
+      if (node >= 0) return { node, path };
+    }
+    // The line ends short of a node: the road goes on in another line starting or ending here.
+    const end = path[path.length - 1];
+    const next = (await lines(end[0], end[1], 0)).find((l) => l !== cur && l.tile === cur.tile && l.net === cur.net && (sameXY(l.coords[0], end) || sameXY(l.coords[l.coords.length - 1], end)));
+    if (!next) return null;
+    cur = next;
+    const forward = sameXY(next.coords[0], end);
+    dir = forward ? 1 : -1;
+    i = forward ? 1 : next.coords.length - 2;
+  }
+  return null;
 }
 
 /** The part of `line` between distances `a` < `b` along it (metres), both ends interpolated. */

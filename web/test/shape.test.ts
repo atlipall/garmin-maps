@@ -3,9 +3,10 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { decodeSubdivision, type RawObject } from '../src/img/rgn';
 import type { Subdivision } from '../src/img/tre';
 import { GarminMap, type MapTile } from '../src/map/garminMap';
-import { fastestRoute, metresBetween, NodeIndex, UNITS_PER_DEG } from '../src/routing/graph';
+import { fastestRoute, GraphBuilder, metresBetween, NodeIndex, UNITS_PER_DEG, type Route } from '../src/routing/graph';
 import { buildNetwork } from '../src/routing/network';
-import { routeShape, sliceBetween } from '../src/routing/shape';
+import { roadLineSource, routeShape, sliceBetween } from '../src/routing/shape';
+import type { RoadLine } from '../src/routing/snap';
 import { collectIndex } from '../src/search/places';
 import { nodeSource } from './helpers/nodeSource';
 import { DETAILED, F_ROAD_DETAILED, hasRealData } from './helpers/paths';
@@ -18,6 +19,35 @@ describe('sliceBetween', () => {
   });
   test('null when either point is not on the line', () => {
     expect(sliceBetween(line, [1, 0], [9, 9])).toBeNull();
+  });
+});
+
+describe('routeShape', () => {
+  // Nodes a (0) and b (40) joined by one edge of road NET 7, drawn as two lines that meet at x=20
+  // (not a node): the second one runs backwards. A third line of another road also touches x=20.
+  const gb = new GraphBuilder();
+  const a = gb.node(0, 0);
+  const b = gb.node(40, 0);
+  gb.edge(a, b, 100, 36, 0, null, { tile: 0, net: 7 });
+  gb.edge(b, a, 100, 36, 0, null, { tile: 0, net: 7 });
+  const g = gb.build();
+  const lineList: RoadLine[] = [
+    { tile: 0, net: 7, cls: 0, coords: [[0, 0], [10, 5], [20, 5]] },
+    { tile: 0, net: 7, cls: 0, coords: [[40, 0], [30, 5], [20, 5]] },
+    { tile: 0, net: 9, cls: 0, coords: [[20, 5], [20, 50]] },
+  ];
+  const lines = async () => lineList;
+  const units = (c: Array<[number, number]>) => c.map(([x, y]) => [Math.round(x * UNITS_PER_DEG), Math.round(y * UNITS_PER_DEG)]);
+  const route = (nodes: number[]): Route => ({ coords: [], nodes, edges: [g.edgeStart[nodes[0]]], metres: 100, seconds: 10 });
+
+  test('an edge whose road is split into several lines follows them, either way round', async () => {
+    const idx = new NodeIndex(g);
+    expect(units(await routeShape(g, idx, route([a, b]), lines))).toEqual([[0, 0], [10, 5], [20, 5], [30, 5], [40, 0]]);
+    expect(units(await routeShape(g, idx, route([b, a]), lines))).toEqual([[40, 0], [30, 5], [20, 5], [10, 5], [0, 0]]);
+  });
+
+  test('an edge without matching lines is drawn straight', async () => {
+    expect(units(await routeShape(g, new NodeIndex(g), route([a, b]), async () => []))).toEqual([[0, 0], [40, 0]]);
   });
 });
 
@@ -51,7 +81,7 @@ describe.skipIf(!hasRealData)('routeShape on real data', () => {
       return objs;
     };
 
-    const shape = await routeShape(map, g, route, decode);
+    const shape = await routeShape(g, idx, route, roadLineSource(map, decode, roads));
     expect(shape.length).toBeGreaterThan(route.nodes.length);
 
     const toUnits = ([lon, lat]: [number, number]): [number, number] => [Math.round(lon * UNITS_PER_DEG), Math.round(lat * UNITS_PER_DEG)];
@@ -70,6 +100,20 @@ describe.skipIf(!hasRealData)('routeShape on real data', () => {
     const pct = (100 * onRoad) / shape.length;
     console.log(`shape points on a decoded road-line vertex: ${onRoad}/${shape.length} (${pct.toFixed(1)}%)`);
     expect(pct).toBeGreaterThanOrEqual(95);
+  }, 300_000);
+
+  test('Reykjavík → Sprengisandur (roads drawn as many lines) is drawn along its roads, not in straight cuts', async () => {
+    const { roads } = await collectIndex(map);
+    const g = await buildNetwork(map, roads);
+    const idx = new NodeIndex(g);
+    const route = fastestRoute(g, idx.nearest(-21.92, 64.13, 2000)!.node, idx.nearest(-19.35, 64.81, 2000)!.node, true)!;
+    const decode = async (tile: MapTile, sd: Subdivision) => decodeSubdivision(await map.readSubdivision(tile, sd), sd, { sections: 0, badSections: 0 });
+    const shape = await routeShape(g, idx, route, roadLineSource(map, decode, roads));
+    let drawn = 0;
+    for (let i = 1; i < shape.length; i++) drawn += metresBetween(shape[i - 1][0] * UNITS_PER_DEG, shape[i - 1][1] * UNITS_PER_DEG, shape[i][0] * UNITS_PER_DEG, shape[i][1] * UNITS_PER_DEG);
+    console.log(`drawn ${(drawn / 1000).toFixed(1)} km of ${(route.metres / 1000).toFixed(1)} km`);
+    // Straight cuts across bends make the drawn line clearly shorter than the road.
+    expect(drawn / route.metres).toBeGreaterThan(0.97);
   }, 300_000);
 });
 

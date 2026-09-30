@@ -25,8 +25,10 @@ describe.skipIf(!hasRealData || !existsSync(F_ROAD_DETAILED))('planRoute on real
     if (!p) cache.set(key, (p = map.readSubdivision(tile, sd).then((b) => decodeSubdivision(b, sd, { sections: 0, badSections: 0 }))));
     return p;
   };
-  const plan = (from: [number, number], to: [number, number], allow: boolean) =>
-    planRoute(graph, index, roadLineSource(map, decode, roads), from, to, allow, (r) => routeShape(map, graph, r, decode));
+  const plan = (from: [number, number], to: [number, number], allow: boolean) => {
+    const lines = roadLineSource(map, decode, roads);
+    return planRoute(graph, index, lines, from, to, allow, (r) => routeShape(graph, index, r, lines));
+  };
 
   beforeAll(async () => {
     src = await nodeSource(F_ROAD_DETAILED);
