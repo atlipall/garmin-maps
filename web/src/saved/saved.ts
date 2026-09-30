@@ -1,8 +1,11 @@
+import type { Place } from '../app/session';
 import type { LonLat, RouteReply } from '../routing/plan';
+import type { JoinedRoute } from '../routing/waypoints';
 import { run } from '../storage/idb';
 
 /** The route as drawn when it was saved (what `planRoute` returned). */
 export type RouteOk = Extract<RouteReply, { status: 'ok' }>;
+export type { JoinedRoute };
 
 interface Common {
   id: string;
@@ -22,9 +25,11 @@ export interface SavedRoute extends Common {
   kind: 'route';
   dest: { name: string | null; lon: number; lat: number };
   from: LonLat;
+  /** Waypoints, in route order (none in routes saved before waypoints). */
+  vias?: Place[];
   allowFRoads: boolean;
   preferFRoads: boolean;
-  route: RouteOk;
+  route: JoinedRoute;
 }
 
 export type Saved = SavedPin | SavedRoute;
@@ -40,7 +45,8 @@ export function isSaved(v: unknown): v is Saved {
   if (s.kind === 'pin') return isNum(s.lon) && isNum(s.lat);
   if (s.kind !== 'route') return false;
   const r = s.route;
-  return !!s.dest && isNum(s.dest.lon) && isNum(s.dest.lat) && isLonLat(s.from) && typeof s.allowFRoads === 'boolean' && typeof s.preferFRoads === 'boolean'
+  const vias = s.vias === undefined || (Array.isArray(s.vias) && s.vias.every((v) => !!v && isNum(v.lon) && isNum(v.lat)));
+  return vias && !!s.dest && isNum(s.dest.lon) && isNum(s.dest.lat) && isLonLat(s.from) && typeof s.allowFRoads === 'boolean' && typeof s.preferFRoads === 'boolean'
     && !!r && r.status === 'ok' && isLine(r.coords) && isNum(r.metres) && isNum(r.seconds);
 }
 

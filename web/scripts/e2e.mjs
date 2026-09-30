@@ -330,22 +330,46 @@ try {
   const markersWithRoute = await markers();
   await page.mouse.click(600, 500, { button: 'right' });
   let cs = await confirmState();
-  const question = await page.$eval('#route-confirm-text', (e) => e.textContent);
-  if (question !== 'Drop a pin here and clear the current route?') fail(`confirm question: ${question}`);
+  const asked = await page.evaluate(() => ({ q: document.querySelector('#route-confirm-text').textContent, via: !document.querySelector('#route-confirm-via').hidden, yes: document.querySelector('#route-confirm-yes').textContent, no: document.querySelector('#route-confirm-no').textContent }));
+  if (!/^Add .+ to the route as a waypoint, or start a new route\?$/.test(asked.q) || !asked.via || asked.yes !== 'New route' || asked.no !== 'Cancel') fail(`pin over a route asks: ${JSON.stringify(asked)}`);
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Hekla', lon: -19.67, lat: 63.99 }));
   const named = await page.$eval('#route-confirm-text', (e) => e.textContent);
-  if (named !== 'Drop a pin at Hekla and clear the current route?') fail(`confirm question for a named place: ${named}`);
+  if (named !== 'Add Hekla to the route as a waypoint, or start a new route?') fail(`question for a named place: ${named}`);
   await page.click('#route-confirm-no');
   await page.mouse.click(600, 500, { button: 'right' });
   cs = await confirmState();
   if (!cs.confirm || cs.drawn !== drawnBefore || cs.title !== 'To Landmannalaugar' || cs.markers !== markersWithRoute + 1) fail(`pin over a route: ${JSON.stringify(cs)}`);
   await page.click('#route-confirm-no');
   cs = await confirmState();
-  if (cs.confirm || cs.drawn !== drawnBefore || cs.markers !== markersWithRoute) fail(`Keep route: ${JSON.stringify(cs)}`);
+  if (cs.confirm || cs.drawn !== drawnBefore || cs.markers !== markersWithRoute) fail(`Cancel: ${JSON.stringify(cs)}`);
+  // Add as waypoint: Hella, off the direct way; the route goes through it and gets longer. A tap on
+  // its numbered circle removes it again.
+  const direct = await page.$eval('#route-info', (e) => e.textContent);
+  const km = (t) => Number(/^(\d+) km/.exec(t)?.[1]);
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Hella', lon: -20.397, lat: 63.834 }));
+  await page.click('#route-confirm-via');
+  await page.waitForFunction(() => /via 1 waypoint$/.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 }).catch(async () => fail(`no route via the waypoint: ${await page.$eval('#route-msg', (e) => e.textContent)}`));
+  const viaInfo = await page.$eval('#route-info', (e) => e.textContent);
+  const nearHella = await page.evaluate(() => {
+    const line = window.__app.map.getStyle().sources.route.data.features.find((f) => f.properties.kind === 'route').geometry.coordinates;
+    return Math.min(...line.map(([lon, lat]) => Math.hypot((lon + 20.397) * Math.cos((63.834 * Math.PI) / 180), lat - 63.834) * 111_195));
+  });
+  if (!(km(viaInfo) > km(direct)) || nearHella > 1000) fail(`route via Hella: ${viaInfo} (direct ${direct}), passes ${Math.round(nearHella)} m from it`);
+  await new Promise((r) => setTimeout(r, 1200)); // fitBounds
+  await page.screenshot({ path: `${OUT}route-waypoint.png` });
+  const viaXY = await page.evaluate(() => { const m = window.__app.map; const p = m.project([-20.397, 63.834]); const b = m.getCanvas().getBoundingClientRect(); return [b.left + p.x, b.top + p.y]; });
+  await page.mouse.click(viaXY[0], viaXY[1]);
+  const removeQ = await page.evaluate(() => ({ q: document.querySelector('#route-confirm-text').textContent, yes: document.querySelector('#route-confirm-yes').textContent }));
+  if (removeQ.q !== 'Remove waypoint 1?' || removeQ.yes !== 'Remove') fail(`tap on a waypoint: ${JSON.stringify(removeQ)}`);
+  await page.click('#route-confirm-yes');
+  await page.waitForFunction((d) => document.querySelector('#route-info')?.textContent === d, { timeout: 60_000 }, direct).catch(async () => fail(`route after removing the waypoint: ${await page.$eval('#route-info', (e) => e.textContent)} (expected ${direct})`));
+  if (await page.evaluate(() => window.__app.map.getStyle().sources['route-vias'].data.features.length)) fail('waypoint circle still shown after removing it');
+  console.log('waypoint ok:', viaInfo, '→', direct);
+  // New route: the pin replaces the route.
   await page.mouse.click(600, 500, { button: 'right' });
   await page.click('#route-confirm-yes');
   cs = await confirmState();
-  if (cs.confirm || cs.drawn !== 0 || !/^Dropped pin/.test(cs.title) || await page.$eval('#route-go', (e) => e.hidden)) fail(`Clear route: ${JSON.stringify(cs)}`);
+  if (cs.confirm || cs.drawn !== 0 || !/^Dropped pin/.test(cs.title) || await page.$eval('#route-go', (e) => e.hidden)) fail(`New route: ${JSON.stringify(cs)}`);
   console.log('pin-over-route confirm ok');
   // A destination 1.5 km from the nearest road (a highland spot from a user report): a dashed
   // off-road leg and a "+ … off-road at the end" line.

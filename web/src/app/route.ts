@@ -4,6 +4,9 @@ import { readSetting, writeSetting } from '../ui/settings';
 import { offRoadText, routeMessage, type StartKind } from './routeMessage';
 import type { Place, SessionRoute } from './session';
 import { titleCase } from '../search/describe';
+import { FONT_REGULAR } from '../style/buildStyle';
+import type { LonLat } from '../routing/plan';
+import { bestInsert, joinLegs, type JoinedRoute } from '../routing/waypoints';
 import { newId, type RouteOk, type Saved, type SavedRoute } from '../saved/saved';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -41,6 +44,8 @@ function startPinElement(): HTMLElement {
 export class RoutePlanner {
   private pin: maplibregl.Marker | null = null;
   private dest: Place | null = null;
+  /** Waypoints between the start and the destination, in route order. */
+  private vias: Place[] = [];
   /** A start chosen on the map; null: your position or the map centre. */
   private start: [number, number] | null = null;
   private startPin: maplibregl.Marker | null = null;
@@ -53,9 +58,9 @@ export class RoutePlanner {
   private shown = false;
   /** A route is being planned (reset when it's superseded or cleared). */
   private planning = false;
-  /** A "clear the current route?" question: what "Clear route" does, and the grey marker of the new
-   *  place it's about (none when it's the × asking). */
-  private pending: { yes: () => void; marker: maplibregl.Marker | null } | null = null;
+  /** A question in the card ("clear the current route?", "add as a waypoint?"): what its buttons do,
+   *  and the grey marker of the new place it's about (none when it's the × asking). */
+  private pending: { yes: () => void; via: (() => void) | null; marker: maplibregl.Marker | null } | null = null;
   /** "Use my location" is waiting for a first fix (a switch change keeps waiting). */
   private waiting = false;
   private seq = 0;
@@ -70,7 +75,7 @@ export class RoutePlanner {
   /** Opened again by hand: not minimized automatically again for this route. */
   private keepOpen = false;
   /** The route on the map and where it started (what "Save" keeps). */
-  private last: { route: RouteOk; from: [number, number] } | null = null;
+  private last: { route: JoinedRoute; from: [number, number] } | null = null;
   /** The place or route in the card is saved (until the card changes). */
   private saved = false;
   /** Stores a saved pin or route (the Saved panel). */
@@ -91,6 +96,10 @@ export class RoutePlanner {
     map.addLayer({ id: 'route-offroad', type: 'line', source: 'route', filter: kind('offroad'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#1d3f8f', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2, 15, 4], 'line-dasharray': [2, 1.5] } });
     // The start of the route: a white dot with a dark outline.
     map.addLayer({ id: 'route-start', type: 'circle', source: 'route', filter: kind('start'), paint: { 'circle-color': '#ffffff', 'circle-radius': 6, 'circle-stroke-color': '#1d3f8f', 'circle-stroke-width': 3 } });
+    // Waypoints: numbered dark-blue circles (a tap offers to remove one).
+    map.addSource('route-vias', { type: 'geojson', data: EMPTY });
+    map.addLayer({ id: 'route-via', type: 'circle', source: 'route-vias', paint: { 'circle-color': '#1d3f8f', 'circle-radius': 10, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
+    map.addLayer({ id: 'route-via-number', type: 'symbol', source: 'route-vias', layout: { 'text-field': ['to-string', ['get', 'n']], 'text-font': [FONT_REGULAR], 'text-size': 12, 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': '#ffffff' } });
     $<HTMLInputElement>('route-froads').checked = this.allow;
     $('route-go').onclick = () => void this.route();
     // With a route on the map (or on its way), × asks first; a card with just a place closes.
@@ -109,6 +118,11 @@ export class RoutePlanner {
       const yes = this.pending?.yes;
       this.dropPending();
       yes?.();
+    };
+    $('route-confirm-via').onclick = () => {
+      const via = this.pending?.via;
+      this.dropPending();
+      via?.();
     };
     $('route-confirm-no').onclick = () => this.dropPending();
     $<HTMLInputElement>('route-prefer').checked = this.prefer;
@@ -145,6 +159,13 @@ export class RoutePlanner {
       this.pick({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat, near: this.nameAt(e.point) });
     });
     map.on('click', (e) => {
+      // A tap on a waypoint offers to remove it.
+      const via = map.getLayer('route-via') ? map.queryRenderedFeatures(e.point, { layers: ['route-via'] })[0] : undefined;
+      if (via) {
+        const n = Number(via.properties.n);
+        this.ask(`Remove waypoint ${n}?`, null, () => this.removeVia(n - 1), { yes: 'Remove', no: 'Keep' });
+        return;
+      }
       // A tap on a saved star opens its card (the Saved panel handles it).
       if (map.getLayer('saved-pins') && map.queryRenderedFeatures(e.point, { layers: ['saved-pins'] }).length) return;
       if (pressed) pressed = false;
@@ -201,17 +222,18 @@ export class RoutePlanner {
 
   /** Shows the destination card for a place (from search or a long press). */
   pick(dest: Place): void {
-    // With a route on the map (or on its way), ask before a new pin replaces it.
+    // With a route on the map (or on its way), a new place becomes a waypoint or a new route.
     if (this.shown || this.planning) {
       const marker = new maplibregl.Marker({ color: '#8a8f98' }).setLngLat([dest.lon, dest.lat]).addTo(this.map);
-      this.ask(`Drop a pin ${dest.name ? `at ${dest.name}` : 'here'} and clear the current route?`, marker, () => {
+      this.ask(`Add ${dest.name ?? dest.near ?? 'this pin'} to the route as a waypoint, or start a new route?`, marker, () => {
         this.clearRoute();
         this.pick(dest);
-      });
+      }, { yes: 'New route', no: 'Cancel', via: () => this.addVia(dest) });
       return;
     }
     this.dropPending();
     this.clearRoute();
+    this.setVias([]);
     this.keepOpen = false;
     this.saved = false;
     this.setMinimized(false);
@@ -233,23 +255,30 @@ export class RoutePlanner {
   /** The card to remember across restarts: the place and, once routed, where from. */
   snapshot(): SessionRoute | null {
     if (!this.dest) return null;
-    return { dest: this.dest, routed: this.started, from: this.start ?? this.fromCentre };
+    return { dest: this.dest, routed: this.started, from: this.start ?? this.fromCentre, vias: this.vias };
   }
 
   /** Brings back a remembered card; a route is planned again without moving the map. */
   restore(r: SessionRoute): void {
     this.pick(r.dest);
     if (!r.routed) return;
+    this.setVias(r.vias ?? []);
     this.fitRoute = false;
     if (r.from) this.setStart(r.from);
     else void this.useMyLocation();
   }
 
-  /** Asks `question` in the card; "Clear route" runs `yes`. `marker`: the new place's grey pin. */
-  private ask(question: string, marker: maplibregl.Marker | null, yes: () => void): void {
+  /** Asks `question` in the card: the `yes` button (label `labels.yes`, "Clear route" by default)
+   *  runs `yes`; with `labels.via`, an "Add as waypoint" button first. `marker`: the new place's grey
+   *  pin. The `no` button ("Keep route") just closes the question. */
+  private ask(question: string, marker: maplibregl.Marker | null, yes: () => void, labels: { yes?: string; no?: string; via?: () => void } = {}): void {
     this.dropPending();
-    this.pending = { yes, marker };
+    this.pending = { yes, via: labels.via ?? null, marker };
     $('route-confirm-text').textContent = question;
+    $('route-confirm-yes').textContent = labels.yes ?? 'Clear route';
+    $('route-confirm-no').textContent = labels.no ?? 'Keep route';
+    $('route-confirm-via').hidden = !labels.via;
+    $('route-confirm-yes').classList.toggle('primary', !labels.via);
     $('route-confirm').hidden = false;
     $('route-card').hidden = false;
     this.setMinimized(false);
@@ -287,6 +316,30 @@ export class RoutePlanner {
     return undefined;
   }
 
+  private setVias(vias: Place[]): void {
+    this.vias = vias;
+    (this.map.getSource('route-vias') as maplibregl.GeoJSONSource).setData({
+      type: 'FeatureCollection',
+      features: vias.map((v, i) => ({ type: 'Feature', properties: { n: i + 1 }, geometry: { type: 'Point', coordinates: [v.lon, v.lat] } })),
+    });
+  }
+
+  /** Adds a waypoint where it adds the least detour, and plans the route again. */
+  private addVia(p: Place): void {
+    if (!this.dest) return;
+    const from = this.start ?? this.last?.from ?? this.searchFrom().at;
+    const stops: LonLat[] = [from, ...this.vias.map((v): LonLat => [v.lon, v.lat]), [this.dest.lon, this.dest.lat]];
+    const vias = [...this.vias];
+    vias.splice(bestInsert(stops, [p.lon, p.lat]), 0, p);
+    this.setVias(vias);
+    void this.route();
+  }
+
+  private removeVia(i: number): void {
+    this.setVias(this.vias.filter((_, k) => k !== i));
+    void this.route();
+  }
+
   /** Closes the "clear the route?" question and removes its grey marker. */
   private dropPending(): void {
     this.pending?.marker?.remove();
@@ -300,6 +353,7 @@ export class RoutePlanner {
     this.pin?.remove();
     this.pin = null;
     this.dest = null;
+    this.setVias([]);
     this.clearStart();
     $('route-card').hidden = true;
     this.showSave();
@@ -366,7 +420,7 @@ export class RoutePlanner {
     if (!this.dest || !this.onSave) return;
     const base = { id: newId(), name: name || $<HTMLInputElement>('route-save-name').placeholder, added: Date.now() };
     const item: Saved = this.last
-      ? { ...base, kind: 'route', dest: this.dest, from: this.last.from, allowFRoads: this.allow, preferFRoads: this.prefer, route: this.last.route }
+      ? { ...base, kind: 'route', dest: this.dest, from: this.last.from, vias: this.vias, allowFRoads: this.allow, preferFRoads: this.prefer, route: this.last.route }
       : { ...base, kind: 'pin', lon: this.dest.lon, lat: this.dest.lat };
     try {
       await this.onSave(item);
@@ -389,6 +443,7 @@ export class RoutePlanner {
       return;
     }
     this.pick(r.dest);
+    this.setVias(r.vias ?? []);
     this.clearStart();
     this.start = r.from;
     this.startPin = new maplibregl.Marker({ element: startPinElement(), anchor: 'bottom' }).setLngLat(r.from).addTo(this.map);
@@ -433,13 +488,13 @@ export class RoutePlanner {
     if (msg && this.minimized) this.setMinimized(false);
   }
 
-  /** The card as a route panel (title "To …", the F-road switch), for a route or its preparations. */
   /** The F-road switches, on the route panel only; "Prefer" only while F-roads are allowed. */
   private showSwitches(): void {
     $('route-switch').hidden = !this.started;
     $('route-prefer-switch').hidden = !this.started || !this.allow;
   }
 
+  /** The card as a route panel (title "To …", the F-road switch), for a route or its preparations. */
   private showStarted(): void {
     if (!this.dest) return;
     this.started = true;
@@ -515,28 +570,42 @@ export class RoutePlanner {
     this.showFrom();
     this.setInfo('Preparing roads…', '', '');
     this.planning = true;
-    const reply = await this.plan(from, [this.dest.lon, this.dest.lat], this.allow, this.prefer).catch((err) => ({ status: 'error' as const, err }));
-    if (seq !== this.seq) return; // superseded
+    // Leg by leg through the waypoints; a waypoint right at the previous stop adds no leg.
+    const stops: LonLat[] = [from, ...this.vias.map((v): LonLat => [v.lon, v.lat]), [this.dest.lon, this.dest.lat]];
+    const legs: RouteOk[] = [];
+    for (let i = 0; i + 1 < stops.length; i++) {
+      const reply = await this.plan(stops[i], stops[i + 1], this.allow, this.prefer).catch((err) => ({ status: 'error' as const, err }));
+      if (seq !== this.seq) return; // superseded
+      if (reply.status === 'ok') legs.push(reply);
+      else if (reply.status !== 'same-place' || stops.length === 2) {
+        this.planning = false;
+        this.drawRoute(EMPTY);
+        const leg = stops.length === 2 ? '' : i + 2 < stops.length ? `To waypoint ${i + 1}: ` : 'To the destination: ';
+        this.setInfo('', '', leg + routeMessage(reply, i === 0 ? kind : 'chosen'));
+        return;
+      }
+    }
     this.planning = false;
-    if (reply.status !== 'ok') {
+    if (!legs.length) {
       this.drawRoute(EMPTY);
-      this.setInfo('', '', routeMessage(reply, kind));
+      this.setInfo('', '', routeMessage({ status: 'same-place' }, kind));
       return;
     }
-    this.showRoute(reply, from, kind, fit);
+    this.showRoute(legs.length === 1 ? legs[0] : joinLegs(legs), from, kind, fit);
   }
 
   /** Draws a found (or saved) route with its numbers, and fits it in view when `fit`. */
-  private showRoute(reply: RouteOk, from: [number, number], kind: StartKind, fit: boolean): void {
+  private showRoute(reply: JoinedRoute, from: [number, number], kind: StartKind, fit: boolean): void {
     const feature = (k: string, geometry: GeoJSON.Geometry): GeoJSON.Feature => ({ type: 'Feature', properties: { kind: k }, geometry });
     const features = [feature('route', { type: 'LineString', coordinates: reply.coords })];
-    for (const leg of [reply.offRoadStart, reply.offRoadEnd]) if (leg) features.push(feature('offroad', { type: 'LineString', coordinates: leg }));
+    for (const leg of [reply.offRoadStart, reply.offRoadEnd, ...(reply.offRoadVia ?? [])]) if (leg) features.push(feature('offroad', { type: 'LineString', coordinates: leg }));
     // A chosen start has its pin; otherwise a dot marks where the route starts.
     if (kind !== 'chosen') features.push(feature('start', { type: 'Point', coordinates: reply.coords[0] }));
     this.drawRoute({ type: 'FeatureCollection', features });
     this.last = { route: reply, from };
     this.showSave();
-    this.setInfo(`${fmtKm(reply.metres)} · ${fmtTime(reply.seconds)}`, offRoadText(reply.offRoadStartM, reply.offRoadEndM), '');
+    const via = this.vias.length ? ` · via ${this.vias.length} waypoint${this.vias.length === 1 ? '' : 's'}` : '';
+    this.setInfo(`${fmtKm(reply.metres)} · ${fmtTime(reply.seconds)}${via}`, offRoadText(reply.offRoadStartM, reply.offRoadEndM), '');
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
     for (const [lon, lat] of [...reply.coords, ...(reply.offRoadStart ?? []), ...(reply.offRoadEnd ?? [])]) {
       if (lon < w) w = lon;

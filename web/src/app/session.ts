@@ -16,6 +16,8 @@ export interface SessionRoute {
   dest: Place;
   routed: boolean;
   from: [number, number] | null;
+  /** Waypoints, in route order (none in sessions saved before waypoints). */
+  vias?: Place[];
 }
 
 /** What the app brings back after iOS closes it (or it's reopened): the map view, location mode
@@ -52,8 +54,8 @@ export function parseSession(raw: string | null, map: string): Session | null {
   const l = s.location;
   if (!l || !['off', 'north', 'heading'].includes(l.mode) || typeof l.paused !== 'boolean') return null;
   const r = s.route;
-  if (r !== null && (!r || !isPlace(r.dest) || typeof r.routed !== 'boolean' || (r.from !== null && !isLonLat(r.from)))) return null;
-  return { map, view: { center: v.center, zoom: v.zoom, bearing: v.bearing }, location: { mode: l.mode, paused: l.paused }, route: r && { dest: r.dest, routed: r.routed, from: r.from } };
+  if (r !== null && (!r || !isPlace(r.dest) || typeof r.routed !== 'boolean' || (r.from !== null && !isLonLat(r.from)) || (r.vias !== undefined && !(Array.isArray(r.vias) && r.vias.every(isPlace))))) return null;
+  return { map, view: { center: v.center, zoom: v.zoom, bearing: v.bearing }, location: { mode: l.mode, paused: l.paused }, route: r && { dest: r.dest, routed: r.routed, from: r.from, vias: r.vias ?? [] } };
 }
 
 export function loadSession(map: string): Session | null {

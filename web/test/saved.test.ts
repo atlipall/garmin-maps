@@ -18,6 +18,7 @@ describe('isSaved', () => {
   test('saved pins and routes as stored', () => {
     expect(isSaved(pin)).toBe(true);
     expect(isSaved(route)).toBe(true);
+    expect(isSaved({ ...route, vias: [{ name: null, lon: -20.4, lat: 63.83, near: 'Hella' }], route: { ...route.route, offRoadVia: [] } })).toBe(true);
   });
 
   test('damaged or unknown entries are left out', () => {
@@ -27,5 +28,6 @@ describe('isSaved', () => {
     expect(isSaved({ ...route, from: [1] })).toBe(false);
     expect(isSaved({ ...route, route: { ...route.route, coords: [[1, 2]] } })).toBe(false);
     expect(isSaved({ ...route, route: { status: 'no-route' } })).toBe(false);
+    expect(isSaved({ ...route, vias: [{ lon: 'x' }] })).toBe(false);
   });
 });
