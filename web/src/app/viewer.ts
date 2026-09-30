@@ -10,7 +10,9 @@ import { buildStyle, FONT_REGULAR } from '../style/buildStyle';
 import { preloadImages } from '../ui/images';
 import { PerfStats } from '../ui/perf';
 import { browserScreenAwake } from '../location/wakeLock';
+import { readSetting, writeSetting } from '../ui/settings';
 import { HeightControl, LocationControl } from './location';
+import { RoutePlanner } from './route';
 import { TracksPanel } from './tracks';
 import { TilePool, type OpenMeta } from '../worker/pool';
 import { showImport } from './importScreen';
@@ -33,6 +35,7 @@ declare global {
       search: (q: string) => Place[] | null;
       samples: typeof SAMPLES;
       tracks: TracksPanel | null;
+      routePlanner: RoutePlanner | null;
     };
   }
 }
@@ -181,13 +184,15 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     showImport('', { hasMap: true, canCancel: true });
   };
 
-  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null };
+  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null };
   window.__app = app;
-  // F-road/track classes from the place-index pass, keyed by tile id and NET offset. Null until
-  // `loadPlaces` resolves; a later task wraps this in a promise for route-finding to await.
-  let roadClasses: RoadClasses | null = null;
+  // F-road/track classes from the place-index pass, keyed by tile id and NET offset. Resolved
+  // once `loadPlaces` finishes; a route requested before then awaits this instead.
+  let resolveRoads: (roads: RoadClasses) => void;
+  const roadsReady = new Promise<RoadClasses>((r) => (resolveRoads = r));
   map.once('idle', () => (app.ready = true));
   // GPX tracks: drawn above the map once its style has loaded; ⋯ → Tracks lists and imports them.
+  // The route planner is built after it so its route line draws above GPX tracks.
   map.once('load', () => {
     const tracks = new TracksPanel(map, (coords) => pool.elevations(coords), FONT_REGULAR);
     app.tracks = tracks;
@@ -195,15 +200,21 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       setMenu(false);
       tracks.show(true);
     };
+    const routePlanner = new RoutePlanner(
+      map,
+      (from, to, allow) => roadsReady.then((roads) => pool.route(from, to, allow, roads)),
+      searchFrom,
+    );
+    app.routePlanner = routePlanner;
   });
 
   void loadPlaces(stored, pool)
     .then(({ index, roads }) => {
       if (closed) return;
-      roadClasses = roads;
+      resolveRoads(roads);
       app.search = (q) => index.search(q);
       app.placesReady = true;
-      wireSearch(map, index, searchFrom);
+      wireSearch(map, index, searchFrom, (d) => app.routePlanner?.pick(d), () => app.routePlanner?.clear());
       const input = $<HTMLInputElement>('search');
       input.placeholder = 'Search places';
       input.disabled = false;
@@ -228,11 +239,16 @@ async function loadPlaces(stored: Stored, pool: TilePool): Promise<{ index: Plac
   return { index: new PlaceIndex(places), roads };
 }
 
-function wireSearch(map: maplibregl.Map, index: PlaceIndex, searchFrom: () => { at: [number, number]; gps: boolean }): void {
+function wireSearch(
+  map: maplibregl.Map,
+  index: PlaceIndex,
+  searchFrom: () => { at: [number, number]; gps: boolean },
+  onPick: (dest: { name: string | null; lon: number; lat: number }) => void,
+  onClear: () => void,
+): void {
   const towns = townsOf(index.places);
   const input = $<HTMLInputElement>('search');
   const list = $<HTMLUListElement>('results');
-  let marker: maplibregl.Marker | null = null;
   let timer = 0;
   const render = () => {
     list.replaceChildren(
@@ -253,8 +269,7 @@ function wireSearch(map: maplibregl.Map, index: PlaceIndex, searchFrom: () => { 
         li.append(name, detail, dist);
         li.onclick = () => {
           map.flyTo({ center: [p.lon, p.lat], zoom: p.kind === 'point' ? 14 : 12 });
-          marker?.remove();
-          marker = new maplibregl.Marker({ color: '#c0392b' }).setLngLat([p.lon, p.lat]).addTo(map);
+          onPick({ name: titleCase(p.name), lon: p.lon, lat: p.lat });
           list.replaceChildren();
           input.blur();
         };
@@ -275,29 +290,9 @@ function wireSearch(map: maplibregl.Map, index: PlaceIndex, searchFrom: () => { 
     input.value = '';
     clear.hidden = true;
     list.replaceChildren();
-    marker?.remove();
-    marker = null;
+    onClear();
     input.focus();
   };
-}
-
-/** Per-device preferences in localStorage; storage can be unavailable (private mode), so both
- *  sides fail soft to the default. */
-function readSetting(key: string, fallback: boolean): boolean {
-  try {
-    const v = localStorage.getItem(key);
-    return v === null ? fallback : v === '1';
-  } catch {
-    return fallback;
-  }
-}
-
-function writeSetting(key: string, value: boolean): void {
-  try {
-    localStorage.setItem(key, value ? '1' : '0');
-  } catch {
-    // not remembered; the switch still works for this session
-  }
 }
 
 /** The search bar is a magnifier until tapped; it collapses again when left empty (focus moves
