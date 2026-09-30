@@ -47,8 +47,6 @@ export class RoutePlanner {
   private dest: Place | null = null;
   /** Waypoints between the start and the destination, in route order. */
   private vias: Place[] = [];
-  /** "Add stop": the next plain map tap adds a waypoint there. */
-  private pickingVia = false;
   /** A start chosen on the map; null: your position or the map centre. */
   private start: [number, number] | null = null;
   private startPin: maplibregl.Marker | null = null;
@@ -157,21 +155,6 @@ export class RoutePlanner {
     $('route-save').onclick = () => this.showSaveForm(true);
     $('route-export').onclick = () => void this.exportGpx();
     $('route-options-toggle').onclick = () => this.showOptions($('route-options').hidden === true);
-    // The minimized card's quick actions (a tap elsewhere on it opens the card).
-    const quick = (id: string, fn: () => void) => {
-      $(id).onclick = (e) => {
-        e.stopPropagation();
-        fn();
-      };
-    };
-    quick('route-add-stop', () => this.pickVia(true));
-    quick('route-min-save', () => {
-      this.setMinimized(false, true);
-      this.showSaveForm(true);
-    });
-    quick('route-min-export', () => void this.exportGpx());
-    quick('route-end', () => $('route-close').click());
-    quick('route-hint-cancel', () => this.pickVia(false));
     $('route-save-cancel').onclick = () => this.showSaveForm(false);
     $<HTMLFormElement>('route-save-form').onsubmit = (e) => {
       e.preventDefault();
@@ -192,11 +175,6 @@ export class RoutePlanner {
       if (via) {
         const n = Number(via.properties.n);
         this.ask(`Remove waypoint ${n}?`, null, () => this.removeVia(n - 1), { yes: 'Remove', no: 'Keep' });
-        return;
-      }
-      if (this.pickingVia && !pressed) {
-        this.pickVia(false);
-        this.addVia({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat, near: this.nameAt(e.point) });
         return;
       }
       // A tap on a saved star opens its card (the Saved panel handles it).
@@ -440,7 +418,6 @@ export class RoutePlanner {
 
   private clearRoute(): void {
     this.seq++;
-    this.pickVia(false);
     this.planning = false;
     this.started = false;
     this.choosing = false;
@@ -467,8 +444,6 @@ export class RoutePlanner {
     $('route-export').hidden = !this.last;
     // No empty row on a route panel that's still being planned.
     if ($('route-save-form').hidden) $('route-actions').hidden = $('route-go').hidden && button.hidden && $('route-export').hidden;
-    $<HTMLButtonElement>('route-min-save').disabled = button.hidden || this.saved;
-    $<HTMLButtonElement>('route-min-export').disabled = !this.last;
   }
 
   private showSaveForm(open: boolean): void {
@@ -579,11 +554,6 @@ export class RoutePlanner {
     $('route-options-toggle').setAttribute('aria-expanded', String(open));
   }
 
-  /** "Add stop" (from the minimized card): the next map tap adds a waypoint; Cancel stops it. */
-  private pickVia(on: boolean): void {
-    this.pickingVia = on;
-    $('route-hint').hidden = !on;
-  }
 
   /** The card as a route panel (title "To …", the F-road switch), for a route or its preparations. */
   private showStarted(): void {

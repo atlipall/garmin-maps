@@ -157,15 +157,13 @@
       #route-save:disabled { color: #8a6d00; border-color: #e3c75a; background: #fff8dc; cursor: default; }
       #route-save-form { display: flex; gap: 8px; }
       #route-save-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid #d4d9e1; border-radius: 10px; font-size: 16px; }
-      #route-hint { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
-      #route-hint span { flex: 1; }
-      #route-hint[hidden], #route-min-actions { display: none; }
-      /* Minimized (C): a dark glance panel with the arrival time, drive time and distance, and four
-         quick actions. A tap on the panel (not a button) opens the card again. */
+      /* Minimized (C): a dark glance panel with the arrival time, drive time and distance; a tap on
+         it opens the card again. */
       #route-card.min { background: #161c28f0; color: #fff; box-shadow: 0 8px 28px #0000004d; cursor: pointer; }
       #route-card.min #route-head { background: none; padding: 14px 10px 6px 18px; }
-      #route-card.min #route-body > :not(#route-info):not(#route-hint):not(#route-min-actions) { display: none !important; }
+      #route-card.min #route-body > :not(#route-info) { display: none !important; }
       #route-card.min #route-close { display: none; }
+      #route-card.min #route-body { padding: 0 16px 8px; }
       #route-card.min #route-min { background: #ffffff1f; color: #fff; }
       #route-card.min #route-min svg { transform: rotate(180deg); }
       #route-card.min #route-title { font-size: 14px; font-weight: 600; color: #aab4c6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -177,10 +175,6 @@
       #route-card.min.routed #route-time { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
       #route-card.min.routed #route-sub { font-size: 15px; color: #c9d2e3; }
       #route-card.min .arrive-part { display: none; }
-      #route-card.min #route-min-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; border-top: 1px solid #ffffff1a; padding-top: 6px; }
-      #route-min-actions button { min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 12px; background: none; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
-      #route-min-actions #route-end { color: #ff8a80; }
-      #route-card.min #route-hint { color: #fff; }
       .start-pin { cursor: default; filter: drop-shadow(0 1px 2px #0005); }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {
@@ -272,7 +266,6 @@
         </div>
         <div id="route-off"></div>
         <div id="route-msg"></div>
-        <div id="route-hint" hidden><span>Tap the map where you want to stop</span><button id="route-hint-cancel" type="button">Cancel</button></div>
         <div id="route-confirm" hidden><div id="route-confirm-text"></div><button id="route-confirm-via" type="button" class="primary" hidden>Add as waypoint</button><button id="route-confirm-yes" type="button" class="primary">Clear route</button><button id="route-confirm-no" type="button">Keep route</button></div>
         <button id="route-options-toggle" type="button" aria-expanded="false" aria-controls="route-options" hidden><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" fill="none" stroke="#5b6475" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="#5b6475" stroke-width="2"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="#5b6475" stroke-width="2"/></svg><span class="grow">Route options</span><span id="route-options-sum"></span><svg class="chev" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="#5b6475" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <div id="route-options" hidden>
@@ -281,12 +274,6 @@
         </div>
         <div id="route-actions"><button id="route-go" type="button">Route here</button><button id="route-save" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Save</span></button><button id="route-export" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Export GPX</span></button></div>
         <form id="route-save-form" hidden><input id="route-save-name" type="text" maxlength="80" aria-label="Name" autocomplete="off" /><button type="submit" class="primary">Save</button><button id="route-save-cancel" type="button">Cancel</button></form>
-        <div id="route-min-actions">
-          <button id="route-add-stop" type="button"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM9 10h6M12 7v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Add stop</button>
-          <button id="route-min-save" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Save</button>
-          <button id="route-min-export" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Export</button>
-          <button id="route-end" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>End route</button>
-        </div>
       </div>
     </section>
     <section id="import" hidden>

@@ -290,24 +290,18 @@ try {
   const fixAt = (dLat, speed) => gps.send('Emulation.setGeolocationOverride', { latitude: 63.936 + dLat, longitude: -21.0, accuracy: 10, speed });
   await fixAt(0.0002, 10);
   await page.waitForFunction(() => document.querySelector('#route-card').classList.contains('min'), { timeout: 5_000 }).catch(() => fail('moving did not minimize the route card'));
-  // Minimized: the dark glance panel with the arrival time, drive time and distance, and quick actions.
+  // Minimized: the dark glance panel with the arrival time, drive time and distance.
   const minCard = await page.evaluate(() => {
     const card = document.querySelector('#route-card');
     const shown = (sel) => { const e = document.querySelector(sel); return !!e && e.getClientRects().length > 0; };
     return {
       h: Math.round(card.getBoundingClientRect().height),
       text: `${document.querySelector('#route-title').textContent} | ${document.querySelector('#route-arrive').textContent} | ${document.querySelector('#route-time').textContent} | ${document.querySelector('#route-sub').textContent}`,
-      actions: [...document.querySelectorAll('#route-min-actions button')].filter((b) => b.getClientRects().length).map((b) => b.textContent.trim()),
       stops: shown('#route-stops'),
     };
   });
-  if (minCard.h > 220 || !/^To Landmannalaugar \| \d\d:\d\d \| \d h \d+ min \| 1\d\d km · arrive about \d\d:\d\d$/.test(minCard.text) || minCard.actions.join('|') !== 'Add stop|Save|Export|End route' || minCard.stops) fail(`minimized card: ${JSON.stringify(minCard)}`);
+  if (minCard.h > 220 || !/^To Landmannalaugar \| \d\d:\d\d \| \d h \d+ min \| 1\d\d km · arrive about \d\d:\d\d$/.test(minCard.text) || minCard.stops) fail(`minimized card: ${JSON.stringify(minCard)}`);
   await page.screenshot({ path: `${OUT}route-min.png` });
-  // Add stop: the next map tap would add a waypoint; the hint says so and Cancel stops it.
-  await page.click('#route-add-stop');
-  if (await page.$eval('#route-hint', (e) => e.hidden) || !(await isMin())) fail('Add stop did not show its hint');
-  await page.click('#route-hint-cancel');
-  if (!(await page.$eval('#route-hint', (e) => e.hidden))) fail('Cancel did not stop adding a stop');
   await page.click('#route-title');
   if (await isMin()) fail('tapping the minimized card did not open it');
   await fixAt(0.0004, 10);
