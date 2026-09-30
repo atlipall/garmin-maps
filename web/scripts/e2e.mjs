@@ -372,6 +372,34 @@ try {
   if (await page.$('.start-pin')) fail('start pin still shown after ×');
   console.log('routing ok:', withF);
 
+  // 3e. Saving: a place (named in the card's name box) becomes a star; a route keeps its line.
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Hekla', lon: -19.67, lat: 63.99 }));
+  await page.click('#route-save');
+  if (await page.$eval('#route-save-name', (e) => e.value) !== 'Hekla') fail('save name not prefilled with the place name');
+  await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-19.67, 63.99], zoom: 11 }); m.once('idle', r); }));
+  await page.screenshot({ path: `${OUT}save-form.png` });
+  await page.$eval('#route-save-name', (e) => { e.value = 'Hekla view'; });
+  await page.click('#route-save-form button[type="submit"]');
+  await page.waitForFunction(() => window.__app.saved.count === 1, { timeout: 5_000 }).catch(() => fail('pin not saved'));
+  const savedPin = await page.evaluate(() => ({ button: document.querySelector('#route-save').textContent, stars: window.__app.map.getStyle().sources.saved.data.features.map((f) => f.properties.name) }));
+  if (savedPin.button !== '★ Saved' || savedPin.stars.join() !== 'Hekla view') fail(`saved pin: ${JSON.stringify(savedPin)}`);
+  await page.click('#route-close');
+  await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-19.64, 63.975], zoom: 11 }); m.once('idle', r); }));
+  await page.screenshot({ path: `${OUT}saved-star.png` });
+  const star = await page.evaluate(() => window.__app.map.queryRenderedFeatures({ layers: ['saved-pins'] }).map((f) => f.properties.name));
+  if (star.join() !== 'Hekla view') fail(`saved star not drawn: ${star}`);
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
+  await page.click('#route-go');
+  await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
+  const savedInfo = await page.$eval('#route-info', (e) => e.textContent);
+  await page.click('#route-save');
+  if (await page.$eval('#route-save-name', (e) => e.value) !== 'To Landmannalaugar') fail('route save name not prefilled');
+  await page.click('#route-save-form button[type="submit"]');
+  await page.waitForFunction(() => window.__app.saved.count === 2, { timeout: 5_000 }).catch(() => fail('route not saved'));
+  await page.click('#route-close');
+  await page.click('#route-confirm-yes');
+  console.log('saving ok:', savedInfo);
+
   // 4. reload opens straight from storage, where the app was: view, location mode and route
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
   await page.click('#route-go');
@@ -393,6 +421,30 @@ try {
   await page.click('#route-close');
   await page.click('#route-confirm-yes');
   console.log('restore after reload ok');
+  // Saved pins and routes are kept across the reload: the star is back, and a saved route opens as
+  // it was drawn (no planning: its numbers are there at once).
+  await page.waitForFunction(() => window.__app.saved?.count === 2, { timeout: 10_000 }).catch(() => fail('saved items not kept across reload'));
+  await page.click('#menu-button');
+  await page.click('#saved-open');
+  const rows = await page.$$eval('#saved-list .track-info .name', (els) => els.map((e) => e.textContent));
+  if (rows.join('|') !== 'Hekla view|To Landmannalaugar') fail(`saved list: ${rows}`);
+  await page.click('#saved-list li:nth-child(2) .track-info');
+  const opened = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, info: document.querySelector('#route-info').textContent, drawn: window.__app.map.getStyle().sources.route.data.features.length, button: document.querySelector('#route-save').textContent }));
+  if (opened.title !== 'To Landmannalaugar' || opened.info !== savedInfo || !opened.drawn || opened.button !== '★ Saved') fail(`opened saved route: ${JSON.stringify(opened)}`);
+  await page.click('#route-close');
+  await page.click('#route-confirm-yes');
+  await page.click('#saved-list li:nth-child(1) .track-info');
+  const pinCard = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, go: !document.querySelector('#route-go').hidden }));
+  if (pinCard.title !== 'Hekla view' || !pinCard.go) fail(`opened saved pin: ${JSON.stringify(pinCard)}`);
+  await page.click('#route-close');
+  for (const left of [1, 0]) {
+    await page.click('#saved-list li:first-child .track-delete');
+    await page.click('#saved-list li:first-child .track-delete');
+    await page.waitForFunction((n) => window.__app.saved.count === n && document.querySelectorAll('#saved-list li').length === n, { timeout: 5_000 }, left);
+  }
+  await page.waitForFunction(() => window.__app.saved.count === 0 && !document.querySelector('#saved-list li'), { timeout: 5_000 }).catch(() => fail('saved items not deleted'));
+  await page.click('#saved-close');
+  console.log('saved list ok:', opened.info);
   if (await page.$('#import:not([hidden])')) fail('import screen shown after reload');
   await page.waitForFunction(() => window.__app?.tracks?.count === 1, { timeout: 10_000 }).catch(() => fail('GPX track not kept across reload'));
   // Deleting asks for a second tap.

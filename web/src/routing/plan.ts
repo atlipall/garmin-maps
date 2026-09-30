@@ -1,7 +1,7 @@
 import { fastestRoute, metresBetween, PREFER_FROAD_WEIGHT, UNITS_PER_DEG, type NodeIndex, type RoadGraph, type Route, type Terminal } from './graph';
 import { cutLine, lineMetres, Snapper, type Anchor, type RoadLines, type Side } from './snap';
 
-type LonLat = [number, number];
+export type LonLat = [number, number];
 
 export type RouteReply =
   | {

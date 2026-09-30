@@ -81,13 +81,16 @@
       #map .locate-button.unavailable { opacity: 0.45; }
       #map .height-pill { padding: 3px 10px; border-radius: 999px; background: #fff; box-shadow: 0 1px 4px #0003; font: 600 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink); }
       /* Tracks panel (⋯ → Tracks): below the top row, scrolls when long. */
-      #tracks { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
+      #tracks, #saved { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
       .tracks-head { display: flex; align-items: center; justify-content: space-between; }
       .tracks-head h2 { margin: 0; font-size: 18px; }
-      #tracks-close { width: var(--btn); height: var(--btn); margin-right: -10px; border: 0; background: none; font-size: 26px; color: #667; cursor: pointer; }
-      #tracks-empty { margin: 4px 0 8px; color: #556; font-size: 14px; }
-      #track-list { list-style: none; margin: 0; padding: 0; }
+      #tracks-close, #saved-close { width: var(--btn); height: var(--btn); margin-right: -10px; border: 0; background: none; font-size: 26px; color: #667; cursor: pointer; }
+      #tracks-empty, #saved-empty { margin: 4px 0 8px; color: #556; font-size: 14px; }
+      #track-list, #saved-list { list-style: none; margin: 0; padding: 0; }
       .track { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 8px; border-top: 1px solid #0001; }
+      .saved-item { grid-template-columns: 18px 1fr auto; }
+      .saved-icon { display: grid; place-items: center; font-size: 17px; color: #d49b00; }
+      .saved-icon.route { color: #1d3f8f; }
       .track .swatch { width: 14px; height: 14px; border-radius: 50%; }
       .track-info { display: grid; gap: 1px; min-width: 0; padding: 8px 0; border: 0; background: none; text-align: left; color: var(--ink); cursor: pointer; font: inherit; }
       .track-info .name { font-weight: 600; overflow-wrap: anywhere; }
@@ -95,8 +98,8 @@
       .track-eye, .track-delete { min-width: 40px; height: 40px; border: 0; border-radius: 8px; background: none; color: #445; cursor: pointer; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
       .track-eye[aria-pressed="false"] { color: #99a; }
       .track-delete.confirm { padding: 0 10px; background: #b00020; color: #fff; font-size: 14px; font-weight: 600; }
-      #tracks-error { color: #b00020; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
-      #tracks-error:not(:empty) { margin-top: 8px; }
+      #tracks-error, #saved-error { color: #b00020; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+      #tracks-error:not(:empty), #saved-error:not(:empty) { margin-top: 8px; }
       #import-gpx { margin-top: 10px; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 16px; cursor: pointer; }
       #route-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; padding: 10px 84px 12px 14px; background: #fff; display: grid; gap: 6px; }
       #route-min { position: absolute; top: 2px; right: 40px; width: var(--btn); height: var(--btn); display: grid; place-items: center; border: 0; background: none; color: #667; cursor: pointer; }
@@ -125,6 +128,13 @@
       .start-pin { cursor: default; filter: drop-shadow(0 1px 2px #0005); }
       #route-msg:empty { display: none; }
       #route-switch, #route-prefer-switch { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+      #route-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+      #route-save { padding: 9px 14px; border: 1px solid #0003; border-radius: 8px; background: #fff; color: var(--ink); font-size: 16px; cursor: pointer; }
+      #route-save:disabled { color: #8a6d00; border-color: #e3c75a; background: #fff8dc; cursor: default; }
+      #route-save-form { display: flex; gap: 8px; }
+      #route-save-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid #0003; border-radius: 8px; font-size: 16px; }
+      #route-save-form button { padding: 8px 12px; border: 1px solid #0003; border-radius: 8px; background: #fff; color: var(--ink); font-size: 15px; cursor: pointer; }
+      #route-save-form button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
       #route-go { justify-self: start; padding: 9px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 16px; cursor: pointer; }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {
@@ -170,6 +180,7 @@
     <div id="menu" class="panel" role="menu" hidden>
       <div id="map-name" role="presentation"><span class="label">Map</span><span id="map-file"></span><span id="map-dem"></span></div>
       <button id="tracks-open" role="menuitem">Tracks (GPX)</button>
+      <button id="saved-open" role="menuitem">Saved pins and routes</button>
       <button id="keep-awake" role="menuitemcheckbox" aria-checked="true">Keep screen on while locating</button>
       <button id="replace" role="menuitem">Load another map</button>
       <div id="app-version" role="presentation"></div>
@@ -186,6 +197,15 @@
       <button id="import-gpx" type="button">Import GPX…</button>
       <input id="gpx-file" type="file" multiple hidden />
     </section>
+    <section id="saved" class="panel" aria-labelledby="saved-title" hidden>
+      <div class="tracks-head">
+        <h2 id="saved-title">Saved</h2>
+        <button id="saved-close" type="button" aria-label="Close saved">×</button>
+      </div>
+      <p id="saved-empty">Nothing saved yet. Tap <b>☆ Save</b> on a place or route card to keep it here.</p>
+      <ul id="saved-list"></ul>
+      <div id="saved-error" role="alert"></div>
+    </section>
     <section id="route-card" class="panel" aria-live="polite" hidden>
       <button id="route-min" type="button" aria-label="Minimize" aria-expanded="true"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button id="route-close" type="button" aria-label="Close">×</button>
@@ -198,7 +218,8 @@
       <div id="route-msg"></div>
       <label id="route-switch" hidden><input id="route-froads" type="checkbox" checked /> Allow F-roads and tracks</label>
       <label id="route-prefer-switch" hidden><input id="route-prefer" type="checkbox" /> Prefer F-roads and tracks</label>
-      <button id="route-go" type="button">Route here</button>
+      <div id="route-actions"><button id="route-go" type="button">Route here</button><button id="route-save" type="button">☆ Save</button></div>
+      <form id="route-save-form" hidden><input id="route-save-name" type="text" maxlength="80" aria-label="Name" autocomplete="off" /><button type="submit" class="primary">Save</button><button id="route-save-cancel" type="button">Cancel</button></form>
     </section>
     <section id="import" hidden>
       <div class="card panel">

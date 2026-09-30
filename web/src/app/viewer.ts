@@ -14,6 +14,7 @@ import { browserScreenAwake } from '../location/wakeLock';
 import { readSetting, writeSetting } from '../ui/settings';
 import { HeightControl, LocationControl } from './location';
 import { RoutePlanner } from './route';
+import { SavedPanel } from './savedPanel';
 import { loadSession, saveSession } from './session';
 import { TracksPanel } from './tracks';
 import { TilePool, type OpenMeta } from '../worker/pool';
@@ -191,7 +192,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     showImport('', { hasMap: true, canCancel: true });
   };
 
-  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null };
+  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null };
   window.__app = app;
   // F-road/track classes from the place-index pass, keyed by tile id and NET offset. Resolved
   // once `loadPlaces` finishes; a route requested before then awaits this instead. Rejected if
@@ -246,6 +247,22 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     if (session?.route) routePlanner.restore(session.route);
     routePlanner.onChange = remember;
     locate.onSpeed = (mps) => routePlanner.moving(mps);
+    // Saved pins (stars on the map) and routes, from the route card's Save.
+    const saved = new SavedPanel(
+      map,
+      FONT_REGULAR,
+      (p) => {
+        routePlanner.pick({ name: p.name, lon: p.lon, lat: p.lat });
+        map.easeTo({ center: [p.lon, p.lat], zoom: Math.max(map.getZoom(), 12), duration: 600 });
+      },
+      (r) => routePlanner.openSaved(r),
+    );
+    app.saved = saved;
+    routePlanner.onSave = (item) => saved.add(item);
+    $('saved-open').onclick = () => {
+      setMenu(false);
+      saved.show(true);
+    };
   });
 
   void loadPlaces(stored, pool)

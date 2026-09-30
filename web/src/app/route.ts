@@ -3,6 +3,7 @@ import type { RouteReply } from '../worker/pool';
 import { readSetting, writeSetting } from '../ui/settings';
 import { offRoadText, routeMessage, type StartKind } from './routeMessage';
 import type { SessionRoute } from './session';
+import { newId, type RouteOk, type Saved, type SavedRoute } from '../saved/saved';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 /** Hold time for a long press: below iOS's own ~0.5 s long-press gestures (selection loupe, callout). */
@@ -15,14 +16,14 @@ const FIX_WAIT_MS = 20_000;
 /** Moving faster than this (m/s, about 9 km/h: faster than walking) minimizes the route card. */
 const MOVING_MPS = 2.5;
 
-const fmtKm = (m: number) => (m < 10_000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 1000)} km`);
-function fmtTime(s: number): string {
+export const fmtKm = (m: number) => (m < 10_000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 1000)} km`);
+export function fmtTime(s: number): string {
   const min = Math.round(s / 60);
   return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`;
 }
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
-const coordsText = (p: { lon: number; lat: number }) => `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
+export const coordsText = (p: { lon: number; lat: number }) => `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
 
 const FROM_TEXT: Record<StartKind, string> = { gps: 'your position', centre: 'the map centre', chosen: 'the chosen point' };
 
@@ -67,6 +68,12 @@ export class RoutePlanner {
   private minimized = false;
   /** Opened again by hand: not minimized automatically again for this route. */
   private keepOpen = false;
+  /** The route on the map and where it started (what "Save" keeps). */
+  private last: { route: RouteOk; from: [number, number] } | null = null;
+  /** The place or route in the card is saved (until the card changes). */
+  private saved = false;
+  /** Stores a saved pin or route (the Saved panel). */
+  onSave: ((item: Saved) => Promise<void>) | null = null;
 
   /** `searchFrom`: your recent GPS position, else the map centre. `useLocation` turns location on. */
   constructor(
@@ -121,6 +128,12 @@ export class RoutePlanner {
     $('route-change').onclick = () => this.showChoices($('route-choices').hidden === true);
     $('route-use-gps').onclick = () => void this.useMyLocation();
     $('route-choose').onclick = () => this.chooseOnMap();
+    $('route-save').onclick = () => this.showSaveForm(true);
+    $('route-save-cancel').onclick = () => this.showSaveForm(false);
+    $<HTMLFormElement>('route-save-form').onsubmit = (e) => {
+      e.preventDefault();
+      void this.save($<HTMLInputElement>('route-save-name').value.trim());
+    };
     // Long press (touch) or right-click (mouse) drops a pin with a "Route here" card.
     // A plain tap elsewhere on the map sets the start while choosing one, else closes the card while
     // it only offers "Route here"; a shown route stays until ×. The click a browser may send after a
@@ -131,6 +144,8 @@ export class RoutePlanner {
       this.pick({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat });
     });
     map.on('click', (e) => {
+      // A tap on a saved star opens its card (the Saved panel handles it).
+      if (map.getLayer('saved-pins') && map.queryRenderedFeatures(e.point, { layers: ['saved-pins'] }).length) return;
       if (pressed) pressed = false;
       else if (this.choosing) this.setStart([e.lngLat.lng, e.lngLat.lat]);
       else if (this.dest && !this.started) this.clear();
@@ -196,6 +211,7 @@ export class RoutePlanner {
     this.dropPending();
     this.clearRoute();
     this.keepOpen = false;
+    this.saved = false;
     this.setMinimized(false);
     this.dest = dest;
     this.pin?.remove();
@@ -208,6 +224,7 @@ export class RoutePlanner {
     $('route-go').hidden = false;
     $('route-card').hidden = false;
     this.fitRoute = true;
+    this.showSave();
     this.onChange?.();
   }
 
@@ -251,6 +268,7 @@ export class RoutePlanner {
     this.dest = null;
     this.clearStart();
     $('route-card').hidden = true;
+    this.showSave();
     this.keepOpen = false;
     this.setMinimized(false);
     this.onChange?.();
@@ -284,6 +302,72 @@ export class RoutePlanner {
   private drawRoute(data: GeoJSON.FeatureCollection): void {
     (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(data);
     this.shown = data.features.length > 0;
+    if (!this.shown) this.last = null;
+    this.showSave();
+  }
+
+  /** "Save" for a place (before routing) or a drawn route; "Saved" once it is. */
+  private showSave(): void {
+    const button = $<HTMLButtonElement>('route-save');
+    button.hidden = !this.dest || (this.started && !this.last);
+    button.disabled = this.saved;
+    button.textContent = this.saved ? '★ Saved' : '☆ Save';
+    if (button.hidden) this.showSaveForm(false);
+    // No empty row on a route panel that's still being planned.
+    if ($('route-save-form').hidden) $('route-actions').hidden = $('route-go').hidden && button.hidden;
+  }
+
+  private showSaveForm(open: boolean): void {
+    $('route-save-form').hidden = !open;
+    $('route-actions').hidden = open;
+    if (!open || !this.dest) return;
+    const place = this.dest.name ?? coordsText(this.dest);
+    const input = $<HTMLInputElement>('route-save-name');
+    input.value = input.placeholder = this.last ? `To ${place}` : this.dest.name ?? `Pin ${place}`;
+    input.focus();
+    input.select();
+  }
+
+  private async save(name: string): Promise<void> {
+    if (!this.dest || !this.onSave) return;
+    const base = { id: newId(), name: name || $<HTMLInputElement>('route-save-name').placeholder, added: Date.now() };
+    const item: Saved = this.last
+      ? { ...base, kind: 'route', dest: this.dest, from: this.last.from, allowFRoads: this.allow, preferFRoads: this.prefer, route: this.last.route }
+      : { ...base, kind: 'pin', lon: this.dest.lon, lat: this.dest.lat };
+    try {
+      await this.onSave(item);
+      this.saved = true;
+      this.showSaveForm(false);
+      this.showSave();
+    } catch (err) {
+      this.setInfo($('route-info').textContent ?? '', $('route-off').textContent ?? '', `Couldn't save: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** Shows a saved route as it was drawn (no planning), with its start and switches; changing
+   *  those plans it again. Asks first when another route is on the map. */
+  openSaved(r: SavedRoute): void {
+    if (this.shown || this.planning) {
+      this.ask(`Show ${r.name} and clear the current route?`, null, () => {
+        this.clearRoute();
+        this.openSaved(r);
+      });
+      return;
+    }
+    this.pick(r.dest);
+    this.clearStart();
+    this.start = r.from;
+    this.startPin = new maplibregl.Marker({ element: startPinElement(), anchor: 'bottom' }).setLngLat(r.from).addTo(this.map);
+    this.allow = r.allowFRoads;
+    this.prefer = r.preferFRoads;
+    $<HTMLInputElement>('route-froads').checked = this.allow;
+    $<HTMLInputElement>('route-prefer').checked = this.prefer;
+    this.showStarted();
+    this.showFrom();
+    this.showRoute(r.route, r.from, 'chosen', true);
+    $('route-title').textContent = r.name;
+    this.saved = true;
+    this.showSave();
   }
 
   private clearStart(): void {
@@ -328,6 +412,7 @@ export class RoutePlanner {
     $('route-go').hidden = true;
     this.showSwitches();
     $('route-title').textContent = `To ${this.dest.name ?? `dropped pin · ${coordsText(this.dest)}`}`;
+    this.showSave();
     this.onChange?.();
   }
 
@@ -389,6 +474,8 @@ export class RoutePlanner {
     this.fromCentre = kind === 'centre' ? from : null;
     const fit = this.fitRoute;
     this.fitRoute = true;
+    this.saved = false;
+    this.last = null;
     this.showStarted();
     this.showFrom();
     this.setInfo('Preparing roads…', '', '');
@@ -401,12 +488,19 @@ export class RoutePlanner {
       this.setInfo('', '', routeMessage(reply, kind));
       return;
     }
+    this.showRoute(reply, from, kind, fit);
+  }
+
+  /** Draws a found (or saved) route with its numbers, and fits it in view when `fit`. */
+  private showRoute(reply: RouteOk, from: [number, number], kind: StartKind, fit: boolean): void {
     const feature = (k: string, geometry: GeoJSON.Geometry): GeoJSON.Feature => ({ type: 'Feature', properties: { kind: k }, geometry });
     const features = [feature('route', { type: 'LineString', coordinates: reply.coords })];
     for (const leg of [reply.offRoadStart, reply.offRoadEnd]) if (leg) features.push(feature('offroad', { type: 'LineString', coordinates: leg }));
     // A chosen start has its pin; otherwise a dot marks where the route starts.
     if (kind !== 'chosen') features.push(feature('start', { type: 'Point', coordinates: reply.coords[0] }));
     this.drawRoute({ type: 'FeatureCollection', features });
+    this.last = { route: reply, from };
+    this.showSave();
     this.setInfo(`${fmtKm(reply.metres)} · ${fmtTime(reply.seconds)}`, offRoadText(reply.offRoadStartM, reply.offRoadEndM), '');
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
     for (const [lon, lat] of [...reply.coords, ...(reply.offRoadStart ?? []), ...(reply.offRoadEnd ?? [])]) {
