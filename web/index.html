@@ -94,6 +94,15 @@
       #route-title { font-weight: 600; overflow-wrap: anywhere; }
       #route-info { font-size: 15px; }
       #route-msg { font-size: 14px; color: #8a3b00; }
+      #route-info:empty, #route-off:empty { display: none; }
+      #route-off { font-size: 14px; color: #445; }
+      #route-from { display: flex; align-items: center; gap: 8px; font-size: 15px; color: #445; }
+      #route-change { padding: 2px 4px; border: 0; background: none; color: var(--accent); font-size: 15px; font-weight: 600; cursor: pointer; }
+      #route-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+      #route-choices[hidden] { display: none; }
+      #route-choices button { padding: 8px 12px; border: 1px solid #0003; border-radius: 8px; background: #fff; color: var(--ink); font-size: 15px; cursor: pointer; }
+      #route-choices button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+      .start-pin { cursor: default; filter: drop-shadow(0 1px 2px #0005); }
       #route-msg:empty { display: none; }
       #route-switch { display: flex; align-items: center; gap: 8px; font-size: 15px; }
       #route-go { justify-self: start; padding: 9px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 16px; cursor: pointer; }
@@ -158,7 +167,10 @@
     <section id="route-card" class="panel" aria-live="polite" hidden>
       <button id="route-close" type="button" aria-label="Close">×</button>
       <div id="route-title"></div>
+      <div id="route-from"><span id="route-from-text"></span> <button id="route-change" type="button" aria-expanded="false" aria-controls="route-choices">Change</button></div>
+      <div id="route-choices" hidden><button id="route-use-gps" type="button">Use my location</button><button id="route-choose" type="button">Choose on the map</button></div>
       <div id="route-info"></div>
+      <div id="route-off"></div>
       <div id="route-msg"></div>
       <label id="route-switch" hidden><input id="route-froads" type="checkbox" checked /> Allow F-roads and tracks</label>
       <button id="route-go" type="button">Route here</button>

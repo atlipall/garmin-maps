@@ -59,7 +59,7 @@ export class GraphBuilder {
   private hasGeom = false;
 
   node(x: number, y: number): number {
-    const key = (x + 0x800000) * 0x1000000 + (y + 0x800000);
+    const key = xyKey(x, y);
     let id = this.ids.get(key);
     if (id === undefined) {
       id = this.xs.length;
@@ -149,6 +149,9 @@ class Heap {
   get size(): number {
     return this.keys.length;
   }
+  get topKey(): number {
+    return this.keys[0];
+  }
   push(k: number, v: number): void {
     const keys = this.keys;
     const vals = this.vals;
@@ -190,22 +193,56 @@ class Heap {
   }
 }
 
-/** Fastest route between two nodes (A*, time in seconds), or null when unreachable. */
-export function fastestRoute(g: RoadGraph, from: number, to: number, allowFRoads: boolean): Route | null {
+/** A route end on the graph: a node plus the time (seconds) spent getting to it from the start
+ *  point (for a source) or from it to the destination point (for a target). */
+export interface Terminal {
+  node: number;
+  cost: number;
+}
+
+const terminals = (t: number | Terminal[]): Terminal[] => (typeof t === 'number' ? [{ node: t, cost: 0 }] : t);
+
+/**
+ * Fastest route (A*, time in seconds) from any of the sources to any of the targets, counting each
+ * source's and target's cost, or null when none is reachable. `seconds` includes those costs,
+ * `metres` only the edges'. A plain node stands for a single terminal with no cost.
+ */
+export function fastestRoute(g: RoadGraph, from: number | Terminal[], to: number | Terminal[], allowFRoads: boolean): Route | null {
+  const sources = terminals(from);
+  const targets = terminals(to);
+  if (!sources.length || !targets.length) return null;
   const n = g.nodeX.length;
   const best = new Float64Array(n).fill(Infinity);
   const via = new Int32Array(n).fill(-1);
   const done = new Uint8Array(n);
+  const extra = new Map<number, number>();
+  for (const t of targets) extra.set(t.node, Math.min(t.cost, extra.get(t.node) ?? Infinity));
   const maxMs = g.maxSpeed / 3.6;
-  const h = (v: number) => metresBetween(g.nodeX[v], g.nodeY[v], g.nodeX[to], g.nodeY[to]) / maxMs;
+  // Admissible: the straight-line time at top speed to the nearest-in-total target.
+  const h = (v: number) => {
+    let m = Infinity;
+    for (const t of targets) m = Math.min(m, metresBetween(g.nodeX[v], g.nodeY[v], g.nodeX[t.node], g.nodeY[t.node]) / maxMs + t.cost);
+    return m;
+  };
   const heap = new Heap();
-  best[from] = 0;
-  heap.push(h(from), from);
+  for (const s of sources) {
+    if (s.cost < best[s.node]) {
+      best[s.node] = s.cost;
+      heap.push(s.cost + h(s.node), s.node);
+    }
+  }
+  let bestTotal = Infinity;
+  let end = -1;
   while (heap.size) {
+    if (heap.topKey >= bestTotal) break; // nothing left can beat the best found
     const u = heap.pop();
     if (done[u]) continue;
     done[u] = 1;
-    if (u === to) break;
+    const x = extra.get(u);
+    if (x !== undefined && best[u] + x < bestTotal) {
+      bestTotal = best[u] + x;
+      end = u;
+    }
     for (let e = g.edgeStart[u]; e < g.edgeStart[u + 1]; e++) {
       if (!allowFRoads && g.edgeFlags[e] & EDGE_FROAD) continue;
       const v = g.edgeTo[e];
@@ -218,32 +255,20 @@ export function fastestRoute(g: RoadGraph, from: number, to: number, allowFRoads
       }
     }
   }
-  if (!Number.isFinite(best[to])) return null;
-  // Walk back through the edges, then emit the shape forwards.
+  if (end < 0) return null;
+  // Walk back through the edges to a source (a node reached by no edge), then emit the shape forwards.
   const edges: number[] = [];
-  const edgeFrom: number[] = [];
-  for (let v = to; v !== from; ) {
-    const e = via[v];
+  let start = end;
+  while (via[start] >= 0) {
+    const e = via[start];
     edges.push(e);
-    let u = 0;
-    // The source of edge e: binary search in edgeStart.
-    let lo = 0;
-    let hi = n;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (g.edgeStart[mid + 1] <= e) lo = mid + 1;
-      else hi = mid;
-    }
-    u = lo;
-    edgeFrom.push(u);
-    v = u;
+    start = edgeSource(g, e);
   }
   edges.reverse();
-  edgeFrom.reverse();
   const deg = (x: number) => x / UNITS_PER_DEG;
-  const coords: Array<[number, number]> = [[deg(g.nodeX[from]), deg(g.nodeY[from])]];
+  const coords: Array<[number, number]> = [[deg(g.nodeX[start]), deg(g.nodeY[start])]];
   let metres = 0;
-  const nodes = [from];
+  const nodes = [start];
   for (const e of edges) {
     metres += g.edgeLen[e];
     if (g.geomStart) for (let k = g.geomStart[e]; k < g.geomStart[e + 1]; k++) coords.push([deg(g.geomX![k]), deg(g.geomY![k])]);
@@ -251,28 +276,64 @@ export function fastestRoute(g: RoadGraph, from: number, to: number, allowFRoads
     coords.push([deg(g.nodeX[v]), deg(g.nodeY[v])]);
     nodes.push(v);
   }
-  return { coords, metres, seconds: best[to], nodes, edges };
+  return { coords, metres, seconds: bestTotal, nodes, edges };
+}
+
+/** The node edge `e` leaves from (binary search in edgeStart). */
+export function edgeSource(g: RoadGraph, e: number): number {
+  let lo = 0;
+  let hi = g.nodeX.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (g.edgeStart[mid + 1] <= e) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /** Whether node `v` has an outgoing edge that isn't an F-road or track (so a route that may not
- *  use those can start or end there). */
+ *  use those can start there). */
 export function hasNormalRoad(g: RoadGraph, v: number): boolean {
   for (let e = g.edgeStart[v]; e < g.edgeStart[v + 1]; e++) if (!(g.edgeFlags[e] & EDGE_FROAD)) return true;
   return false;
 }
 
-/** Grid index over the graph's nodes, for snapping a position to the nearest node. */
+/** Whether node `v` has an outgoing edge a route may use (any, or only normal roads). */
+export const canLeave = (g: RoadGraph, v: number, allowFRoads: boolean): boolean =>
+  allowFRoads ? g.edgeStart[v + 1] > g.edgeStart[v] : hasNormalRoad(g, v);
+
+const IN_ANY = 1;
+const IN_NORMAL = 2;
+const inbound = new WeakMap<RoadGraph, Uint8Array>();
+
+/** Whether node `v` has an incoming edge a route may use (any, or only normal roads), so a route
+ *  can end there. */
+export function canArrive(g: RoadGraph, v: number, allowFRoads: boolean): boolean {
+  let flags = inbound.get(g);
+  if (!flags) {
+    flags = new Uint8Array(g.nodeX.length);
+    for (let e = 0; e < g.edgeTo.length; e++) flags[g.edgeTo[e]] |= IN_ANY | (g.edgeFlags[e] & EDGE_FROAD ? 0 : IN_NORMAL);
+    inbound.set(g, flags);
+  }
+  return (flags[v] & (allowFRoads ? IN_ANY : IN_NORMAL)) !== 0;
+}
+
+/** Grid index over the graph's nodes, for snapping a position to the nearest node, plus a lookup
+ *  of nodes by exact position. */
 export class NodeIndex {
   private readonly cells = new Map<number, number[]>();
+  private readonly byXY = new Map<number, number>();
+  private readonly main: Uint8Array;
   private static readonly CELL = Math.round(0.05 * UNITS_PER_DEG);
 
-  /** Indexes the nodes of the main road network (its largest connected part), so a position never
-   *  snaps to an isolated stub, e.g. a parking loop that isn't joined to any road. */
+  /** Snapping uses the nodes of the main road network (its largest connected part) only, so a
+   *  position never snaps to an isolated stub, e.g. a parking loop that isn't joined to any road. */
   constructor(private readonly g: RoadGraph) {
     const C = NodeIndex.CELL;
-    const main = largestComponent(g);
+    this.main = largestComponent(g);
     for (let v = 0; v < g.nodeX.length; v++) {
-      if (!main[v]) continue;
+      this.byXY.set(xyKey(g.nodeX[v], g.nodeY[v]), v);
+      if (!this.main[v]) continue;
       const key = Math.floor(g.nodeX[v] / C) * 100000 + Math.floor(g.nodeY[v] / C);
       const list = this.cells.get(key);
       if (list) list.push(v);
@@ -280,16 +341,30 @@ export class NodeIndex {
     }
   }
 
-  /** Nearest node within `maxMetres` that `accept` (when given) lets through, or null. */
+  /** The node at exactly this position (map units), or -1. */
+  nodeAt(x: number, y: number): number {
+    return this.byXY.get(xyKey(x, y)) ?? -1;
+  }
+
+  /** Whether node `v` is part of the main road network. */
+  inMain(v: number): boolean {
+    return this.main[v] === 1;
+  }
+
+  /** Nearest main-network node within `maxMetres` that `accept` (when given) lets through, or null. */
   nearest(lon: number, lat: number, maxMetres: number, accept?: (node: number) => boolean): { node: number; metres: number } | null {
     const C = NodeIndex.CELL;
     const x = Math.round(lon * UNITS_PER_DEG);
     const y = Math.round(lat * UNITS_PER_DEG);
     const cx = Math.floor(x / C);
     const cy = Math.floor(y / C);
+    // Enough cells each way to cover the radius (cells are narrower east-west away from the equator).
+    const cellM = metresBetween(0, y, C, y);
+    const rx = Math.ceil(maxMetres / Math.max(1, cellM));
+    const ry = Math.ceil(maxMetres / metresBetween(0, 0, 0, C));
     let bestNode = -1;
     let bestM = maxMetres;
-    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -rx; dx <= rx; dx++) for (let dy = -ry; dy <= ry; dy++) {
       for (const v of this.cells.get((cx + dx) * 100000 + (cy + dy)) ?? []) {
         const m = metresBetween(x, y, this.g.nodeX[v], this.g.nodeY[v]);
         if (m <= bestM && (!accept || accept(v))) {
@@ -301,6 +376,8 @@ export class NodeIndex {
     return bestNode < 0 ? null : { node: bestNode, metres: bestM };
   }
 }
+
+const xyKey = (x: number, y: number) => (x + 0x800000) * 0x1000000 + (y + 0x800000);
 
 /** Nodes of the largest connected part of the graph (edges taken as undirected). */
 export function largestComponent(g: RoadGraph): Uint8Array {

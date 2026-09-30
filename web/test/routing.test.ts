@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { EDGE_FROAD, fastestRoute, GraphBuilder, hasNormalRoad, NodeIndex, UNITS_PER_DEG } from '../src/routing/graph';
+import { canArrive, canLeave, EDGE_FROAD, fastestRoute, GraphBuilder, hasNormalRoad, NodeIndex, UNITS_PER_DEG } from '../src/routing/graph';
 import { addTileNetwork } from '../src/routing/network';
 import type { NodNode } from '../src/routing/nod';
 import { RoadClassCollector, roadClass } from '../src/routing/roadClass';
@@ -77,5 +77,52 @@ describe('NOD network', () => {
     const b = new GraphBuilder();
     b.edge(b.node(0, 0), b.node(10, 0), 10, 50, 0, null, { tile: 300, net: 7 });
     expect(b.build().edgeTile[0]).toBe(300);
+  });
+
+  test('canLeave / canArrive: usable outgoing / incoming edges, with and without F-roads', () => {
+    const g = build();
+    const idx = new NodeIndex(g);
+    const a = idx.nearest(-21.0, 64.0, 100)!.node;
+    const bN = idx.nearest(-20.95, 64.0, 100)!.node;
+    const c = idx.nearest(-20.95, 64.01, 100)!.node;
+    expect([canLeave(g, a, false), canArrive(g, a, true)]).toEqual([true, false]); // one-way start
+    expect([canLeave(g, bN, false), canArrive(g, bN, false)]).toEqual([false, true]); // only the F-road leaves b
+    expect([canArrive(g, c, false), canArrive(g, c, true)]).toEqual([false, true]);
+    expect(idx.nodeAt(g.nodeX[c], g.nodeY[c])).toBe(c);
+    expect(idx.nodeAt(g.nodeX[c] + 1, g.nodeY[c])).toBe(-1);
+  });
+});
+
+describe('fastestRoute with several sources and targets', () => {
+  // a — b — c — d in a row, 1000 m each at 36 km/h (100 s), both ways.
+  const line = () => {
+    const b = new GraphBuilder();
+    const n = [0, 0.01, 0.02, 0.03].map((lon) => b.node(U(lon), 0));
+    for (let i = 0; i < 3; i++) {
+      b.edge(n[i], n[i + 1], 1000, 36, 0);
+      b.edge(n[i + 1], n[i], 1000, 36, 0);
+    }
+    return { g: b.build(), n };
+  };
+
+  test('counts the sources\' and targets\' costs and picks the best total', () => {
+    const { g, n } = line();
+    // From a (cost 500) or b (cost 10); to d (extra 0) or c (extra 50): b → c + 50 = 160 wins
+    // over b → d = 210 and a → … ≥ 600.
+    const r = fastestRoute(g, [{ node: n[0], cost: 500 }, { node: n[1], cost: 10 }], [{ node: n[3], cost: 0 }, { node: n[2], cost: 50 }], true)!;
+    expect(r.nodes).toEqual([n[1], n[2]]);
+    expect(r.seconds).toBeCloseTo(160, 6);
+    expect(r.metres).toBeCloseTo(1000, 6);
+    // A costly target near by loses to a cheap one further on: b → d (200) beats b → c (100 + 150).
+    const far = fastestRoute(g, [{ node: n[1], cost: 0 }], [{ node: n[2], cost: 150 }, { node: n[3], cost: 0 }], true)!;
+    expect(far.nodes).toEqual([n[1], n[2], n[3]]);
+    expect(far.seconds).toBeCloseTo(200, 6);
+  });
+
+  test('a node that is both a source and a target gives an empty route', () => {
+    const { g, n } = line();
+    const r = fastestRoute(g, [{ node: n[1], cost: 5 }], [{ node: n[1], cost: 7 }], true)!;
+    expect(r.edges).toEqual([]);
+    expect(r.seconds).toBeCloseTo(12, 6);
   });
 });

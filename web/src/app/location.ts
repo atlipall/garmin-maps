@@ -121,13 +121,7 @@ export class LocationControl implements maplibregl.IControl {
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) this.button.addEventListener(ev, () => clearTimeout(this.pressTimer));
     this.button.addEventListener('click', () => {
       if (this.longPressed) return; // the long press already turned location off
-      // Turning location on or resuming after a drag zooms in; switching north/heading up keeps the zoom.
-      const startsFollowing = this.state.mode === 'off' || this.state.paused;
-      if (this.state.mode === 'off') {
-        this.firstFix = true;
-        this.start();
-      }
-      this.setState(tap(this.state), startsFollowing);
+      this.press();
     });
     // A drag (or a rotate gesture) by the user pauses following; programmatic moves have no originalEvent.
     map.on('dragstart', () => this.setState(dragged(this.state)));
@@ -159,6 +153,22 @@ export class LocationControl implements maplibregl.IControl {
     // The compass button returns to north up (it resets the bearing itself).
     map.getContainer().querySelector('.maplibregl-ctrl-compass')?.addEventListener('click', () => this.setState(compassReset(this.state)));
     return this.container;
+  }
+
+  /** Turns location on, as the first tap on the button does; does nothing when it's already on.
+   *  Call it from a user gesture (iOS grants compass access only then). */
+  activate(): void {
+    if (this.state.mode === 'off') this.press();
+  }
+
+  private press(): void {
+    // Turning location on or resuming after a drag zooms in; switching north/heading up keeps the zoom.
+    const startsFollowing = this.state.mode === 'off' || this.state.paused;
+    if (this.state.mode === 'off') {
+      this.firstFix = true;
+      this.start();
+    }
+    this.setState(tap(this.state), startsFollowing);
   }
 
   onRemove(): void {

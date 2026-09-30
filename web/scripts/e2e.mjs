@@ -201,7 +201,8 @@ try {
   console.log('gpx ok:', trk.stats);
   await page.click('#tracks-close');
 
-  // 3d. Routing: right-click drops a pin, a tap closes it; Route here → panel numbers; the switch; ×
+  // 3d. Routing: right-click drops a pin, a tap closes it; Ctrl+Click keeps it; Route here → panel
+  // numbers; the switch; an off-road destination; a start chosen on the map; ×
   await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-19.06, 63.99], zoom: 12 }); m.once('idle', r); }));
   await gps.send('Emulation.setGeolocationOverride', { latitude: 63.936, longitude: -21.0, accuracy: 10 }); // Selfoss
   // Right-click (the Mac's long press) drops a pin with a "Route here" card; a plain click closes it.
@@ -209,18 +210,28 @@ try {
   const markersBefore = await markers();
   await page.mouse.click(600, 500, { button: 'right' });
   await page.waitForFunction(() => !document.querySelector('#route-card').hidden, { timeout: 5_000 }).catch(() => fail('no card after right-click'));
-  const dropped = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, go: document.querySelector('#route-go').hidden ? '' : document.querySelector('#route-go').textContent }));
-  if (!/^Dropped pin · 6\d\.\d{4}, -1\d\.\d{4}$/.test(dropped.title) || dropped.go !== 'Route here') fail(`dropped pin card: ${JSON.stringify(dropped)}`);
+  const dropped = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, go: document.querySelector('#route-go').hidden ? '' : document.querySelector('#route-go').textContent, from: document.querySelector('#route-from-text').textContent }));
+  if (!/^Dropped pin · 6\d\.\d{4}, -1\d\.\d{4}$/.test(dropped.title) || dropped.go !== 'Route here' || dropped.from !== 'From your position') fail(`dropped pin card: ${JSON.stringify(dropped)}`);
   await page.mouse.click(400, 400);
   await page.waitForFunction(() => document.querySelector('#route-card').hidden, { timeout: 5_000 }).catch(() => fail('a map tap did not close the dropped-pin card'));
   if ((await markers()) !== markersBefore) fail('a map tap did not remove the dropped pin');
+  // Ctrl+Click (a Mac trackpad's right-click: contextmenu, then click) drops a pin that stays.
+  await page.keyboard.down('Control');
+  await page.mouse.click(600, 500);
+  await page.keyboard.up('Control');
+  await page.waitForFunction(() => !document.querySelector('#route-card').hidden, { timeout: 5_000 }).catch(() => fail('no card after Ctrl+Click'));
+  await new Promise((r) => setTimeout(r, 500));
+  if (await page.$eval('#route-card', (e) => e.hidden)) fail('the click of a Ctrl+Click closed its own card');
+  if ((await markers()) !== markersBefore + 1) fail('Ctrl+Click: the dropped pin is gone');
+  await page.click('#route-close');
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
   await page.click('#route-go');
   await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
   const withF = await page.$eval('#route-info', (e) => e.textContent);
   if (!/^1[2-5]\d km · [23] h/.test(withF)) fail(`Selfoss → Landmannalaugar: ${withF}`);
-  const kinds = await page.evaluate(() => window.__app.map.getStyle().sources.route.data.features.map((f) => f.geometry.type).join(','));
-  if (kinds !== 'LineString,Point') fail(`route features: ${kinds}`);
+  const routeKinds = () => page.evaluate(() => window.__app.map.getStyle().sources.route.data.features.map((f) => `${f.properties.kind}:${f.geometry.type}`));
+  const kinds = await routeKinds();
+  if (!kinds.includes('route:LineString') || !kinds.includes('start:Point') || kinds.some((k) => !/^(route:LineString|start:Point|offroad:LineString)$/.test(k))) fail(`route features: ${kinds}`);
   await new Promise((r) => setTimeout(r, 1500)); // fitBounds
   await page.screenshot({ path: `${OUT}route.png` });
   console.log('wrote', `${OUT}route.png`);
@@ -230,8 +241,39 @@ try {
   if (await page.$eval('#route-card', (e) => e.hidden)) fail('a map tap cleared the shown route');
   await page.click('#route-froads');
   await page.waitForFunction(() => /No route without F-roads/.test(document.querySelector('#route-msg')?.textContent ?? ''), { timeout: 30_000 });
+  await page.click('#route-froads'); // back on
+  // A destination 1.5 km from the nearest road (a highland spot from a user report): a dashed
+  // off-road leg and a "+ … off-road at the end" line.
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Off the road', lon: -19.31, lat: 64.18 }));
+  await page.click('#route-go');
+  await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 }).catch(async () => fail(`off-road destination: ${await page.$eval('#route-msg', (e) => e.textContent)}`));
+  const off = await page.evaluate(() => ({ text: document.querySelector('#route-off').textContent, legs: window.__app.map.getStyle().sources.route.data.features.filter((f) => f.properties.kind === 'offroad').length, dashed: !!window.__app.map.getPaintProperty('route-offroad', 'line-dasharray') }));
+  // (The emulated Selfoss position is ~40 m off its road too: "+ 40 m and 1.6 km … at the start and end".)
+  if (!/^\+ (\d+ m and )?1\.\d km off-road at the (start and )?end$/.test(off.text) || off.legs < 1 || !off.dashed) fail(`off-road leg: ${JSON.stringify(off)}`);
+  await new Promise((r) => setTimeout(r, 1000)); // fitBounds
+  await page.screenshot({ path: `${OUT}route-offroad.png` });
+  console.log('off-road ok:', off.text);
+  // Change → Choose on the map → a map tap sets the start (a start pin, no start dot).
+  await page.click('#route-change');
+  const choices = await page.evaluate(() => [...document.querySelectorAll('#route-choices button')].map((b) => b.textContent));
+  if (choices.join('|') !== 'Use my location|Choose on the map') fail(`start choices: ${choices}`);
+  await page.click('#route-choose');
+  const prompt = await page.$eval('#route-info', (e) => e.textContent);
+  if (prompt !== "Tap the map where you'll start") fail(`choose-on-map prompt: ${prompt}`);
+  await page.mouse.click(420, 360);
+  await page.waitForFunction(() => /from the chosen point/.test(document.querySelector('#route-info')?.textContent ?? '') || document.querySelector('#route-msg')?.textContent, { timeout: 60_000 });
+  const chosen = await page.evaluate(() => ({
+    info: document.querySelector('#route-info').textContent,
+    msg: document.querySelector('#route-msg').textContent,
+    from: document.querySelector('#route-from-text').textContent,
+    pins: document.querySelectorAll('.start-pin').length,
+  }));
+  const chosenKinds = await routeKinds();
+  if (!/km · .* · from the chosen point$/.test(chosen.info) || chosen.from !== 'From the chosen point' || chosen.pins !== 1 || chosenKinds.includes('start:Point')) fail(`chosen start: ${JSON.stringify(chosen)} ${chosenKinds}`);
+  console.log('start ok:', chosen.info);
   await page.click('#route-close');
   if (await page.$eval('#route-card', (e) => !e.hidden)) fail('route card still open after ×');
+  if (await page.$('.start-pin')) fail('start pin still shown after ×');
   console.log('routing ok:', withF);
 
   // 4. reload opens straight from storage

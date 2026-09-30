@@ -1,10 +1,12 @@
 import * as maplibregl from 'maplibre-gl';
 import type { RouteReply } from '../worker/pool';
 import { readSetting, writeSetting } from '../ui/settings';
-import { routeMessage } from './routeMessage';
+import { offRoadText, routeMessage, type StartKind } from './routeMessage';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const LONG_PRESS_MS = 550;
+/** "Use my location" gives up on a first fix after this long. */
+const FIX_WAIT_MS = 20_000;
 
 const fmtKm = (m: number) => (m < 10_000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 1000)} km`);
 function fmtTime(s: number): string {
@@ -15,25 +17,45 @@ const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: 
 
 const coordsText = (p: { lon: number; lat: number }) => `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
 
+const FROM_TEXT: Record<StartKind, string> = { gps: 'your position', centre: 'the map centre', chosen: 'the chosen point' };
+
+/** A white pin with a dark outline for a start chosen on the map. */
+function startPinElement(): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'start-pin';
+  el.innerHTML = '<svg viewBox="0 0 27 41" width="27" height="41" aria-hidden="true"><path d="M13.5 1.5C6.9 1.5 1.5 6.9 1.5 13.5c0 9 12 26 12 26s12-17 12-26c0-6.6-5.4-12-12-12z" fill="#fff" stroke="#1d3f8f" stroke-width="2.5"/><circle cx="13.5" cy="13.5" r="4.5" fill="#1d3f8f"/></svg>';
+  el.title = 'Route start';
+  return el;
+}
+
 /** Destination card, route panel and route line (route planning without guidance). */
 export class RoutePlanner {
   private pin: maplibregl.Marker | null = null;
   private dest: { name: string | null; lon: number; lat: number } | null = null;
+  /** A start chosen on the map; null: your position or the map centre. */
+  private start: [number, number] | null = null;
+  private startPin: maplibregl.Marker | null = null;
+  /** The next plain map tap sets the start. */
+  private choosing = false;
   private allow = readSetting('allowFRoads', true);
   private started = false;
   private seq = 0;
 
+  /** `searchFrom`: your recent GPS position, else the map centre. `useLocation` turns location on. */
   constructor(
     private readonly map: maplibregl.Map,
     private readonly plan: (from: [number, number], to: [number, number], allow: boolean) => Promise<RouteReply>,
     private readonly searchFrom: () => { at: [number, number]; gps: boolean },
+    private readonly useLocation: () => void,
   ) {
     map.addSource('route', { type: 'geojson', data: EMPTY });
-    const isLine: maplibregl.FilterSpecification = ['==', ['geometry-type'], 'LineString'];
-    map.addLayer({ id: 'route-casing', type: 'line', source: 'route', filter: isLine, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 5, 15, 11] } });
-    map.addLayer({ id: 'route-line', type: 'line', source: 'route', filter: isLine, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#1d3f8f', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 3, 15, 7] } });
+    const kind = (k: string): maplibregl.FilterSpecification => ['==', ['get', 'kind'], k];
+    map.addLayer({ id: 'route-casing', type: 'line', source: 'route', filter: kind('route'), layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 5, 15, 11] } });
+    map.addLayer({ id: 'route-line', type: 'line', source: 'route', filter: kind('route'), layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#1d3f8f', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 3, 15, 7] } });
+    // Straight legs between a chosen point and its road: thinner and dashed.
+    map.addLayer({ id: 'route-offroad', type: 'line', source: 'route', filter: kind('offroad'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#1d3f8f', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2, 15, 4], 'line-dasharray': [2, 1.5] } });
     // The start of the route: a white dot with a dark outline.
-    map.addLayer({ id: 'route-start', type: 'circle', source: 'route', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-color': '#ffffff', 'circle-radius': 6, 'circle-stroke-color': '#1d3f8f', 'circle-stroke-width': 3 } });
+    map.addLayer({ id: 'route-start', type: 'circle', source: 'route', filter: kind('start'), paint: { 'circle-color': '#ffffff', 'circle-radius': 6, 'circle-stroke-color': '#1d3f8f', 'circle-stroke-width': 3 } });
     $<HTMLInputElement>('route-froads').checked = this.allow;
     $('route-go').onclick = () => void this.route();
     $('route-close').onclick = () => this.clear();
@@ -42,18 +64,30 @@ export class RoutePlanner {
       writeSetting('allowFRoads', this.allow);
       if (this.started) void this.route();
     };
+    $('route-change').onclick = () => this.showChoices($('route-choices').hidden === true);
+    $('route-use-gps').onclick = () => void this.useMyLocation();
+    $('route-choose').onclick = () => this.chooseOnMap();
     // Long press (touch) or right-click (mouse) drops a pin with a "Route here" card.
-    map.on('contextmenu', (e) => this.pick({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat }));
-    // A plain tap elsewhere on the map closes the card while it only offers "Route here"; a shown
-    // route stays until ×. A tap the browser may send after a long press is ignored.
+    // A plain tap elsewhere on the map sets the start while choosing one, else closes the card while
+    // it only offers "Route here"; a shown route stays until ×. The click a browser may send after a
+    // long press or a Ctrl+Click (a Mac's right-click: contextmenu, then click) is ignored.
     let pressed = false;
-    map.on('click', () => {
+    map.on('contextmenu', (e) => {
+      pressed = true;
+      this.pick({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat });
+    });
+    map.on('click', (e) => {
       if (pressed) pressed = false;
+      else if (this.choosing) this.setStart([e.lngLat.lng, e.lngLat.lat]);
       else if (this.dest && !this.started) this.clear();
     });
     let timer = 0;
     let startXY: [number, number] | null = null;
     const canvas = map.getCanvasContainer();
+    // A new mouse press starts afresh (a right-click is followed by no click to clear the guard).
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') pressed = false;
+    });
     canvas.addEventListener('touchstart', (e) => {
       clearTimeout(timer);
       pressed = false;
@@ -81,8 +115,9 @@ export class RoutePlanner {
     this.pin?.remove();
     this.pin = new maplibregl.Marker({ color: '#c0392b' }).setLngLat([dest.lon, dest.lat]).addTo(this.map);
     $('route-title').textContent = dest.name ?? `Dropped pin · ${coordsText(dest)}`;
-    $('route-info').textContent = '';
-    $('route-msg').textContent = '';
+    this.setInfo('', '', '');
+    this.showChoices(false);
+    this.showFrom();
     $('route-switch').hidden = true;
     $('route-go').hidden = false;
     $('route-card').hidden = false;
@@ -93,44 +128,121 @@ export class RoutePlanner {
     this.pin?.remove();
     this.pin = null;
     this.dest = null;
+    this.clearStart();
     $('route-card').hidden = true;
   }
 
   private clearRoute(): void {
     this.seq++;
     this.started = false;
+    this.choosing = false;
     (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(EMPTY);
+  }
+
+  private clearStart(): void {
+    this.start = null;
+    this.startPin?.remove();
+    this.startPin = null;
+  }
+
+  private startKind(): StartKind {
+    return this.start ? 'chosen' : this.searchFrom().gps ? 'gps' : 'centre';
+  }
+
+  private showFrom(): void {
+    $('route-from-text').textContent = `From ${FROM_TEXT[this.startKind()]}`;
+  }
+
+  /** The "Use my location" / "Choose on the map" choices; choosing on the map is the emphasised
+   *  one when there's no recent GPS position. */
+  private showChoices(show: boolean): void {
+    $('route-choices').hidden = !show;
+    $('route-change').setAttribute('aria-expanded', String(show));
+    $('route-choose').classList.toggle('primary', !this.searchFrom().gps);
+  }
+
+  private setInfo(info: string, off: string, msg: string): void {
+    $('route-info').textContent = info;
+    $('route-off').textContent = off;
+    $('route-msg').textContent = msg;
+  }
+
+  /** The card as a route panel (title "To …", the F-road switch), for a route or its preparations. */
+  private showStarted(): void {
+    if (!this.dest) return;
+    this.started = true;
+    $('route-go').hidden = true;
+    $('route-switch').hidden = false;
+    $('route-title').textContent = `To ${this.dest.name ?? `dropped pin · ${coordsText(this.dest)}`}`;
+  }
+
+  private async useMyLocation(): Promise<void> {
+    this.showChoices(false);
+    this.choosing = false;
+    this.clearStart();
+    this.showFrom();
+    if (!this.dest) return;
+    if (!this.searchFrom().gps) {
+      const seq = ++this.seq;
+      this.useLocation();
+      this.showStarted();
+      (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(EMPTY);
+      this.setInfo('Waiting for your position…', '', '');
+      const t0 = Date.now();
+      while (!this.searchFrom().gps) {
+        if (Date.now() - t0 > FIX_WAIT_MS) {
+          this.setInfo('', '', "Couldn't get your position");
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 250));
+        if (seq !== this.seq) return; // cancelled: another pick, ×, or a new start
+      }
+    }
+    void this.route();
+  }
+
+  private chooseOnMap(): void {
+    this.showChoices(false);
+    this.seq++; // a route in progress no longer applies
+    this.choosing = true;
+    this.setInfo("Tap the map where you'll start", '', '');
+  }
+
+  private setStart(at: [number, number]): void {
+    this.choosing = false;
+    this.start = at;
+    this.startPin?.remove();
+    this.startPin = new maplibregl.Marker({ element: startPinElement(), anchor: 'bottom' }).setLngLat(at).addTo(this.map);
+    this.showFrom();
+    void this.route();
   }
 
   private async route(): Promise<void> {
     if (!this.dest) return;
     const seq = ++this.seq;
-    this.started = true;
-    const from = this.searchFrom();
-    $('route-go').hidden = true;
-    $('route-switch').hidden = false;
-    $('route-title').textContent = `To ${this.dest.name ?? `dropped pin · ${coordsText(this.dest)}`}`;
-    $('route-msg').textContent = '';
-    $('route-info').textContent = 'Preparing roads…';
-    const reply = await this.plan(from.at, [this.dest.lon, this.dest.lat], this.allow).catch((err) => ({ status: 'error' as const, err }));
+    this.choosing = false;
+    const kind = this.startKind();
+    const from = this.start ?? this.searchFrom().at;
+    this.showStarted();
+    this.showFrom();
+    this.setInfo('Preparing roads…', '', '');
+    const reply = await this.plan(from, [this.dest.lon, this.dest.lat], this.allow).catch((err) => ({ status: 'error' as const, err }));
     if (seq !== this.seq) return; // superseded
     const source = this.map.getSource('route') as maplibregl.GeoJSONSource;
     if (reply.status !== 'ok') {
       source.setData(EMPTY);
-      $('route-info').textContent = '';
-      $('route-msg').textContent = routeMessage(reply, from.gps);
+      this.setInfo('', '', routeMessage(reply, kind));
       return;
     }
-    source.setData({
-      type: 'FeatureCollection',
-      features: [
-        { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: reply.coords } },
-        { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: reply.coords[0] } },
-      ],
-    });
-    $('route-info').textContent = `${fmtKm(reply.metres)} · ${fmtTime(reply.seconds)} · ${from.gps ? 'from your position' : 'from the map centre'}`;
+    const feature = (k: string, geometry: GeoJSON.Geometry): GeoJSON.Feature => ({ type: 'Feature', properties: { kind: k }, geometry });
+    const features = [feature('route', { type: 'LineString', coordinates: reply.coords })];
+    for (const leg of [reply.offRoadStart, reply.offRoadEnd]) if (leg) features.push(feature('offroad', { type: 'LineString', coordinates: leg }));
+    // A chosen start has its pin; otherwise a dot marks where the route starts.
+    if (kind !== 'chosen') features.push(feature('start', { type: 'Point', coordinates: reply.coords[0] }));
+    source.setData({ type: 'FeatureCollection', features });
+    this.setInfo(`${fmtKm(reply.metres)} · ${fmtTime(reply.seconds)} · from ${FROM_TEXT[kind]}`, offRoadText(reply.offRoadStartM, reply.offRoadEndM), '');
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const [lon, lat] of reply.coords) {
+    for (const [lon, lat] of [...reply.coords, ...(reply.offRoadStart ?? []), ...(reply.offRoadEnd ?? [])]) {
       if (lon < w) w = lon;
       if (lon > e) e = lon;
       if (lat < s) s = lat;
