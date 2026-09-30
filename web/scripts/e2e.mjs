@@ -185,6 +185,9 @@ try {
   await page.click('#menu-button');
   const mapName = await page.$eval('#map-name', (e) => e.innerText.replace(/\s+/g, ' ').trim());
   if (!mapName.includes('Iceland GPSmap.is 2024.21 Detailed') || !mapName.includes('48 elevation files')) fail(`menu map name: ${mapName}`);
+  const version = await page.$eval('#app-version', (e) => e.textContent);
+  if (!/^Version [0-9a-f]{7} · \d{1,2} \w+ \d{4}, \d\d:\d\d$/.test(version)) fail(`menu version: ${version}`);
+  console.log('version ok:', version);
   await page.click('#tracks-open');
   await (await page.$('#gpx-file')).uploadFile(gpxPath, badPath);
   await page.waitForFunction(() => document.querySelectorAll('#track-list .track').length === 1, { timeout: 10_000 });

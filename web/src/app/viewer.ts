@@ -8,6 +8,7 @@ import { decodePlacesCache, encodePlacesCache } from '../search/placesCache';
 import { cacheKey, readText, writeText, type Stored } from '../storage/store';
 import { buildStyle, FONT_REGULAR } from '../style/buildStyle';
 import { preloadImages } from '../ui/images';
+import { versionLabel } from '../buildInfo';
 import { PerfStats } from '../ui/perf';
 import { browserScreenAwake } from '../location/wakeLock';
 import { readSetting, writeSetting } from '../ui/settings';
@@ -163,6 +164,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   // Which map file is loaded (the GPSmap.is package has several variants that look different).
   $('map-file').textContent = stored.meta.imgName.replace(/\.img$/i, '');
   $('map-dem').textContent = stored.hgt.length ? `${stored.hgt.length} elevation file${stored.hgt.length === 1 ? '' : 's'}` : 'No elevation files';
+  $('app-version').textContent = versionLabel();
   $('topbar').hidden = false;
   collapsibleSearch(map);
   $('menu-button').hidden = false;
