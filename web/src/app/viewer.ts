@@ -187,9 +187,16 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null };
   window.__app = app;
   // F-road/track classes from the place-index pass, keyed by tile id and NET offset. Resolved
-  // once `loadPlaces` finishes; a route requested before then awaits this instead.
+  // once `loadPlaces` finishes; a route requested before then awaits this instead. Rejected if
+  // `loadPlaces` fails, so a route requested with no road index shows a message instead of
+  // "Preparing roads…" forever.
   let resolveRoads: (roads: RoadClasses) => void;
-  const roadsReady = new Promise<RoadClasses>((r) => (resolveRoads = r));
+  let rejectRoads: (err: Error) => void;
+  const roadsReady = new Promise<RoadClasses>((res, rej) => {
+    resolveRoads = res;
+    rejectRoads = rej;
+  });
+  roadsReady.catch(() => {}); // avoid an unhandled-rejection warning when no route is ever requested
   map.once('idle', () => (app.ready = true));
   // GPX tracks: drawn above the map once its style has loaded; ⋯ → Tracks lists and imports them.
   // The route planner is built after it so its route line draws above GPX tracks.
@@ -223,6 +230,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       if (closed) return; // "Load another map" disposed the pool mid-build
       console.error('search index', err);
       $<HTMLInputElement>('search').placeholder = 'Search unavailable';
+      rejectRoads(new Error("Routing is unavailable: the map index couldn't be built."));
     });
 }
 
