@@ -549,6 +549,62 @@ try {
   const restored = await page.$eval('#backup-status', (e) => e.textContent);
   if (restored !== 'Restored 2 saved items and 0 tracks.') fail(`restore status: ${restored}`);
   console.log('backup and restore ok:', restored);
+
+  // 4b. Google Drive sync, against a fake Drive (requests to googleapis.com answered here; the
+  // sign-in token is put in place directly). Needs a build with VITE_GOOGLE_CLIENT_ID set.
+  if (await page.$eval('#sync', (e) => e.hidden)) fail('no Google Drive sync section (build with VITE_GOOGLE_CLIENT_ID=e2e)');
+  const fakeDrive = { file: null, status: 200 };
+  const remotePin = { id: 'remote-1', kind: 'pin', name: 'Remote hut', added: 1, lon: -19.3, lat: 64.2 };
+  fakeDrive.file = JSON.stringify({ app: 'garmin-map', kind: 'backup', version: 1, exported: new Date().toISOString(), saved: [remotePin], tracks: [], deleted: {} });
+  const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS' };
+  const onRequest = (req) => {
+    const url = new URL(req.url());
+    if (url.hostname === 'accounts.google.com') return req.respond({ status: 200, contentType: 'text/javascript', body: '' });
+    if (url.hostname !== 'www.googleapis.com') return req.continue();
+    if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: cors });
+    if (fakeDrive.status !== 200) return req.respond({ status: fakeDrive.status, headers: cors, body: '' });
+    const json = (o) => req.respond({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(o) });
+    if (req.method() === 'GET' && url.pathname === '/drive/v3/files') return json({ files: fakeDrive.file ? [{ id: 'f1' }] : [] });
+    if (req.method() === 'GET' && url.pathname === '/drive/v3/files/f1') return req.respond({ status: 200, headers: cors, contentType: 'application/json', body: fakeDrive.file ?? '' });
+    if (req.method() === 'PATCH' && url.pathname === '/upload/drive/v3/files/f1') { fakeDrive.file = req.postData(); return json({ id: 'f1' }); }
+    if (req.method() === 'POST' && url.pathname === '/upload/drive/v3/files') {
+      const parts = req.postData().split(/--garmin-map-[a-z0-9]+/);
+      fakeDrive.file = parts[2].slice(parts[2].indexOf('\r\n\r\n') + 4).trim();
+      return json({ id: 'f1' });
+    }
+    return req.respond({ status: 404, headers: cors, body: '' });
+  };
+  await page.setRequestInterception(true);
+  page.on('request', onRequest);
+  const remote = () => JSON.parse(fakeDrive.file);
+  await page.evaluate(() => localStorage.setItem('google-sync', JSON.stringify({ on: true, token: 'e2e-token', expires: Date.now() + 3_600_000 })));
+  await page.evaluate(() => window.__app.sync.syncNow());
+  let sync = await page.evaluate(() => ({ count: window.__app.saved.count, text: document.querySelector('#sync-text').textContent, names: [...document.querySelectorAll('#saved-list .name')].map((e) => e.textContent) }));
+  if (sync.count !== 3 || !sync.names.includes('Remote hut') || !/^Synced with Google Drive at \d\d:\d\d\.$/.test(sync.text) || remote().saved.length !== 3 || remote().tracks.length !== 1) fail(`first sync: ${JSON.stringify(sync)} drive has ${remote().saved.length} saved, ${remote().tracks.length} tracks`);
+  // A deletion here reaches Drive (a few seconds after the change).
+  const hutRow = await page.$$eval('#saved-list li', (lis) => lis.findIndex((li) => li.querySelector('.name').textContent === 'Remote hut') + 1);
+  await page.click(`#saved-list li:nth-child(${hutRow}) .track-delete`);
+  await page.click(`#saved-list li:nth-child(${hutRow}) .track-delete`);
+  for (let t = 0; t < 80 && remote().saved.length !== 2; t++) await new Promise((r) => setTimeout(r, 100));
+  if (remote().saved.length !== 2 || !remote().deleted['remote-1']) fail(`deletion not synced: ${fakeDrive.file.slice(0, 200)}`);
+  // A deletion on another device reaches this one.
+  const other = remote();
+  const gone = other.saved[0];
+  other.saved = other.saved.slice(1);
+  other.deleted[gone.id] = Date.now();
+  fakeDrive.file = JSON.stringify(other);
+  await page.evaluate(() => window.__app.sync.syncNow());
+  if ((await page.evaluate(() => window.__app.saved.count)) !== 1) fail('a deletion on another device did not reach this one');
+  // An expired sign-in asks to sign in again; Stop syncing turns it off.
+  fakeDrive.status = 401;
+  await page.evaluate(() => window.__app.sync.syncNow());
+  sync = await page.evaluate(() => ({ text: document.querySelector('#sync-text').textContent, button: document.querySelector('#sync-connect').textContent, shown: !document.querySelector('#sync-connect').hidden }));
+  if (sync.text !== 'Sign in again to keep syncing.' || sync.button !== 'Sign in to Google' || !sync.shown) fail(`expired sign-in: ${JSON.stringify(sync)}`);
+  await page.click('#sync-stop');
+  if (await page.$eval('#sync-connect', (e) => e.textContent) !== 'Sync with Google Drive') fail('Stop syncing did not turn sync off');
+  page.off('request', onRequest);
+  await page.setRequestInterception(false);
+  console.log('drive sync ok');
   await page.click('#saved-close');
   console.log('saved list ok:', opened.info);
   if (await page.$('#import:not([hidden])')) fail('import screen shown after reload');

@@ -15,7 +15,7 @@
     "prebuild": "npm run fonts && npm run maplibre-worker",
     "build": "vite build && node scripts/copy-site.mjs",
     "typecheck": "tsc --noEmit",
-    "e2e": "npm run build && node scripts/e2e.mjs"
+    "e2e": "VITE_GOOGLE_CLIENT_ID=e2e npm run build && node scripts/e2e.mjs"
   },
   "keywords": [],
   "author": "",

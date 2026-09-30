@@ -2,7 +2,7 @@ import type * as maplibregl from 'maplibre-gl';
 import { deleteSaved, listSaved, putSaved, type Saved, type SavedPin, type SavedRoute } from '../saved/saved';
 import { listTracks, putTrack } from '../gpx/store';
 import { backupFileName, makeBackup, parseBackup, toStore } from '../saved/backup';
-import { deletions, noteDeleted } from '../saved/deleted';
+import { deletions, noteDeleted, setDeletions } from '../saved/deleted';
 import { gpxFileName, routeGpx, shareFile } from '../gpx/export';
 import { coordsText, fmtKm, fmtTime } from './route';
 
@@ -50,6 +50,8 @@ function starImage(): ImageData {
  */
 export class SavedPanel {
   private items: Saved[] = [];
+  /** Called after a change made here (save, delete, restore), for syncing. */
+  onChanged: (() => void) | null = null;
   private readonly panel = $('saved');
   private readonly list = $<HTMLUListElement>('saved-list');
   private readonly error = $('saved-error');
@@ -122,10 +124,22 @@ export class SavedPanel {
     const b = parseBackup(await file.text());
     const saved = toStore(await listSaved(), b.saved);
     const tracks = toStore(await listTracks(), b.tracks);
-    for (const s of saved) await putSaved(s);
-    for (const t of tracks) await putTrack(t);
+    // Restoring is wanting them back: they count as just changed, which also outweighs a deletion of
+    // them remembered here or on another device.
+    const now = Date.now();
+    const gone = deletions();
+    for (const s of saved) {
+      await putSaved({ ...s, updated: now });
+      delete gone[s.id];
+    }
+    for (const t of tracks) {
+      await putTrack({ ...t, updated: now });
+      delete gone[t.id];
+    }
+    setDeletions(gone);
     await this.reload();
     if (tracks.length) await this.reloadTracks();
+    if (saved.length || tracks.length) this.onChanged?.();
     const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
     this.status(saved.length || tracks.length ? `Restored ${n(saved.length, 'saved item', 'saved items')} and ${n(tracks.length, 'track', 'tracks')}.` : 'Nothing new in this backup: everything in it is already here.');
   }
@@ -149,6 +163,7 @@ export class SavedPanel {
     await putSaved(item);
     this.items.push(item);
     this.refresh();
+    this.onChanged?.();
   }
 
   private refresh(): void {
@@ -230,6 +245,7 @@ export class SavedPanel {
       noteDeleted(s.id);
       this.items = this.items.filter((x) => x.id !== s.id);
       this.refresh();
+      this.onChanged?.();
     } catch (err) {
       this.fail(err);
     }

@@ -88,6 +88,10 @@
       #tracks-empty, #saved-empty { margin: 4px 0 8px; color: #556; font-size: 14px; }
       #track-list, #saved-list { list-style: none; margin: 0; padding: 0; }
       .track { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 8px; border-top: 1px solid #0001; }
+      #sync { margin-top: 12px; padding-top: 10px; border-top: 1px solid #0001; display: grid; gap: 8px; font-size: 14px; color: #556; }
+      #sync[hidden] { display: none; }
+      #sync p { margin: 0; }
+      #sync-connect { border-color: var(--accent) !important; background: var(--accent) !important; color: #fff !important; }
       #backup { margin-top: 12px; padding-top: 10px; border-top: 1px solid #0001; display: grid; gap: 8px; font-size: 14px; color: #556; }
       #backup p { margin: 0; }
       .backup-buttons { display: flex; gap: 8px; }
@@ -256,6 +260,10 @@
         <div class="backup-buttons"><button id="backup-save" type="button">Back up…</button><button id="backup-restore" type="button">Restore…</button></div>
         <p id="backup-status" role="status"></p>
         <input id="backup-file" type="file" accept=".json,application/json" hidden />
+      </div>
+      <div id="sync" hidden>
+        <p id="sync-text" role="status"></p>
+        <div class="backup-buttons"><button id="sync-connect" type="button">Sync with Google Drive</button><button id="sync-now" type="button" hidden>Sync now</button><button id="sync-stop" type="button" hidden>Stop syncing</button></div>
       </div>
     </section>
     <section id="route-card" aria-live="polite" hidden>

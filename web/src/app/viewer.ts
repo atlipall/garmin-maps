@@ -15,6 +15,7 @@ import { readSetting, writeSetting } from '../ui/settings';
 import { HeightControl, LocationControl } from './location';
 import { RoutePlanner } from './route';
 import { SavedPanel } from './savedPanel';
+import { DriveSync } from './driveSync';
 import { loadSession, saveSession } from './session';
 import { TracksPanel } from './tracks';
 import { TilePool, type OpenMeta } from '../worker/pool';
@@ -192,7 +193,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     showImport('', { hasMap: true, canCancel: true });
   };
 
-  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null };
+  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, sync: null as DriveSync | null };
   window.__app = app;
   // F-road/track classes from the place-index pass, keyed by tile id and NET offset. Resolved
   // once `loadPlaces` finishes; a route requested before then awaits this instead. Rejected if
@@ -259,6 +260,13 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       () => tracks.reload(),
     );
     app.saved = saved;
+    // Google Drive sync of the saved items and tracks (offered when the app has a Google client ID).
+    const sync = new DriveSync(async () => {
+      await saved.reload();
+      await tracks.reload();
+    });
+    saved.onChanged = tracks.onChanged = () => sync.schedule();
+    app.sync = sync;
     routePlanner.onSave = (item) => saved.add(item);
     $('saved-open').onclick = () => {
       setMenu(false);

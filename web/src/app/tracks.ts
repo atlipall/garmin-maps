@@ -33,6 +33,8 @@ const TRASH = '<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true
  */
 export class TracksPanel {
   private tracks: StoredTrack[] = [];
+  /** Called after a change made here (import, show or hide, delete), for syncing. */
+  onChanged: (() => void) | null = null;
   private readonly panel = $('tracks');
   private readonly list = $<HTMLUListElement>('track-list');
   private readonly error = $('tracks-error');
@@ -100,6 +102,7 @@ export class TracksPanel {
       }
     }
     this.refresh();
+    if (last) this.onChanged?.();
     if (problems.length) this.error.textContent = problems.join('\n');
     if (last) this.zoomTo(last);
   }
@@ -118,6 +121,7 @@ export class TracksPanel {
       track.updated = Date.now();
       await putTrack(track);
       this.refresh();
+      this.onChanged?.();
     } catch {
       // No elevation files or a worker error: the climb just stays unknown.
     }
@@ -196,6 +200,7 @@ export class TracksPanel {
     t.updated = Date.now();
     this.refresh();
     await putTrack(t).catch((err) => this.fail(err));
+    this.onChanged?.();
   }
 
   private async remove(t: StoredTrack): Promise<void> {
@@ -204,6 +209,7 @@ export class TracksPanel {
       noteDeleted(t.id);
       this.tracks = this.tracks.filter((x) => x.id !== t.id);
       this.refresh();
+      this.onChanged?.();
     } catch (err) {
       this.fail(err);
     }
