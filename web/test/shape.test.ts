@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { decodeSubdivision, type RawObject } from '../src/img/rgn';
 import type { Subdivision } from '../src/img/tre';
@@ -72,7 +73,7 @@ describe.skipIf(!hasRealData)('routeShape on real data', () => {
   }, 300_000);
 });
 
-describe.skipIf(!hasRealData)('fastestRoute on real data (F-Road Detailed)', () => {
+describe.skipIf(!hasRealData || !existsSync(F_ROAD_DETAILED))('fastestRoute on real data (F-Road Detailed)', () => {
   let src: Awaited<ReturnType<typeof nodeSource>>;
   let map: GarminMap;
   let g: Awaited<ReturnType<typeof buildNetwork>>;

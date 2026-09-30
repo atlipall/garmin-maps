@@ -1,5 +1,9 @@
-import { describe, expect, test } from 'vitest';
-import { nod2StartNodes, parseNode, readNodes, type NodHeader } from '../src/routing/nod';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { decodeAll } from '../src/map/decodeAll';
+import { GarminMap } from '../src/map/garminMap';
+import { nod2StartNodes, parseNodHeader, parseNode, readNodes, type NodHeader, type NodNode } from '../src/routing/nod';
+import { nodeSource } from './helpers/nodeSource';
+import { DETAILED, hasRealData } from './helpers/paths';
 
 const HDR: NodHeader = { nod1: { offset: 0, length: 0 }, nod2: { offset: 0, length: 0 }, nod3: { offset: 0, length: 0, record: 9 }, flags: 0x203, align: 6, tableARecord: 5 };
 const BASE_X = -885437; // about -19.0°
@@ -50,5 +54,55 @@ describe('NOD reader', () => {
     const nod2 = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x03]);
     expect(nod2StartNodes(nod2)).toEqual([0]);
     expect([...readNodes(sample(), nod2, HDR).keys()].sort((a, b) => a - b)).toEqual([0, 11]);
+  });
+});
+
+describe.skipIf(!hasRealData)('NOD on real data (Detailed)', () => {
+  let src: Awaited<ReturnType<typeof nodeSource>>;
+  let map: GarminMap;
+  /** Per tile id: its decoded nodes, and every road-line vertex of its finest level as "x,y". */
+  const tiles = new Map<string, { nodes: Map<number, NodNode>; vertices: Set<string> }>();
+  beforeAll(async () => {
+    src = await nodeSource(DETAILED);
+    map = await GarminMap.open(src);
+    for (const tile of map.tiles) {
+      const nod = await map.readSubfile(`${tile.id}.NOD`);
+      if (!nod) continue;
+      const hdr = parseNodHeader(nod);
+      const nodes = readNodes(nod.subarray(hdr.nod1.offset, hdr.nod1.offset + hdr.nod1.length), nod.subarray(hdr.nod2.offset, hdr.nod2.offset + hdr.nod2.length), hdr);
+      tiles.set(tile.id, { nodes, vertices: new Set() });
+    }
+    await decodeAll(map, (tile, _sd, obj) => {
+      if (obj.kind !== 'line' || obj.labelSrc !== 'net') return;
+      const t = tiles.get(tile.id);
+      if (t) for (const [x, y] of obj.coords) t.vertices.add(`${x},${y}`);
+    }, { bits: Math.max(...map.bands.keys()) });
+  }, 300_000);
+  afterAll(() => src.close());
+
+  test('every decoded node lies on a road-line vertex of its tile', () => {
+    let nodes = 0;
+    const off: string[] = [];
+    for (const [id, t] of tiles) for (const n of t.nodes.values()) {
+      nodes++;
+      if (!t.vertices.has(`${n.x},${n.y}`)) off.push(`${id}@${n.offset}`);
+    }
+    console.log(`NOD nodes: ${nodes} in ${tiles.size} tiles, ${off.length} off a road vertex`);
+    expect(nodes).toBeGreaterThan(0);
+    expect(off.slice(0, 10)).toEqual([]);
+  });
+
+  test('every direct arc has a direct arc back from its target', () => {
+    let arcs = 0;
+    const unpaired: string[] = [];
+    for (const [id, t] of tiles) for (const n of t.nodes.values()) for (const a of n.arcs) {
+      if (!a.direct) continue;
+      arcs++;
+      const back = t.nodes.get(a.target)?.arcs.some((b) => b.direct && b.target === n.offset);
+      if (!back) unpaired.push(`${id}@${n.offset}→${a.target}`);
+    }
+    console.log(`direct arcs: ${arcs}, ${unpaired.length} without a direct arc back`);
+    expect(arcs).toBeGreaterThan(0);
+    expect(unpaired.slice(0, 10)).toEqual([]);
   });
 });
