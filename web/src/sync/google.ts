@@ -7,7 +7,7 @@
 
 /** The app's OAuth client ID (public; made in Google Cloud Console), or VITE_GOOGLE_CLIENT_ID at
  *  build time (the e2e run uses a fake). Empty: sync isn't offered. */
-export const GOOGLE_CLIENT_ID: string = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+export const GOOGLE_CLIENT_ID: string = import.meta.env.VITE_GOOGLE_CLIENT_ID || '205369239529-hmqduc9g9m4tkc5d37qqmplii0uk29g3.apps.googleusercontent.com';
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const GIS = 'https://accounts.google.com/gsi/client';
 const KEY = 'google-sync';
