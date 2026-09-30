@@ -268,6 +268,11 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     saved.onChanged = tracks.onChanged = () => sync.schedule();
     app.sync = sync;
     routePlanner.onSave = (item) => saved.add(item);
+    $('sync-open').onclick = () => {
+      setMenu(false);
+      $('sync-panel').hidden = false;
+    };
+    $('sync-close').onclick = () => ($('sync-panel').hidden = true);
     $('saved-open').onclick = () => {
       setMenu(false);
       saved.show(true);

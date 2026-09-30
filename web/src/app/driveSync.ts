@@ -114,6 +114,8 @@ export class DriveSync {
     $('sync-connect').textContent = s.on ? 'Sign in to Google' : 'Sync with Google Drive';
     $('sync-now').hidden = !signedIn;
     $('sync-stop').hidden = !s.on;
+    // A short state under the menu item.
+    $('sync-menu-status').textContent = !s.on ? '' : message === 'Syncing…' ? 'Syncing…' : !signedIn ? 'Sign-in needed' : message?.startsWith('Offline') ? 'Offline' : message ? 'Not synced' : s.lastSync ? `Synced ${timeText(s.lastSync)}` : '';
     $('sync-text').textContent = message
       ?? (!s.on
         ? 'Keep your saved places and routes and your GPX tracks the same on all your devices, through your Google Drive (in a hidden folder only this app can see).'

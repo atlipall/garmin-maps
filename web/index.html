@@ -81,19 +81,22 @@
       #map .locate-button.unavailable { opacity: 0.45; }
       #map .height-pill { padding: 3px 10px; border-radius: 999px; background: #fff; box-shadow: 0 1px 4px #0003; font: 600 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink); }
       /* Tracks panel (⋯ → Tracks): below the top row, scrolls when long. */
-      #tracks, #saved { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
+      #tracks, #saved, #sync-panel { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
       .tracks-head { display: flex; align-items: center; justify-content: space-between; }
       .tracks-head h2 { margin: 0; font-size: 18px; }
-      #tracks-close, #saved-close { width: var(--btn); height: var(--btn); margin-right: -10px; border: 0; background: none; font-size: 26px; color: #667; cursor: pointer; }
+      #tracks-close, #saved-close, #sync-close { width: var(--btn); height: var(--btn); margin-right: -10px; border: 0; background: none; font-size: 26px; color: #667; cursor: pointer; }
       #tracks-empty, #saved-empty { margin: 4px 0 8px; color: #556; font-size: 14px; }
       #track-list, #saved-list { list-style: none; margin: 0; padding: 0; }
       .track { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 8px; border-top: 1px solid #0001; }
-      #sync { margin-top: 12px; padding-top: 10px; border-top: 1px solid #0001; display: grid; gap: 8px; font-size: 14px; color: #556; }
+      #sync { margin-top: 4px; display: grid; gap: 8px; font-size: 14px; color: #556; }
       #sync[hidden] { display: none; }
+      #sync-menu-status { display: block; font-size: 12px; color: #667; }
+      #sync-menu-status:empty { display: none; }
       #sync p { margin: 0; }
       #sync-connect { border-color: var(--accent) !important; background: var(--accent) !important; color: #fff !important; }
       #backup { margin-top: 12px; padding-top: 10px; border-top: 1px solid #0001; display: grid; gap: 8px; font-size: 14px; color: #556; }
       #backup p { margin: 0; }
+      #sync h3, #backup h3 { margin: 0; font-size: 15px; color: var(--ink); }
       .backup-buttons { display: flex; gap: 8px; }
       .backup-buttons button { flex: 1; min-height: 44px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
       #backup-status:empty { display: none; }
@@ -231,6 +234,7 @@
       <div id="map-name" role="presentation"><span class="label">Map</span><span id="map-file"></span><span id="map-dem"></span></div>
       <button id="tracks-open" role="menuitem">Tracks (GPX)</button>
       <button id="saved-open" role="menuitem">Saved pins and routes</button>
+      <button id="sync-open" role="menuitem">Sync and backup<span id="sync-menu-status"></span></button>
       <button id="keep-awake" role="menuitemcheckbox" aria-checked="true">Keep screen on while locating</button>
       <button id="replace" role="menuitem">Load another map</button>
       <div id="app-version" role="presentation"></div>
@@ -255,15 +259,23 @@
       <p id="saved-empty">Nothing saved yet. Tap <b>Save</b> on a place or route card to keep it here.</p>
       <ul id="saved-list"></ul>
       <div id="saved-error" role="alert"></div>
+    </section>
+    <section id="sync-panel" class="panel" aria-labelledby="sync-title" hidden>
+      <div class="tracks-head">
+        <h2 id="sync-title">Sync and backup</h2>
+        <button id="sync-close" type="button" aria-label="Close sync and backup">×</button>
+      </div>
+      <div id="sync" hidden>
+        <h3>Google Drive</h3>
+        <p id="sync-text" role="status"></p>
+        <div class="backup-buttons"><button id="sync-connect" type="button">Sync with Google Drive</button><button id="sync-now" type="button" hidden>Sync now</button><button id="sync-stop" type="button" hidden>Stop syncing</button></div>
+      </div>
       <div id="backup">
+        <h3>Backup file</h3>
         <p>Keep a copy of your saved places and routes and your GPX tracks, or bring them to another device (for example through iCloud Drive in Files).</p>
         <div class="backup-buttons"><button id="backup-save" type="button">Back up…</button><button id="backup-restore" type="button">Restore…</button></div>
         <p id="backup-status" role="status"></p>
         <input id="backup-file" type="file" accept=".json,application/json" hidden />
-      </div>
-      <div id="sync" hidden>
-        <p id="sync-text" role="status"></p>
-        <div class="backup-buttons"><button id="sync-connect" type="button">Sync with Google Drive</button><button id="sync-now" type="button" hidden>Sync now</button><button id="sync-stop" type="button" hidden>Stop syncing</button></div>
       </div>
     </section>
     <section id="route-card" aria-live="polite" hidden>

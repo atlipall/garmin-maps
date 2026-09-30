@@ -530,7 +530,16 @@ try {
   // Back up (a download here) with both items and the GPX track; delete them; restore brings them back.
   const backupName = `Garmin Map backup ${new Date().toISOString().slice(0, 10)}.json`;
   await rm(`${dl}${backupName}`, { force: true });
+  const syncPanel = async (open) => {
+    if (open === (await page.$eval('#sync-panel', (e) => !e.hidden))) return;
+    if (open) {
+      await page.click('#menu-button');
+      await page.click('#sync-open');
+    } else await page.click('#sync-close');
+  };
+  await syncPanel(true);
   await page.click('#backup-save');
+  await syncPanel(false);
   let backupText = '';
   for (let t = 0; t < 50 && !backupText; t++) {
     await new Promise((r) => setTimeout(r, 100));
@@ -555,7 +564,9 @@ try {
   if (await page.$eval('#sync', (e) => e.hidden)) fail('no Google Drive sync section (build with VITE_GOOGLE_CLIENT_ID=e2e)');
   const fakeDrive = { file: null, status: 200 };
   const remotePin = { id: 'remote-1', kind: 'pin', name: 'Remote hut', added: 1, lon: -19.3, lat: 64.2 };
-  fakeDrive.file = JSON.stringify({ app: 'garmin-map', kind: 'backup', version: 1, exported: new Date().toISOString(), saved: [remotePin], tracks: [], deleted: {} });
+  const remoteTrack = { id: 'remote-t', name: 'Remote track', color: '#0891b2', visible: true, added: 2, stats: { distance: 1200, climb: 30, duration: null }, gpx: { name: 'Remote track', lines: [{ name: 'Remote track', points: [{ lon: -19.1, lat: 63.99, ele: 600, time: null }, { lon: -19.09, lat: 64.0, ele: 630, time: null }] }], waypoints: [] } };
+  fakeDrive.file = JSON.stringify({ app: 'garmin-map', kind: 'backup', version: 1, exported: new Date().toISOString(), saved: [remotePin], tracks: [remoteTrack], deleted: {} });
+  const tracksBefore = await page.evaluate(() => window.__app.tracks.count);
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS' };
   const onRequest = (req) => {
     const url = new URL(req.url());
@@ -580,7 +591,12 @@ try {
   await page.evaluate(() => localStorage.setItem('google-sync', JSON.stringify({ on: true, token: 'e2e-token', expires: Date.now() + 3_600_000 })));
   await page.evaluate(() => window.__app.sync.syncNow());
   let sync = await page.evaluate(() => ({ count: window.__app.saved.count, text: document.querySelector('#sync-text').textContent, names: [...document.querySelectorAll('#saved-list .name')].map((e) => e.textContent) }));
-  if (sync.count !== 3 || !sync.names.includes('Remote hut') || !/^Synced with Google Drive at \d\d:\d\d\.$/.test(sync.text) || remote().saved.length !== 3 || remote().tracks.length !== 1) fail(`first sync: ${JSON.stringify(sync)} drive has ${remote().saved.length} saved, ${remote().tracks.length} tracks`);
+  const menuStatus = await page.$eval('#sync-menu-status', (e) => e.textContent);
+  if (!/^Synced \d\d:\d\d$/.test(menuStatus)) fail(`menu sync state: ${menuStatus}`);
+  // Tracks come down from another device too, and show on the map.
+  const trackSync = await page.evaluate(() => ({ count: window.__app.tracks.count, names: [...document.querySelectorAll('#track-list .name')].map((e) => e.textContent), drawn: window.__app.map.getStyle().sources.gpx.data.features.length }));
+  if (trackSync.count !== tracksBefore + 1 || !trackSync.names.includes('Remote track') || !trackSync.drawn) fail(`track from another device: ${JSON.stringify(trackSync)} (had ${tracksBefore})`);
+  if (sync.count !== 3 || !sync.names.includes('Remote hut') || !/^Synced with Google Drive at \d\d:\d\d\.$/.test(sync.text) || remote().saved.length !== 3 || remote().tracks.length !== tracksBefore + 1) fail(`first sync: ${JSON.stringify(sync)} drive has ${remote().saved.length} saved, ${remote().tracks.length} tracks`);
   // A deletion here reaches Drive (a few seconds after the change).
   const hutRow = await page.$$eval('#saved-list li', (lis) => lis.findIndex((li) => li.querySelector('.name').textContent === 'Remote hut') + 1);
   await page.click(`#saved-list li:nth-child(${hutRow}) .track-delete`);
@@ -613,12 +629,25 @@ try {
   await page.evaluate(() => window.__app.sync.syncNow());
   sync = await page.evaluate(() => ({ text: document.querySelector('#sync-text').textContent, button: document.querySelector('#sync-connect').textContent, shown: !document.querySelector('#sync-connect').hidden }));
   if (sync.text !== 'Sign in again to keep syncing.' || sync.button !== 'Sign in to Google' || !sync.shown) fail(`expired sign-in: ${JSON.stringify(sync)}`);
+  await syncPanel(true);
+  await page.screenshot({ path: `${OUT}sync-panel.png` });
   await page.click('#sync-stop');
+  if (await page.$eval('#sync-menu-status', (e) => e.textContent) !== '') fail('menu still shows a sync state after Stop syncing');
+  await syncPanel(false);
   if (await page.$eval('#sync-connect', (e) => e.textContent) !== 'Sync with Google Drive') fail('Stop syncing did not turn sync off');
   page.off('request', onRequest);
   await page.setRequestInterception(false);
+  // Leave the device as before the sync: delete the track that came from "another device".
+  if (await page.$eval('#saved', (e) => !e.hidden)) await page.click('#saved-close');
+  await page.click('#menu-button');
+  await page.click('#tracks-open');
+  const remoteRow = await page.$$eval('#track-list li', (lis) => lis.findIndex((li) => li.querySelector('.name').textContent === 'Remote track') + 1);
+  await page.click(`#track-list li:nth-child(${remoteRow}) .track-delete`);
+  await page.click(`#track-list li:nth-child(${remoteRow}) .track-delete`);
+  await page.waitForFunction((n) => window.__app.tracks.count === n, { timeout: 5_000 }, tracksBefore);
+  await page.click('#tracks-close');
   console.log('drive sync ok');
-  await page.click('#saved-close');
+  if (await page.$eval('#saved', (e) => !e.hidden)) await page.click('#saved-close');
   console.log('saved list ok:', opened.info);
   if (await page.$('#import:not([hidden])')) fail('import screen shown after reload');
   await page.waitForFunction(() => window.__app?.tracks?.count === 1, { timeout: 10_000 }).catch(() => fail('GPX track not kept across reload'));
