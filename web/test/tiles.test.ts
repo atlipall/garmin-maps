@@ -5,7 +5,7 @@ import type { RawObject } from '../src/img/rgn';
 import { shiftOf, subdivisionBounds } from '../src/img/tre';
 import { decodeAll } from '../src/map/decodeAll';
 import { GarminMap } from '../src/map/garminMap';
-import { buildTile, coordsBounds, dedupeLabels, paddedSubdivisionBounds, polygonLabelAnchor, simplifyLine, stitchLines, SubdivisionCache } from '../src/tiles/buildTile';
+import { buildTile, coordsBounds, dedupeLabels, paddedSubdivisionBounds, polygonLabelAnchor, simplifyLine, stitchLines, subPixel, SubdivisionCache } from '../src/tiles/buildTile';
 import { latToTileY, lonToTileX, tileBounds } from '../src/tiles/tileMath';
 import { nodeSource } from './helpers/nodeSource';
 import { DETAILED, hasRealData } from './helpers/paths';
@@ -115,6 +115,14 @@ describe('stitchLines', () => {
       line(0x20, '400', [[10, 0], [20, 0]]),
     ];
     expect(stitchLines(fs)).toHaveLength(fs.length);
+  });
+});
+
+describe('subPixel', () => {
+  test('geometry within one screen pixel (8 tile units) is sub-pixel; wider or taller is not', () => {
+    expect(subPixel([[[100, 100], [107, 103], [101, 107]]])).toBe(true);
+    expect(subPixel([[[100, 100], [108, 100]]])).toBe(false);
+    expect(subPixel([[[100, 100], [100, 101]], [[100, 100], [100, 120]]])).toBe(false);
   });
 });
 

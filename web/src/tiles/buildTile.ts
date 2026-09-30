@@ -129,6 +129,26 @@ function roundDedupe(points: Pt[]): Pt[] {
   return out;
 }
 
+/** Lakes, ponds and rivers (Garmin 0x28-0x49 water types): kept even when tiny, since their dots
+ *  show where the lake-strewn highlands are. */
+const isWaterType = (t: number) => t === 0x28 || t === 0x29 || t === 0x32 || (t >= 0x3b && t <= 0x49);
+
+/** Tile units per screen pixel: MapLibre draws vector tiles at 512 px. */
+const PIXEL = EXTENT / 512;
+
+/** True when the geometry fits within one screen pixel (invisible, but costly in bulk: zoomed out, a
+ *  tile holds tens of thousands of tiny lakes and stream pieces). */
+export function subPixel(parts: Pt[][]): boolean {
+  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const part of parts) for (const [x, y] of part) {
+    if (x < w) w = x;
+    if (x > e) e = x;
+    if (y < s) s = y;
+    if (y > n) n = y;
+  }
+  return e - w < PIXEL && n - s < PIXEL;
+}
+
 /** Douglas-Peucker: drop points closer than `tol` to the simplified line (ends always kept). */
 export function simplifyLine(coords: Array<[number, number]>, tol: number): Array<[number, number]> {
   if (coords.length <= 2) return coords;
@@ -413,8 +433,8 @@ export async function buildTile(
           const parts = clipPolyline(pts, clip).map(roundDedupe).filter((p) => p.length >= 2);
           if (parts.length) feature = { type: 2, geometry: parts, tags: {} };
         } else {
-          const ring = roundDedupe(clipPolygon(pts, clip));
-          if (ring.length >= 3) {
+          const ring = simplifyLine(roundDedupe(clipPolygon(pts, clip)), PIXEL / 4);
+          if (ring.length >= 3 && (isWaterType(obj.type) || !subPixel([ring]))) {
             const [f, l] = [ring[0], ring[ring.length - 1]];
             if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0], f[1]]);
             feature = { type: 3, geometry: [ring], tags: {} };
@@ -430,7 +450,10 @@ export async function buildTile(
       }
     }
   }
-  layers.lines = stitchLines(layers.lines);
+  // Points closer than a quarter pixel to the line or outline change nothing on screen.
+  layers.lines = stitchLines(layers.lines)
+    .filter((f) => !subPixel(f.geometry as Pt[][]))
+    .map((f) => ({ ...f, geometry: (f.geometry as Pt[][]).map((part) => simplifyLine(part, PIXEL / 4)) }));
   dedupeLabels(layers.polygons, (f) => labelInfo.get(f), labelContext);
   const data = fromGeojsonVt(
     { points: { features: layers.points }, lines: { features: layers.lines }, polygons: { features: layers.polygons } } as never,
