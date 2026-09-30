@@ -205,11 +205,11 @@ export class TilePool {
   }
 
   /** Plans a route on the last worker (which keeps the road network after the first request). */
-  route(from: [number, number], to: [number, number], allowFRoads: boolean, roads: RoadClasses): Promise<RouteReply> {
+  route(from: [number, number], to: [number, number], allowFRoads: boolean, preferFRoads: boolean, roads: RoadClasses): Promise<RouteReply> {
     if (this.disposed) return Promise.reject(new Error('pool disposed'));
     const live = this.live();
     if (!live.length) return Promise.reject(new Error('no workers available'));
-    return this.call(live[live.length - 1], { type: 'route', from, to, allowFRoads, roads }).then((msg) => msg.result as RouteReply);
+    return this.call(live[live.length - 1], { type: 'route', from, to, allowFRoads, preferFRoads, roads }).then((msg) => msg.result as RouteReply);
   }
 
   /** Terminates every worker and rejects every pending call with Error('pool disposed'); any

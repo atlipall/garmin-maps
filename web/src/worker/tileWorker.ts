@@ -159,7 +159,7 @@ self.onmessage = async (e: MessageEvent) => {
       const decode = (tile: MapTile, sd: Subdivision) => cache.get(`${tile.id}:${sd.index}`, async () => decodeSubdivision(await m.readSubdivision(tile, sd), sd, { sections: 0, badSections: 0 }));
       const lines = roadLineSource(m, decode, roads);
       const shape = (route: Route) => routeShape(graph, index, route, lines);
-      const result = await planRoute(graph, index, lines, msg.from as [number, number], msg.to as [number, number], msg.allowFRoads as boolean, shape);
+      const result = await planRoute(graph, index, lines, msg.from as [number, number], msg.to as [number, number], msg.allowFRoads as boolean, shape, msg.preferFRoads === true);
       self.postMessage({ type: 'route', id: msg.id, result });
     }
   } catch (err) {

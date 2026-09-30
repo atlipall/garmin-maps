@@ -238,7 +238,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     };
     const routePlanner = new RoutePlanner(
       map,
-      (from, to, allow) => roadsReady.then((roads) => pool.route(from, to, allow, roads)),
+      (from, to, allow, prefer) => roadsReady.then((roads) => pool.route(from, to, allow, prefer, roads)),
       searchFrom,
       () => locate.activate(),
     );

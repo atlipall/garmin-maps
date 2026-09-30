@@ -1,4 +1,4 @@
-import { fastestRoute, metresBetween, UNITS_PER_DEG, type NodeIndex, type RoadGraph, type Route, type Terminal } from './graph';
+import { fastestRoute, metresBetween, PREFER_FROAD_WEIGHT, UNITS_PER_DEG, type NodeIndex, type RoadGraph, type Route, type Terminal } from './graph';
 import { cutLine, lineMetres, Snapper, type Anchor, type RoadLines, type Side } from './snap';
 
 type LonLat = [number, number];
@@ -33,7 +33,8 @@ const seconds = (metres: number, kmh: number) => (kmh > 0 ? metres / (kmh / 3.6)
  * allowed only normal roads count; an end with only an F-road or track within reach is reported as
  * 'no-route' (turning the switch on would help). `shape` turns a found graph route into on-road
  * coordinates (the worker passes `routeShape` bound to its subdivision cache) and `lines` finds road
- * lines, so this is testable against a synthetic graph and lines alone.
+ * lines, so this is testable against a synthetic graph and lines alone. `preferFRoads` (with F-roads
+ * allowed) favours F-roads and tracks when choosing the route; the time reported stays the real one.
  */
 export async function planRoute(
   graph: RoadGraph,
@@ -43,6 +44,7 @@ export async function planRoute(
   to: LonLat,
   allowFRoads: boolean,
   shape: (route: Route) => Promise<LonLat[]>,
+  preferFRoads = false,
 ): Promise<RouteReply> {
   if (graph.nodeX.length === 0) return { status: 'no-routing-data' };
   const snapper = new Snapper(graph, index, lines);
@@ -80,7 +82,7 @@ export async function planRoute(
 
   const sources: Terminal[] = a.sides.filter((s) => s.leave > 0).map((s) => ({ node: s.node, cost: seconds(s.metres, s.leave) }));
   const targets: Terminal[] = b.sides.filter((s) => s.arrive > 0).map((s) => ({ node: s.node, cost: seconds(s.metres, s.arrive) }));
-  const route = fastestRoute(graph, sources, targets, allowFRoads);
+  const route = fastestRoute(graph, sources, targets, allowFRoads, allowFRoads && preferFRoads ? PREFER_FROAD_WEIGHT : 1);
   if (!route) return { status: allowFRoads ? 'no-route-any' : 'no-route' };
   const first = route.nodes[0];
   const last = route.nodes[route.nodes.length - 1];

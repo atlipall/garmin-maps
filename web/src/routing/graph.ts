@@ -202,12 +202,17 @@ export interface Terminal {
 
 const terminals = (t: number | Terminal[]): Terminal[] => (typeof t === 'number' ? [{ node: t, cost: 0 }] : t);
 
+/** With F-roads preferred, time on F-roads and tracks counts this much when choosing a route. */
+export const PREFER_FROAD_WEIGHT = 0.6;
+
 /**
  * Fastest route (A*, time in seconds) from any of the sources to any of the targets, counting each
  * source's and target's cost, or null when none is reachable. `seconds` includes those costs,
- * `metres` only the edges'. A plain node stands for a single terminal with no cost.
+ * `metres` only the edges'. A plain node stands for a single terminal with no cost. `fWeight` < 1
+ * makes F-road and track time count for less when choosing (to prefer them); `seconds` is still
+ * the real driving time.
  */
-export function fastestRoute(g: RoadGraph, from: number | Terminal[], to: number | Terminal[], allowFRoads: boolean): Route | null {
+export function fastestRoute(g: RoadGraph, from: number | Terminal[], to: number | Terminal[], allowFRoads: boolean, fWeight = 1): Route | null {
   const sources = terminals(from);
   const targets = terminals(to);
   if (!sources.length || !targets.length) return null;
@@ -217,7 +222,8 @@ export function fastestRoute(g: RoadGraph, from: number | Terminal[], to: number
   const done = new Uint8Array(n);
   const extra = new Map<number, number>();
   for (const t of targets) extra.set(t.node, Math.min(t.cost, extra.get(t.node) ?? Infinity));
-  const maxMs = g.maxSpeed / 3.6;
+  // An F-road counted at fWeight is as if driven 1/fWeight times faster.
+  const maxMs = g.maxSpeed / 3.6 / Math.min(1, fWeight);
   // Admissible: the straight-line time at top speed to the nearest-in-total target.
   const h = (v: number) => {
     let m = Infinity;
@@ -247,7 +253,7 @@ export function fastestRoute(g: RoadGraph, from: number | Terminal[], to: number
       if (!allowFRoads && g.edgeFlags[e] & EDGE_FROAD) continue;
       const v = g.edgeTo[e];
       if (done[v]) continue;
-      const t = best[u] + g.edgeLen[e] / (g.edgeSpeed[e] / 3.6);
+      const t = best[u] + (g.edgeLen[e] / (g.edgeSpeed[e] / 3.6)) * (g.edgeFlags[e] & EDGE_FROAD ? fWeight : 1);
       if (t < best[v]) {
         best[v] = t;
         via[v] = e;
@@ -268,15 +274,18 @@ export function fastestRoute(g: RoadGraph, from: number | Terminal[], to: number
   const deg = (x: number) => x / UNITS_PER_DEG;
   const coords: Array<[number, number]> = [[deg(g.nodeX[start]), deg(g.nodeY[start])]];
   let metres = 0;
+  // Real time: the terminals' costs plus the edges' unweighted times.
+  let seconds = Math.min(...sources.filter((t) => t.node === start).map((t) => t.cost)) + extra.get(end)!;
   const nodes = [start];
   for (const e of edges) {
     metres += g.edgeLen[e];
+    seconds += g.edgeLen[e] / (g.edgeSpeed[e] / 3.6);
     if (g.geomStart) for (let k = g.geomStart[e]; k < g.geomStart[e + 1]; k++) coords.push([deg(g.geomX![k]), deg(g.geomY![k])]);
     const v = g.edgeTo[e];
     coords.push([deg(g.nodeX[v]), deg(g.nodeY[v])]);
     nodes.push(v);
   }
-  return { coords, metres, seconds: bestTotal, nodes, edges };
+  return { coords, metres, seconds, nodes, edges };
 }
 
 /** The node edge `e` leaves from (binary search in edgeStart). */

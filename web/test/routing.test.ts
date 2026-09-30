@@ -119,6 +119,24 @@ describe('fastestRoute with several sources and targets', () => {
     expect(far.seconds).toBeCloseTo(200, 6);
   });
 
+  test('preferring F-roads picks a slower F-road when its weighted time wins, and reports the real time', () => {
+    // a → b directly on a normal road (1000 m at 36 km/h: 100 s), or a → c → b on F-roads
+    // (2 × 700 m at 36 km/h: 140 s, weighted 84 s).
+    const b = new GraphBuilder();
+    const [a, bb, c] = [b.node(0, 0), b.node(U(0.01), 0), b.node(U(0.005), U(0.003))];
+    b.edge(a, bb, 1000, 36, 0);
+    b.edge(a, c, 700, 36, EDGE_FROAD);
+    b.edge(c, bb, 700, 36, EDGE_FROAD);
+    const g = b.build();
+    const plain = fastestRoute(g, a, bb, true)!;
+    expect(plain.nodes).toEqual([a, bb]);
+    expect(plain.seconds).toBeCloseTo(100, 6);
+    const preferred = fastestRoute(g, a, bb, true, 0.6)!;
+    expect(preferred.nodes).toEqual([a, c, bb]);
+    expect(preferred.seconds).toBeCloseTo(140, 6);
+    expect(preferred.metres).toBeCloseTo(1400, 6);
+  });
+
   test('a node that is both a source and a target gives an empty route', () => {
     const { g, n } = line();
     const r = fastestRoute(g, [{ node: n[1], cost: 5 }], [{ node: n[1], cost: 7 }], true)!;

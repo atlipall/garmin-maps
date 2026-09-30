@@ -124,7 +124,7 @@
       #route-choices button.primary, #route-confirm button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
       .start-pin { cursor: default; filter: drop-shadow(0 1px 2px #0005); }
       #route-msg:empty { display: none; }
-      #route-switch { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+      #route-switch, #route-prefer-switch { display: flex; align-items: center; gap: 8px; font-size: 15px; }
       #route-go { justify-self: start; padding: 9px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 16px; cursor: pointer; }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {
@@ -197,6 +197,7 @@
       <div id="route-off"></div>
       <div id="route-msg"></div>
       <label id="route-switch" hidden><input id="route-froads" type="checkbox" checked /> Allow F-roads and tracks</label>
+      <label id="route-prefer-switch" hidden><input id="route-prefer" type="checkbox" /> Prefer F-roads and tracks</label>
       <button id="route-go" type="button">Route here</button>
     </section>
     <section id="import" hidden>

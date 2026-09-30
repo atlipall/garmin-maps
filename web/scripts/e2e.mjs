@@ -287,6 +287,7 @@ try {
   await new Promise((r) => setTimeout(r, 300));
   console.log('route card minimize ok:', minCard.text);
   await page.click('#route-froads');
+  if (await page.$eval('#route-prefer-switch', (e) => !e.hidden)) fail('"Prefer F-roads" shown with F-roads not allowed');
   const noRoute = () => page.waitForFunction(() => /No route without F-roads/.test(document.querySelector('#route-msg')?.textContent ?? ''), { timeout: 30_000 });
   await noRoute();
   // No route on the map: a new place replaces the card without asking.
@@ -297,6 +298,13 @@ try {
   await page.click('#route-go');
   await noRoute();
   await page.click('#route-froads'); // back on
+  if (await page.$eval('#route-prefer-switch', (e) => e.hidden)) fail('"Prefer F-roads" hidden with F-roads allowed');
+  // Preferring F-roads plans the route again (the time shown is still the real driving time).
+  await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
+  await page.click('#route-prefer');
+  await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 }).catch(() => fail('no route with F-roads preferred'));
+  console.log('prefer F-roads ok:', await page.$eval('#route-info', (e) => e.textContent));
+  await page.click('#route-prefer'); // off again (the setting is remembered)
   // With a route shown, a new pin asks first: Keep route leaves it; Clear route drops the pin.
   const confirmState = () => page.evaluate(() => ({ confirm: !document.querySelector('#route-confirm').hidden, drawn: window.__app.map.getStyle().sources.route.data.features.length, title: document.querySelector('#route-title').textContent, markers: document.querySelectorAll('.maplibregl-marker').length }));
   await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });

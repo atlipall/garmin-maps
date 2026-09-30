@@ -209,10 +209,10 @@ describe('TilePool', () => {
 
   test('route() goes to the last worker and resolves with its reply', async () => {
     const pool = new TilePool(payload, 2);
-    const r = pool.route([-21.9, 64.1], [-21.0, 63.9], true, {});
+    const r = pool.route([-21.9, 64.1], [-21.0, 63.9], true, true, {});
     const w = FakeWorker.instances[1];
     const msg = w.posted.find((m) => m.type === 'route');
-    expect(msg).toMatchObject({ from: [-21.9, 64.1], to: [-21.0, 63.9], allowFRoads: true, roads: {} });
+    expect(msg).toMatchObject({ from: [-21.9, 64.1], to: [-21.0, 63.9], allowFRoads: true, preferFRoads: true, roads: {} });
     w.reply({ type: 'route', id: msg.id, result: { status: 'no-route' } });
     expect(await r).toEqual({ status: 'no-route' });
   });

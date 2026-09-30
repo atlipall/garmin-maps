@@ -45,6 +45,7 @@ export class RoutePlanner {
   /** The next plain map tap sets the start. */
   private choosing = false;
   private allow = readSetting('allowFRoads', true);
+  private prefer = readSetting('preferFRoads', false);
   private started = false;
   /** A route line is on the map. */
   private shown = false;
@@ -70,7 +71,7 @@ export class RoutePlanner {
   /** `searchFrom`: your recent GPS position, else the map centre. `useLocation` turns location on. */
   constructor(
     private readonly map: maplibregl.Map,
-    private readonly plan: (from: [number, number], to: [number, number], allow: boolean) => Promise<RouteReply>,
+    private readonly plan: (from: [number, number], to: [number, number], allow: boolean, prefer: boolean) => Promise<RouteReply>,
     private readonly searchFrom: () => { at: [number, number]; gps: boolean },
     private readonly useLocation: () => void,
   ) {
@@ -102,9 +103,18 @@ export class RoutePlanner {
       yes?.();
     };
     $('route-confirm-no').onclick = () => this.dropPending();
+    $<HTMLInputElement>('route-prefer').checked = this.prefer;
     $<HTMLInputElement>('route-froads').onchange = (e) => {
       this.allow = (e.target as HTMLInputElement).checked;
       writeSetting('allowFRoads', this.allow);
+      this.showSwitches();
+      // While waiting for a position, the route that follows uses the new setting.
+      if (this.started && !this.waiting) void this.route();
+    };
+    // Prefer F-roads (only offered while they're allowed): they count for less when choosing.
+    $<HTMLInputElement>('route-prefer').onchange = (e) => {
+      this.prefer = (e.target as HTMLInputElement).checked;
+      writeSetting('preferFRoads', this.prefer);
       // While waiting for a position, the route that follows uses the new setting.
       if (this.started && !this.waiting) void this.route();
     };
@@ -194,7 +204,7 @@ export class RoutePlanner {
     this.setInfo('', '', '');
     this.showChoices(false);
     this.showFrom();
-    $('route-switch').hidden = true;
+    this.showSwitches();
     $('route-go').hidden = false;
     $('route-card').hidden = false;
     this.fitRoute = true;
@@ -306,11 +316,17 @@ export class RoutePlanner {
   }
 
   /** The card as a route panel (title "To …", the F-road switch), for a route or its preparations. */
+  /** The F-road switches, on the route panel only; "Prefer" only while F-roads are allowed. */
+  private showSwitches(): void {
+    $('route-switch').hidden = !this.started;
+    $('route-prefer-switch').hidden = !this.started || !this.allow;
+  }
+
   private showStarted(): void {
     if (!this.dest) return;
     this.started = true;
     $('route-go').hidden = true;
-    $('route-switch').hidden = false;
+    this.showSwitches();
     $('route-title').textContent = `To ${this.dest.name ?? `dropped pin · ${coordsText(this.dest)}`}`;
     this.onChange?.();
   }
@@ -377,7 +393,7 @@ export class RoutePlanner {
     this.showFrom();
     this.setInfo('Preparing roads…', '', '');
     this.planning = true;
-    const reply = await this.plan(from, [this.dest.lon, this.dest.lat], this.allow).catch((err) => ({ status: 'error' as const, err }));
+    const reply = await this.plan(from, [this.dest.lon, this.dest.lat], this.allow, this.prefer).catch((err) => ({ status: 'error' as const, err }));
     if (seq !== this.seq) return; // superseded
     this.planning = false;
     if (reply.status !== 'ok') {
