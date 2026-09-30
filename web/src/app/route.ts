@@ -43,6 +43,10 @@ export class RoutePlanner {
   private choosing = false;
   private allow = readSetting('allowFRoads', true);
   private started = false;
+  /** A route line is on the map. */
+  private shown = false;
+  /** A route is being planned (reset when it's superseded or cleared). */
+  private planning = false;
   /** A new place waiting for "Clear route" / "Keep route", with its grey marker. */
   private pending: { dest: { name: string | null; lon: number; lat: number }; marker: maplibregl.Marker } | null = null;
   /** "Use my location" is waiting for a first fix (a switch change keeps waiting). */
@@ -145,8 +149,9 @@ export class RoutePlanner {
 
   /** Shows the destination card for a place (from search or a long press). */
   pick(dest: { name: string | null; lon: number; lat: number }): void {
-    // With a route on the map, ask before a new pin replaces it.
-    if (this.started) {
+    // With a route on the map (or on its way), ask before a new pin replaces it.
+    if (this.shown || this.planning) {
+      $('route-confirm-text').textContent = `Drop a pin ${dest.name ? `at ${dest.name}` : 'here'} and clear the current route?`;
       this.pending?.marker.remove();
       this.pending = { dest, marker: new maplibregl.Marker({ color: '#8a8f98' }).setLngLat([dest.lon, dest.lat]).addTo(this.map) };
       $('route-confirm').hidden = false;
@@ -186,10 +191,16 @@ export class RoutePlanner {
 
   private clearRoute(): void {
     this.seq++;
+    this.planning = false;
     this.started = false;
     this.choosing = false;
     this.waiting = false;
-    (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(EMPTY);
+    this.drawRoute(EMPTY);
+  }
+
+  private drawRoute(data: GeoJSON.FeatureCollection): void {
+    (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(data);
+    this.shown = data.features.length > 0;
   }
 
   private clearStart(): void {
@@ -237,9 +248,10 @@ export class RoutePlanner {
     if (!this.dest) return;
     if (!this.searchFrom().gps) {
       const seq = ++this.seq;
+      this.planning = false;
       this.useLocation();
       this.showStarted();
-      (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(EMPTY);
+      this.drawRoute(EMPTY);
       this.setInfo('Waiting for your position…', '', '');
       const t0 = Date.now();
       this.waiting = true;
@@ -260,9 +272,10 @@ export class RoutePlanner {
   private chooseOnMap(): void {
     this.showChoices(false);
     this.seq++; // a route in progress no longer applies
+    this.planning = false;
     this.waiting = false;
     this.choosing = true;
-    (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(EMPTY);
+    this.drawRoute(EMPTY);
     this.setInfo("Tap the map where you'll start", '', '');
   }
 
@@ -285,11 +298,12 @@ export class RoutePlanner {
     this.showStarted();
     this.showFrom();
     this.setInfo('Preparing roads…', '', '');
+    this.planning = true;
     const reply = await this.plan(from, [this.dest.lon, this.dest.lat], this.allow).catch((err) => ({ status: 'error' as const, err }));
     if (seq !== this.seq) return; // superseded
-    const source = this.map.getSource('route') as maplibregl.GeoJSONSource;
+    this.planning = false;
     if (reply.status !== 'ok') {
-      source.setData(EMPTY);
+      this.drawRoute(EMPTY);
       this.setInfo('', '', routeMessage(reply, kind));
       return;
     }
@@ -298,7 +312,7 @@ export class RoutePlanner {
     for (const leg of [reply.offRoadStart, reply.offRoadEnd]) if (leg) features.push(feature('offroad', { type: 'LineString', coordinates: leg }));
     // A chosen start has its pin; otherwise a dot marks where the route starts.
     if (kind !== 'chosen') features.push(feature('start', { type: 'Point', coordinates: reply.coords[0] }));
-    source.setData({ type: 'FeatureCollection', features });
+    this.drawRoute({ type: 'FeatureCollection', features });
     this.setInfo(`${fmtKm(reply.metres)} · ${fmtTime(reply.seconds)}`, offRoadText(reply.offRoadStartM, reply.offRoadEndM), '');
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
     for (const [lon, lat] of [...reply.coords, ...(reply.offRoadStart ?? []), ...(reply.offRoadEnd ?? [])]) {

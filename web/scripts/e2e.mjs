@@ -265,7 +265,15 @@ try {
   await new Promise((r) => setTimeout(r, 500));
   if (await page.$eval('#route-card', (e) => e.hidden)) fail('a map tap cleared the shown route');
   await page.click('#route-froads');
-  await page.waitForFunction(() => /No route without F-roads/.test(document.querySelector('#route-msg')?.textContent ?? ''), { timeout: 30_000 });
+  const noRoute = () => page.waitForFunction(() => /No route without F-roads/.test(document.querySelector('#route-msg')?.textContent ?? ''), { timeout: 30_000 });
+  await noRoute();
+  // No route on the map: a new place replaces the card without asking.
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Hekla', lon: -19.67, lat: 63.99 }));
+  const afterFail = await page.evaluate(() => ({ confirm: !document.querySelector('#route-confirm').hidden, title: document.querySelector('#route-title').textContent }));
+  if (afterFail.confirm || afterFail.title !== 'Hekla') fail(`new place after a failed route: ${JSON.stringify(afterFail)}`);
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
+  await page.click('#route-go');
+  await noRoute();
   await page.click('#route-froads'); // back on
   // With a route shown, a new pin asks first: Keep route leaves it; Clear route drops the pin.
   const confirmState = () => page.evaluate(() => ({ confirm: !document.querySelector('#route-confirm').hidden, drawn: window.__app.map.getStyle().sources.route.data.features.length, title: document.querySelector('#route-title').textContent, markers: document.querySelectorAll('.maplibregl-marker').length }));
@@ -275,6 +283,14 @@ try {
   const markersWithRoute = await markers();
   await page.mouse.click(600, 500, { button: 'right' });
   let cs = await confirmState();
+  const question = await page.$eval('#route-confirm-text', (e) => e.textContent);
+  if (question !== 'Drop a pin here and clear the current route?') fail(`confirm question: ${question}`);
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Hekla', lon: -19.67, lat: 63.99 }));
+  const named = await page.$eval('#route-confirm-text', (e) => e.textContent);
+  if (named !== 'Drop a pin at Hekla and clear the current route?') fail(`confirm question for a named place: ${named}`);
+  await page.click('#route-confirm-no');
+  await page.mouse.click(600, 500, { button: 'right' });
+  cs = await confirmState();
   if (!cs.confirm || cs.drawn !== drawnBefore || cs.title !== 'To Landmannalaugar' || cs.markers !== markersWithRoute + 1) fail(`pin over a route: ${JSON.stringify(cs)}`);
   await page.click('#route-confirm-no');
   cs = await confirmState();

@@ -8,14 +8,6 @@ import { followRoad, type RoadLine, type RoadLines } from './snap';
 
 const same = (a: [number, number], b: [number, number]) => a[0] === b[0] && a[1] === b[1];
 
-/** The part of `line` from the point `from` to the point `to` (both vertices of it), in that order. */
-export function sliceBetween(line: Array<[number, number]>, from: [number, number], to: [number, number]): Array<[number, number]> | null {
-  const i = line.findIndex((p) => same(p, from));
-  const j = line.findIndex((p) => same(p, to));
-  if (i < 0 || j < 0) return null;
-  return i <= j ? line.slice(i, j + 1) : line.slice(j, i + 1).reverse();
-}
-
 /**
  * The route drawn along its roads: each edge follows its road (the lines with the edge's tile and
  * NET offset, from `lines`) from one end node to the other, across the several lines a road is

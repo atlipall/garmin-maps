@@ -5,22 +5,11 @@ import type { Subdivision } from '../src/img/tre';
 import { GarminMap, type MapTile } from '../src/map/garminMap';
 import { fastestRoute, GraphBuilder, metresBetween, NodeIndex, UNITS_PER_DEG, type Route } from '../src/routing/graph';
 import { buildNetwork } from '../src/routing/network';
-import { roadLineSource, routeShape, sliceBetween } from '../src/routing/shape';
+import { roadLineSource, routeShape } from '../src/routing/shape';
 import type { RoadLine } from '../src/routing/snap';
 import { collectIndex } from '../src/search/places';
 import { nodeSource } from './helpers/nodeSource';
 import { DETAILED, F_ROAD_DETAILED, hasRealData } from './helpers/paths';
-
-describe('sliceBetween', () => {
-  const line: Array<[number, number]> = [[0, 0], [1, 0], [2, 1], [3, 1], [4, 0]];
-  test('the part of a line between two of its points, in travel order', () => {
-    expect(sliceBetween(line, [1, 0], [3, 1])).toEqual([[1, 0], [2, 1], [3, 1]]);
-    expect(sliceBetween(line, [4, 0], [2, 1])).toEqual([[4, 0], [3, 1], [2, 1]]);
-  });
-  test('null when either point is not on the line', () => {
-    expect(sliceBetween(line, [1, 0], [9, 9])).toBeNull();
-  });
-});
 
 describe('routeShape', () => {
   // Nodes a (0) and b (40) joined by one edge of road NET 7, drawn as two lines that meet at x=20
