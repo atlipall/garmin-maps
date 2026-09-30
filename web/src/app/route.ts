@@ -1,6 +1,7 @@
 import * as maplibregl from 'maplibre-gl';
 import type { RouteReply } from '../worker/pool';
 import { readSetting, writeSetting } from '../ui/settings';
+import { routeMessage } from './routeMessage';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const LONG_PRESS_MS = 550;
@@ -10,11 +11,9 @@ function fmtTime(s: number): string {
   const min = Math.round(s / 60);
   return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`;
 }
-const MESSAGES: Record<Exclude<RouteReply['status'], 'ok'>, string> = {
-  'no-road-start': 'No road near your position',
-  'no-road-end': 'No road within 2 km of the destination',
-  'no-route': 'No route without F-roads and tracks: turn the switch on to allow them',
-};
+const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+
+const coordsText = (p: { lon: number; lat: number }) => `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
 
 /** Destination card, route panel and route line (route planning without guidance). */
 export class RoutePlanner {
@@ -29,9 +28,12 @@ export class RoutePlanner {
     private readonly plan: (from: [number, number], to: [number, number], allow: boolean) => Promise<RouteReply>,
     private readonly searchFrom: () => { at: [number, number]; gps: boolean },
   ) {
-    map.addSource('route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    map.addLayer({ id: 'route-casing', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 5, 15, 11] } });
-    map.addLayer({ id: 'route-line', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#1d3f8f', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 3, 15, 7] } });
+    map.addSource('route', { type: 'geojson', data: EMPTY });
+    const isLine: maplibregl.FilterSpecification = ['==', ['geometry-type'], 'LineString'];
+    map.addLayer({ id: 'route-casing', type: 'line', source: 'route', filter: isLine, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 5, 15, 11] } });
+    map.addLayer({ id: 'route-line', type: 'line', source: 'route', filter: isLine, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#1d3f8f', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 3, 15, 7] } });
+    // The start of the route: a white dot with a dark outline.
+    map.addLayer({ id: 'route-start', type: 'circle', source: 'route', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-color': '#ffffff', 'circle-radius': 6, 'circle-stroke-color': '#1d3f8f', 'circle-stroke-width': 3 } });
     $<HTMLInputElement>('route-froads').checked = this.allow;
     $('route-go').onclick = () => void this.route();
     $('route-close').onclick = () => this.clear();
@@ -42,17 +44,26 @@ export class RoutePlanner {
     };
     // Long press (touch) or right-click (mouse) drops a pin with a "Route here" card.
     map.on('contextmenu', (e) => this.pick({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat }));
+    // A plain tap elsewhere on the map closes the card while it only offers "Route here"; a shown
+    // route stays until ×. A tap the browser may send after a long press is ignored.
+    let pressed = false;
+    map.on('click', () => {
+      if (pressed) pressed = false;
+      else if (this.dest && !this.started) this.clear();
+    });
     let timer = 0;
     let startXY: [number, number] | null = null;
     const canvas = map.getCanvasContainer();
     canvas.addEventListener('touchstart', (e) => {
       clearTimeout(timer);
+      pressed = false;
       if (e.touches.length !== 1) return;
       const t = e.touches[0];
       startXY = [t.clientX, t.clientY];
       timer = window.setTimeout(() => {
         const r = canvas.getBoundingClientRect();
         const ll = map.unproject([startXY![0] - r.left, startXY![1] - r.top]);
+        pressed = true;
         this.pick({ name: null, lon: ll.lng, lat: ll.lat });
       }, LONG_PRESS_MS);
     }, { passive: true });
@@ -69,7 +80,7 @@ export class RoutePlanner {
     this.dest = dest;
     this.pin?.remove();
     this.pin = new maplibregl.Marker({ color: '#c0392b' }).setLngLat([dest.lon, dest.lat]).addTo(this.map);
-    $('route-title').textContent = dest.name ?? `Dropped pin · ${dest.lat.toFixed(4)}, ${dest.lon.toFixed(4)}`;
+    $('route-title').textContent = dest.name ?? `Dropped pin · ${coordsText(dest)}`;
     $('route-info').textContent = '';
     $('route-msg').textContent = '';
     $('route-switch').hidden = true;
@@ -88,7 +99,7 @@ export class RoutePlanner {
   private clearRoute(): void {
     this.seq++;
     this.started = false;
-    (this.map.getSource('route') as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features: [] });
+    (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(EMPTY);
   }
 
   private async route(): Promise<void> {
@@ -98,24 +109,35 @@ export class RoutePlanner {
     const from = this.searchFrom();
     $('route-go').hidden = true;
     $('route-switch').hidden = false;
-    $('route-title').textContent = `To ${this.dest.name ?? 'dropped pin'}`;
+    $('route-title').textContent = `To ${this.dest.name ?? `dropped pin · ${coordsText(this.dest)}`}`;
     $('route-msg').textContent = '';
     $('route-info').textContent = 'Preparing roads…';
     const reply = await this.plan(from.at, [this.dest.lon, this.dest.lat], this.allow).catch((err) => ({ status: 'error' as const, err }));
     if (seq !== this.seq) return; // superseded
     const source = this.map.getSource('route') as maplibregl.GeoJSONSource;
     if (reply.status !== 'ok') {
-      source.setData({ type: 'FeatureCollection', features: [] });
+      source.setData(EMPTY);
       $('route-info').textContent = '';
-      $('route-msg').textContent = reply.status === 'error' ? String((reply as { err: unknown }).err) : MESSAGES[reply.status];
+      $('route-msg').textContent = routeMessage(reply, from.gps);
       return;
     }
-    source.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: reply.coords } });
+    source.setData({
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: reply.coords } },
+        { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: reply.coords[0] } },
+      ],
+    });
     $('route-info').textContent = `${fmtKm(reply.metres)} · ${fmtTime(reply.seconds)} · ${from.gps ? 'from your position' : 'from the map centre'}`;
-    const lons = reply.coords.map((c) => c[0]);
-    const lats = reply.coords.map((c) => c[1]);
+    let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const [lon, lat] of reply.coords) {
+      if (lon < w) w = lon;
+      if (lon > e) e = lon;
+      if (lat < s) s = lat;
+      if (lat > n) n = lat;
+    }
     const card = $('route-card').getBoundingClientRect();
     const bottom = this.map.getContainer().getBoundingClientRect().bottom - card.top + 20;
-    this.map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: { top: 80, bottom: Math.max(60, bottom), left: 40, right: 40 }, maxZoom: 15, duration: 800 });
+    this.map.fitBounds([[w, s], [e, n]], { padding: { top: 80, bottom: Math.max(60, bottom), left: 40, right: 40 }, maxZoom: 15, duration: 800 });
   }
 }

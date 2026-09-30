@@ -131,13 +131,13 @@ self.onmessage = async (e: MessageEvent) => {
         // `network` — but only if nothing else already replaced it (a later 'open') — so the
         // next 'route' request retries instead of failing until the worker is reopened. Mirrors
         // SubdivisionCache.get()'s retry-on-rejection in ../tiles/buildTile.ts.
-        const building: Promise<{ graph: RoadGraph; index: NodeIndex }> = buildNetwork(m, msg.roads as RoadClasses).then(
-          (graph) => ({ graph, index: new NodeIndex(graph) }),
-          (err) => {
+        // The handler comes after the mapper, so a failing NodeIndex construction is caught too.
+        const building: Promise<{ graph: RoadGraph; index: NodeIndex }> = buildNetwork(m, msg.roads as RoadClasses)
+          .then((graph) => ({ graph, index: new NodeIndex(graph) }))
+          .catch((err) => {
             if (network === building) network = null;
             throw err;
-          },
-        );
+          });
         network = building;
       }
       const { graph, index } = await network;

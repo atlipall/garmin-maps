@@ -3,7 +3,7 @@ import type { Kind } from '../img/rgn';
 import { decodeAll } from '../map/decodeAll';
 import { objectName, type GarminMap } from '../map/garminMap';
 import { CONTOUR_LINE_TYPES, isNumber } from '../map/zoom';
-import { roadClass, type RoadClasses } from '../routing/roadClass';
+import { RoadClassCollector, roadClass, type RoadClasses } from '../routing/roadClass';
 import { normalize } from './normalize';
 
 export interface Place {
@@ -42,12 +42,9 @@ export async function collectIndex(map: GarminMap): Promise<{ places: Place[]; r
   const bits = Math.max(...map.bands.keys());
   const seen = new Set<string>();
   const out: Place[] = [];
-  const roads: RoadClasses = {};
+  const roads = new RoadClassCollector();
   await decodeAll(map, (tile, _sd, obj) => {
-    if (obj.kind === 'line' && obj.labelSrc === 'net') {
-      const cls = roadClass(obj.type, objectName(tile, obj));
-      if (cls) (roads[tile.id] ??= []).push([obj.label, cls]);
-    }
+    if (obj.kind === 'line' && obj.labelSrc === 'net') roads.add(tile.id, obj.label, roadClass(obj.type, objectName(tile, obj)));
     if (obj.kind === 'line' && CONTOUR_LINE_TYPES.has(obj.type)) return;
     const name = objectName(tile, obj);
     if (!name || isNumber(name)) return;
@@ -67,5 +64,5 @@ export async function collectIndex(map: GarminMap): Promise<{ places: Place[]; r
     seen.add(key);
     out.push({ name, lon, lat, kind: obj.kind, type: obj.type });
   }, { bits });
-  return { places: out, roads };
+  return { places: out, roads: roads.roads };
 }

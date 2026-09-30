@@ -31,8 +31,9 @@ export interface RoadGraph {
   /** km/h used for travel time. */
   edgeSpeed: Float32Array;
   edgeFlags: Uint8Array;
-  /** The edge's road: map tile index and NET offset, −1 when unknown. */
-  edgeTile: Uint8Array;
+  /** The edge's road: its map tile's index (0 when the edge has no road) and its NET offset
+   *  (−1 when unknown). */
+  edgeTile: Uint16Array;
   edgeNet: Int32Array;
   /** Optional shape per edge: points geomStart[e] .. geomStart[e + 1] - 1 of geomX/geomY, from
    *  the source node to the target (exclusive of both ends). Absent: straight between nodes. */
@@ -100,7 +101,7 @@ export class GraphBuilder {
     const edgeLen = new Float32Array(m);
     const edgeSpeed = new Float32Array(m);
     const edgeFlags = new Uint8Array(m);
-    const edgeTile = new Uint8Array(m);
+    const edgeTile = new Uint16Array(m);
     const edgeNet = new Int32Array(m);
     let maxSpeed = 1;
     let geomPoints = 0;
@@ -253,6 +254,13 @@ export function fastestRoute(g: RoadGraph, from: number, to: number, allowFRoads
   return { coords, metres, seconds: best[to], nodes, edges };
 }
 
+/** Whether node `v` has an outgoing edge that isn't an F-road or track (so a route that may not
+ *  use those can start or end there). */
+export function hasNormalRoad(g: RoadGraph, v: number): boolean {
+  for (let e = g.edgeStart[v]; e < g.edgeStart[v + 1]; e++) if (!(g.edgeFlags[e] & EDGE_FROAD)) return true;
+  return false;
+}
+
 /** Grid index over the graph's nodes, for snapping a position to the nearest node. */
 export class NodeIndex {
   private readonly cells = new Map<number, number[]>();
@@ -272,8 +280,8 @@ export class NodeIndex {
     }
   }
 
-  /** Nearest node within `maxMetres`, or null. */
-  nearest(lon: number, lat: number, maxMetres: number): { node: number; metres: number } | null {
+  /** Nearest node within `maxMetres` that `accept` (when given) lets through, or null. */
+  nearest(lon: number, lat: number, maxMetres: number, accept?: (node: number) => boolean): { node: number; metres: number } | null {
     const C = NodeIndex.CELL;
     const x = Math.round(lon * UNITS_PER_DEG);
     const y = Math.round(lat * UNITS_PER_DEG);
@@ -284,7 +292,7 @@ export class NodeIndex {
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
       for (const v of this.cells.get((cx + dx) * 100000 + (cy + dy)) ?? []) {
         const m = metresBetween(x, y, this.g.nodeX[v], this.g.nodeY[v]);
-        if (m <= bestM) {
+        if (m <= bestM && (!accept || accept(v))) {
           bestM = m;
           bestNode = v;
         }

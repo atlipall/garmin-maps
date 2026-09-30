@@ -15,3 +15,19 @@ export function roadClass(type: number, name: string | null): RoadClass {
   if (type === 0x12 || (name !== null && F_NAME.test(name))) return 1;
   return 0;
 }
+
+/** Builds a RoadClasses table with one entry per NET offset per tile: a road drawn as several lines
+ *  (or split across subdivisions) shares one NET offset. Class-0 roads are left out. */
+export class RoadClassCollector {
+  readonly roads: RoadClasses = {};
+  private readonly seen = new Map<string, Set<number>>();
+
+  add(tileId: string, net: number, cls: RoadClass): void {
+    if (!cls) return;
+    let nets = this.seen.get(tileId);
+    if (!nets) this.seen.set(tileId, (nets = new Set()));
+    if (nets.has(net)) return;
+    nets.add(net);
+    (this.roads[tileId] ??= []).push([net, cls]);
+  }
+}
