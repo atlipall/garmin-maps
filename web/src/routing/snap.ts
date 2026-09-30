@@ -1,4 +1,4 @@
-import { canArrive, canLeave, EDGE_FROAD, metresBetween, UNITS_PER_DEG, type NodeIndex, type RoadGraph } from './graph';
+import { canArrive, canLeave, EDGE_FROAD, edgeSource, metresBetween, UNITS_PER_DEG, type NodeIndex, type RoadGraph } from './graph';
 import type { RoadClass } from './roadClass';
 
 /** A routable road line (finest level, NET-labelled) in map units, with its road (tile index, NET
@@ -75,6 +75,24 @@ const lengthOf = (path: Array<[number, number]>) => {
   return m;
 };
 
+/** Per graph: the edges into each node, CSR by target (built on first use). */
+const inEdges = new WeakMap<RoadGraph, { start: Int32Array; edges: Int32Array }>();
+
+function incoming(g: RoadGraph, v: number): Int32Array {
+  let r = inEdges.get(g);
+  if (!r) {
+    const n = g.nodeX.length;
+    const start = new Int32Array(n + 1);
+    for (let e = 0; e < g.edgeTo.length; e++) start[g.edgeTo[e] + 1]++;
+    for (let i = 0; i < n; i++) start[i + 1] += start[i];
+    const fill = start.slice(0, n);
+    const edges = new Int32Array(g.edgeTo.length);
+    for (let e = 0; e < g.edgeTo.length; e++) edges[fill[g.edgeTo[e]]++] = e;
+    inEdges.set(g, (r = { start, edges }));
+  }
+  return r.edges.subarray(r.start[v], r.start[v + 1]);
+}
+
 const sameXY = (a: [number, number], b: [number, number]) => a[0] === b[0] && a[1] === b[1];
 
 /** Speed (km/h) of the edge u→v on road (tile, net) that the route may use, or 0 when there's none. */
@@ -137,7 +155,8 @@ export class Snapper {
     const at: [number, number] = [near.x, near.y];
     const back = await this.walk(line, near.i, -1, at);
     const ahead = await this.walk(line, near.i + 1, 1, at);
-    if (!back || !ahead || back.node === ahead.node) return null;
+    if (!back || !ahead) return this.oneSide(line, at, back ?? ahead, allowFRoads);
+    if (back.node === ahead.node) return null;
     const u = back.node;
     const v = ahead.node;
     if (!this.index.inMain(u) || !this.index.inMain(v)) return null;
@@ -156,6 +175,32 @@ export class Snapper {
       ],
       stretch: { tile: line.tile, net: line.net, u, v, line: [...back.path].reverse().concat(ahead.path.slice(1)), along: dU },
     };
+  }
+
+  /** The anchor when the road runs out (no node, no next line) in one direction from `at`: only the
+   *  side towards the node found. Its speed and direction come from that node's edges on this road
+   *  that head towards `at` (the other end of such an edge is unknown here). */
+  private oneSide(line: RoadLine, at: [number, number], found: { node: number; path: Array<[number, number]> } | null, allowFRoads: boolean): Anchor | null {
+    if (!found || !this.index.inMain(found.node)) return null;
+    const n = found.node;
+    const g = this.g;
+    const nx = g.nodeX[n];
+    const ny = g.nodeY[n];
+    // The road's direction at n towards `at`: its vertex before n (none when `at` is n itself).
+    const prev = found.path.length >= 2 ? found.path[found.path.length - 2] : null;
+    const kx = Math.cos((ny / UNITS_PER_DEG) * (Math.PI / 180));
+    const towardAt = (w: number) => !prev || ((g.nodeX[w] - nx) * kx) * ((prev[0] - nx) * kx) + (g.nodeY[w] - ny) * (prev[1] - ny) > 0;
+    let leave = 0; // at → n: an edge w → n from the side of `at`
+    let arrive = 0; // n → at: an edge n → w towards `at`
+    const usable = (e: number) => g.edgeTile[e] === line.tile && g.edgeNet[e] === line.net && (allowFRoads || !(g.edgeFlags[e] & EDGE_FROAD));
+    for (let e = g.edgeStart[n]; e < g.edgeStart[n + 1]; e++) {
+      if (usable(e) && towardAt(g.edgeTo[e])) arrive = Math.max(arrive, g.edgeSpeed[e]);
+    }
+    for (const e of incoming(g, n)) {
+      if (usable(e) && towardAt(edgeSource(g, e))) leave = Math.max(leave, g.edgeSpeed[e]);
+    }
+    if (!leave && !arrive) return null;
+    return { at, offM: 0, sides: [{ node: n, metres: lengthOf(found.path), path: found.path, leave, arrive }], stretch: null };
   }
 
   /** Follows the road from `at` through vertex `i` of `line` in direction `dir` to the first graph

@@ -24,8 +24,8 @@ export function routeMessage(reply: Exclude<RouteReply, { status: 'ok' }> | { st
   return MESSAGES[reply.status];
 }
 
-/** A distance: metres (to 10 m) below 1 km, km with one decimal below 10 km, whole km above. */
-export function fmtKm(m: number): string {
+/** An off-road distance: metres (to 10 m) below 1 km, km with one decimal below 10 km, whole km above. */
+function fmtOffRoad(m: number): string {
   const r = Math.round(m / 10) * 10;
   if (r < 1000) return `${r} m`;
   return m < 9950 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 1000)} km`;
@@ -33,8 +33,8 @@ export function fmtKm(m: number): string {
 
 /** The panel's off-road line, e.g. "+ 1.3 km off-road at the start"; '' when there's none. */
 export function offRoadText(startM: number, endM: number): string {
-  if (startM && endM) return `+ ${fmtKm(startM)} and ${fmtKm(endM)} off-road at the start and end`;
-  if (startM) return `+ ${fmtKm(startM)} off-road at the start`;
-  if (endM) return `+ ${fmtKm(endM)} off-road at the end`;
+  if (startM && endM) return `+ ${fmtOffRoad(startM)} and ${fmtOffRoad(endM)} off-road at the start and end`;
+  if (startM) return `+ ${fmtOffRoad(startM)} off-road at the start`;
+  if (endM) return `+ ${fmtOffRoad(endM)} off-road at the end`;
   return '';
 }

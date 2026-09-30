@@ -271,6 +271,7 @@ try {
   await page.click('#route-choose');
   const prompt = await page.$eval('#route-info', (e) => e.textContent);
   if (prompt !== "Tap the map where you'll start") fail(`choose-on-map prompt: ${prompt}`);
+  if ((await routeKinds()).length) fail('the previous route is still drawn while choosing a start');
   await page.mouse.click(420, 360);
   await page.waitForFunction(() => /from the chosen point/.test(document.querySelector('#route-info')?.textContent ?? '') || document.querySelector('#route-msg')?.textContent, { timeout: 60_000 });
   const chosen = await page.evaluate(() => ({

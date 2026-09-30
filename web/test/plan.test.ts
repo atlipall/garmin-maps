@@ -130,9 +130,46 @@ describe('planRoute', () => {
     await expect(planRoute(one.graph, one.index, one.lines, [0.008, 0], [0.002, 0], true, noShape)).resolves.toEqual({ status: 'no-route-any' });
   });
 
-  test('same-place: both ends snap within 5 m of each other', async () => {
+  test('same-place: the chosen points are within 5 m of each other', async () => {
     const { graph, index, lines } = network([0, 0.01], [{ from: 0, to: 1, net: 1 }]);
-    await expect(planRoute(graph, index, lines, [0.005, 0.0002], [0.00502, -0.0002], true, noShape)).resolves.toEqual({ status: 'same-place' });
+    await expect(planRoute(graph, index, lines, [0.005, 0.0002], [0.00502, 0.0002], true, noShape)).resolves.toEqual({ status: 'same-place' });
+  });
+
+  test('places apart that join the road at the same point: only the off-road legs', async () => {
+    // 440 m either side of the road, both straight across from the same road point.
+    const { graph, index, lines } = network([0, 0.01], [{ from: 0, to: 1, net: 1 }]);
+    const r = ok(await planRoute(graph, index, lines, [0.005, 0.004], [0.005, -0.004], true, noShape));
+    expect(r.metres).toBe(0);
+    expect(r.seconds).toBe(0);
+    expect(r.coords).toHaveLength(2);
+    expect(r.offRoadStartM).toBeCloseTo(m([0.005, 0], [0.005, 0.004]), 0);
+    expect(r.offRoadEndM).toBeCloseTo(m([0.005, 0], [0.005, -0.004]), 0);
+  });
+
+  test('a road that runs out short of a node one way still joins at the node the other way', async () => {
+    // c — a (NET 2) and a → b one-way (NET 1). NET 1's only line runs from a to halfway and stops
+    // (no node, no next line): the stretch keeps its side towards a, with a's edges for direction.
+    const gb = new GraphBuilder();
+    const [c, a, b] = [-0.01, 0, 0.01].map((lon) => gb.node(U(lon), 0));
+    for (const [x, y] of [[c, a], [a, c]]) gb.edge(x, y, 1000, 36, 0, null, { tile: 0, net: 2 });
+    gb.edge(a, b, 1000, 36, 0, null, { tile: 0, net: 1 });
+    const graph = gb.build();
+    const index = new NodeIndex(graph);
+    const lineList: RoadLine[] = [
+      { tile: 0, net: 2, cls: 0, coords: [[U(-0.01), 0], [U(0), 0]] },
+      { tile: 0, net: 1, cls: 0, coords: [[U(0), 0], [U(0.005), 0]] },
+    ];
+    const lines: RoadLines = async () => lineList;
+    // Destination at 0.004: reached from a along the one-way road.
+    const to = ok(await planRoute(graph, index, lines, [-0.01, 0], [0.004, 0], true, nodeShape(graph)));
+    expect(to.metres).toBeCloseTo(1000 + m([0, 0], [0.004, 0]), 3);
+    expect(to.offRoadEnd).toBeNull();
+    expect(to.coords.map((p) => Math.round(p[0] * 1000))).toEqual([-10, 0, 4]);
+    // Start at 0.004: the one-way road can't be driven back to a, so the start joins the next
+    // nearest road, c — a, at a (445 m off-road), and goes along it to c.
+    const from = ok(await planRoute(graph, index, lines, [0.004, 0], [-0.01, 0], true, nodeShape(graph)));
+    expect(from.offRoadStartM).toBeCloseTo(m([0, 0], [0.004, 0]), 0);
+    expect(from.metres).toBeCloseTo(m([0, 0], [-0.01, 0]), 3);
   });
 
   test('no-road-start / no-road-end: nothing within 50 km', async () => {

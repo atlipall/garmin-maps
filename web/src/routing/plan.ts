@@ -50,7 +50,8 @@ export async function planRoute(
   if (!a) return { status: !allowFRoads && (await snapper.snap(from, true, true)) ? 'no-route' : 'no-road-start' };
   const b = await snapper.snap(to, false, allowFRoads);
   if (!b) return { status: !allowFRoads && (await snapper.snap(to, false, true)) ? 'no-route' : 'no-road-end' };
-  if (metresBetween(a.at[0], a.at[1], b.at[0], b.at[1]) < SAME_PLACE_M) return { status: 'same-place' };
+  const u = (p: LonLat) => [p[0] * UNITS_PER_DEG, p[1] * UNITS_PER_DEG] as const;
+  if (metresBetween(...u(from), ...u(to)) < SAME_PLACE_M) return { status: 'same-place' };
 
   const offRoad = (chosen: LonLat, anchor: Anchor, atStart: boolean) => {
     if (anchor.offM <= OFF_ROAD_M) return { leg: null, metres: 0 };
@@ -69,6 +70,10 @@ export async function planRoute(
     offRoadStartM: start.metres,
     offRoadEndM: end.metres,
   });
+
+  // Different places that join the road at the same point: only the off-road legs (the road part
+  // is the two snapped points, no distance or time).
+  if (metresBetween(a.at[0], a.at[1], b.at[0], b.at[1]) < SAME_PLACE_M) return ok([deg(a.at), deg(b.at)], 0, 0);
 
   const direct = alongOneStretch(a, b);
   if (direct) return ok(direct.path.map(deg), direct.metres, seconds(direct.metres, direct.kmh));

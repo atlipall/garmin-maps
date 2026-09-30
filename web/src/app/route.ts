@@ -39,6 +39,8 @@ export class RoutePlanner {
   private choosing = false;
   private allow = readSetting('allowFRoads', true);
   private started = false;
+  /** "Use my location" is waiting for a first fix (a switch change keeps waiting). */
+  private waiting = false;
   private seq = 0;
 
   /** `searchFrom`: your recent GPS position, else the map centre. `useLocation` turns location on. */
@@ -62,7 +64,8 @@ export class RoutePlanner {
     $<HTMLInputElement>('route-froads').onchange = (e) => {
       this.allow = (e.target as HTMLInputElement).checked;
       writeSetting('allowFRoads', this.allow);
-      if (this.started) void this.route();
+      // While waiting for a position, the route that follows uses the new setting.
+      if (this.started && !this.waiting) void this.route();
     };
     $('route-change').onclick = () => this.showChoices($('route-choices').hidden === true);
     $('route-use-gps').onclick = () => void this.useMyLocation();
@@ -136,6 +139,7 @@ export class RoutePlanner {
     this.seq++;
     this.started = false;
     this.choosing = false;
+    this.waiting = false;
     (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(EMPTY);
   }
 
@@ -189,14 +193,17 @@ export class RoutePlanner {
       (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(EMPTY);
       this.setInfo('Waiting for your position…', '', '');
       const t0 = Date.now();
+      this.waiting = true;
       while (!this.searchFrom().gps) {
         if (Date.now() - t0 > FIX_WAIT_MS) {
+          this.waiting = false;
           this.setInfo('', '', "Couldn't get your position");
           return;
         }
         await new Promise((r) => setTimeout(r, 250));
         if (seq !== this.seq) return; // cancelled: another pick, ×, or a new start
       }
+      this.waiting = false;
     }
     void this.route();
   }
@@ -204,7 +211,9 @@ export class RoutePlanner {
   private chooseOnMap(): void {
     this.showChoices(false);
     this.seq++; // a route in progress no longer applies
+    this.waiting = false;
     this.choosing = true;
+    (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(EMPTY);
     this.setInfo("Tap the map where you'll start", '', '');
   }
 
@@ -221,6 +230,7 @@ export class RoutePlanner {
     if (!this.dest) return;
     const seq = ++this.seq;
     this.choosing = false;
+    this.waiting = false;
     const kind = this.startKind();
     const from = this.start ?? this.searchFrom().at;
     this.showStarted();
