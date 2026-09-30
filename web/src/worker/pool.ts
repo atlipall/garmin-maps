@@ -31,6 +31,10 @@ export interface DemResult {
   ms: number;
 }
 
+export type RouteReply =
+  | { status: 'ok'; coords: Array<[number, number]>; metres: number; seconds: number }
+  | { status: 'no-road-start' | 'no-road-end' | 'no-route' };
+
 type Pending = { worker: Worker; resolve: (v: any) => void; reject: (e: Error | DOMException) => void };
 
 /** Caps respawn attempts per slot so a worker that dies immediately on construction (e.g. a
@@ -199,6 +203,14 @@ export class TilePool {
     if (!live.length) return Promise.reject(new Error('no workers available'));
     const w = live[live.length - 1];
     return this.call(w, { type: 'places' }, signal).then((msg) => ({ places: msg.places as Place[], roads: msg.roads as RoadClasses }));
+  }
+
+  /** Plans a route on the last worker (which keeps the road network after the first request). */
+  route(from: [number, number], to: [number, number], allowFRoads: boolean, roads: RoadClasses): Promise<RouteReply> {
+    if (this.disposed) return Promise.reject(new Error('pool disposed'));
+    const live = this.live();
+    if (!live.length) return Promise.reject(new Error('no workers available'));
+    return this.call(live[live.length - 1], { type: 'route', from, to, allowFRoads, roads }).then((msg) => msg.result as RouteReply);
   }
 
   /** Terminates every worker and rejects every pending call with Error('pool disposed'); any

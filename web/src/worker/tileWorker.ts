@@ -1,14 +1,24 @@
 /// <reference lib="webworker" />
 import { Dem, TILE_SIZE } from '../dem/dem';
 import { decodeOverview } from '../dem/overview';
+import { decodeSubdivision } from '../img/rgn';
 import { BlobSource } from '../img/source';
-import { GarminMap } from '../map/garminMap';
+import type { Subdivision } from '../img/tre';
+import { GarminMap, type MapTile } from '../map/garminMap';
+import { buildNetwork } from '../routing/network';
+import { fastestRoute, NodeIndex, type RoadGraph } from '../routing/graph';
+import type { RoadClasses } from '../routing/roadClass';
+import { routeShape } from '../routing/shape';
 import { collectIndex } from '../search/places';
 import { buildTile, SubdivisionCache } from '../tiles/buildTile';
+import type { RouteReply } from './pool';
 
 declare const self: DedicatedWorkerGlobalScope;
 
 let opened: Promise<GarminMap> | null = null;
+/** The road network built from NOD, plus a spatial index over its nodes for snapping; built once
+ *  per open map, on the first `route` request, and reset whenever a new map is opened. */
+let network: Promise<{ graph: RoadGraph; index: NodeIndex }> | null = null;
 /** Set synchronously when `open` arrives, so a `dem` request that lands while `open` is still
  *  building the DEM (e.g. right after the pool respawned this worker) waits instead of failing. */
 let demReady: Promise<Dem | null> | null = null;
@@ -32,6 +42,7 @@ self.onmessage = async (e: MessageEvent) => {
       // data either (a map with no .hgt files must not keep serving the previous map's terrain).
       cache.clear();
       cancelled.clear();
+      network = null;
       opened = GarminMap.open(new BlobSource(msg.file as File));
       const hgt = (msg.hgt ?? []) as File[];
       const overviewFile = (msg.overview ?? null) as File | null;
@@ -110,6 +121,26 @@ self.onmessage = async (e: MessageEvent) => {
       const { places, roads } = await collectIndex(m);
       if (cancelled.delete(msg.id)) return;
       self.postMessage({ type: 'places', id: msg.id, places, roads });
+    } else if (msg.type === 'route') {
+      if (!opened) throw new Error('map not opened');
+      const m = await opened;
+      network ??= buildNetwork(m, msg.roads as RoadClasses).then((graph) => ({ graph, index: new NodeIndex(graph) }));
+      const { graph, index } = await network;
+      const [from, to] = [msg.from as [number, number], msg.to as [number, number]];
+      const a = index.nearest(from[0], from[1], 2000);
+      const b = index.nearest(to[0], to[1], 2000);
+      let result: RouteReply;
+      if (!a) result = { status: 'no-road-start' };
+      else if (!b) result = { status: 'no-road-end' };
+      else {
+        const r = fastestRoute(graph, a.node, b.node, msg.allowFRoads as boolean);
+        if (!r) result = { status: 'no-route' };
+        else {
+          const decode = (tile: MapTile, sd: Subdivision) => cache.get(`${tile.id}:${sd.index}`, async () => decodeSubdivision(await m.readSubdivision(tile, sd), sd, { sections: 0, badSections: 0 }));
+          result = { status: 'ok', coords: await routeShape(m, graph, r, decode), metres: r.metres, seconds: r.seconds };
+        }
+      }
+      self.postMessage({ type: 'route', id: msg.id, result });
     }
   } catch (err) {
     if (cancelled.delete(msg.id)) return;
