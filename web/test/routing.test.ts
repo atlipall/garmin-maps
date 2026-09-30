@@ -35,8 +35,8 @@ describe('NOD network', () => {
     const arc = (target: number, length: number, forward: boolean, net: number, info: number) => ({ target, length, forward, direct: true, net, info, access: 0 });
     return new Map([
       [0, n(0, -21.0, 64.0, [arc(10, 1000, true, 1, 0x08 | 4)])],
-      [10, n(10, -20.95, 64.0, [arc(0, 1000, false, 1, 0x08 | 4), arc(20, 500, true, 2, 2), { ...arc(30, 900, true, 2, 2), direct: false }])],
-      [20, n(20, -20.95, 64.01, [arc(10, 500, false, 2, 2)])],
+      [10, n(10, -20.95, 64.0, [arc(0, 1000, false, 1, 0x08 | 4), arc(20, 500, true, 2, 3), { ...arc(30, 900, true, 2, 3), direct: false }])],
+      [20, n(20, -20.95, 64.01, [arc(10, 500, false, 2, 3)])],
       [30, n(30, -20.95, 64.02, [])],
     ]);
   }
@@ -56,7 +56,7 @@ describe('NOD network', () => {
     expect(fastestRoute(g, bN, a, true)).toBeNull(); // one-way
     const f = fastestRoute(g, bN, c, true)!;
     expect(f.metres).toBeCloseTo(1200, 3);
-    expect(f.seconds).toBeCloseTo(1200 / (35 / 3.6), 1); // class 2 (40 km/h) capped at 35
+    expect(f.seconds).toBeCloseTo(1200 / (40 / 3.6), 1); // speed class 3 (60 km/h), capped at 40 on an F-road
     expect(g.edgeFlags[f.edges[0]] & EDGE_FROAD).toBe(EDGE_FROAD);
     expect([g.edgeTile[f.edges[0]], g.edgeNet[f.edges[0]]]).toEqual([3, 2]);
     expect(fastestRoute(g, bN, c, false)).toBeNull(); // F-roads not allowed

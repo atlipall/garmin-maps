@@ -55,9 +55,11 @@ highland estimates are realistic (Selfoss → Landmannalaugar should come out ne
 
 | Road | Cap (km/h) |
 |---|---|
-| F-road (type 0x12, or a name like "F208") | 35 (was 25; raised 2026-09-30 so highland routes aren't passed over) |
-| Track (0x11) | 20 |
-| Rough 4×4 track (0x13) | 15 |
+| F-road (type 0x12, or a name like "F208") | 40 |
+| Track (0x11) | 25 |
+| Rough 4×4 track (0x13) | 20 |
+
+Raised on 2026-09-30 from 25 / 20 / 15, close to OSRM's car profile (unpaved 40, track grades 20-60 km/h): at the old caps highland routes lost to long Ring Road detours.
 
 ### F-road lookup
 

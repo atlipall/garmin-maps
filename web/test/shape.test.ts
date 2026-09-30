@@ -131,14 +131,14 @@ describe.skipIf(!hasRealData || !existsSync(F_ROAD_DETAILED))('fastestRoute on r
     expect(km).toBeLessThanOrEqual(395);
   });
 
-  test('Selfoss → Landmannalaugar: found with F-roads in 2.2-3.3 h; null without', () => {
+  test('Selfoss → Landmannalaugar: found with F-roads in 2.0-3.3 h; null without', () => {
     const from = idx.nearest(-21.0, 63.936, 2000)!.node;
     const to = idx.nearest(-19.06, 63.991, 2000)!.node;
     const withFRoads = fastestRoute(g, from, to, true);
     expect(withFRoads).not.toBeNull();
     const hours = withFRoads!.seconds / 3600;
     console.log(`Selfoss → Landmannalaugar: ${(withFRoads!.metres / 1000).toFixed(1)} km, ${hours.toFixed(2)} h (F-roads allowed)`);
-    expect(hours).toBeGreaterThanOrEqual(2.2);
+    expect(hours).toBeGreaterThanOrEqual(2.0);
     expect(hours).toBeLessThanOrEqual(3.3);
 
     const withoutFRoads = fastestRoute(g, from, to, false);

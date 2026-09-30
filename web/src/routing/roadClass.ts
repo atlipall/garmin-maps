@@ -5,7 +5,7 @@ export type RoadClass = 0 | 1 | 2 | 3;
 export type RoadClasses = Record<string, Array<[number, RoadClass]>>;
 
 /** Speed caps (km/h) per class, applied on top of Garmin's speed class. */
-export const CLASS_CAP_KMH: readonly number[] = [Infinity, 35, 20, 15];
+export const CLASS_CAP_KMH: readonly number[] = [Infinity, 40, 25, 20];
 
 const F_NAME = /^F\s?\d+/i;
 

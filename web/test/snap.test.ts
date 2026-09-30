@@ -47,12 +47,12 @@ describe.skipIf(!hasRealData || !existsSync(F_ROAD_DETAILED))('planRoute on real
     expect(r.offRoadStartM).toBeLessThan(2000);
   }, 120_000);
 
-  test('Selfoss → Landmannalaugar: 2.2-3.3 h with F-roads, no route without', async () => {
+  test('Selfoss → Landmannalaugar: 2.0-3.3 h with F-roads, no route without', async () => {
     const r = await plan([-21.0, 63.936], [-19.06, 63.991], true);
     if (r.status !== 'ok') throw new Error(`expected ok, got ${r.status}`);
     const hours = r.seconds / 3600;
     console.log(`Selfoss → Landmannalaugar: ${(r.metres / 1000).toFixed(1)} km, ${hours.toFixed(2)} h, off-road ${Math.round(r.offRoadStartM)} m / ${Math.round(r.offRoadEndM)} m`);
-    expect(hours).toBeGreaterThanOrEqual(2.2);
+    expect(hours).toBeGreaterThanOrEqual(2.0);
     expect(hours).toBeLessThanOrEqual(3.3);
     // Without F-roads: the normal road stubs around Landmannalaugar are reached only over F-roads.
     await expect(plan([-21.0, 63.936], [-19.06, 63.991], false)).resolves.toEqual({ status: 'no-route' });
