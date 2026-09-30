@@ -225,7 +225,7 @@ try {
   await page.mouse.click(600, 500, { button: 'right' });
   await page.waitForFunction(() => !document.querySelector('#route-card').hidden, { timeout: 5_000 }).catch(() => fail('no card after right-click'));
   const dropped = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, go: document.querySelector('#route-go').hidden ? '' : document.querySelector('#route-go').textContent, from: document.querySelector('#route-from-text').textContent }));
-  if (!/^Dropped pin · (6\d\.\d{4}, -1\d\.\d{4}|\D.*)$/.test(dropped.title) || dropped.go !== 'Route here' || dropped.from !== 'From your position') fail(`dropped pin card: ${JSON.stringify(dropped)}`);
+  if (!/^Dropped pin · (6\d\.\d{4}, -1\d\.\d{4}|\D.*)$/.test(dropped.title) || dropped.go !== 'Route here' || dropped.from !== 'Your position') fail(`dropped pin card: ${JSON.stringify(dropped)}`);
   await page.mouse.click(400, 400);
   await page.waitForFunction(() => document.querySelector('#route-card').hidden, { timeout: 5_000 }).catch(() => fail('a map tap did not close the dropped-pin card'));
   if ((await markers()) !== markersBefore) fail('a map tap did not remove the dropped pin');
@@ -283,13 +283,31 @@ try {
   if (await page.$eval('#route-card', (e) => e.hidden)) fail('a map tap cleared the shown route');
   // Moving (GPS speed above walking pace) minimizes the card to one line; opened again by hand it
   // stays open; the chevron minimizes and opens it too.
+  const openOptions = async () => {
+    if (await page.$eval('#route-options', (e) => e.hidden)) await page.click('#route-options-toggle');
+  };
   const isMin = () => page.$eval('#route-card', (e) => e.classList.contains('min'));
   const fixAt = (dLat, speed) => gps.send('Emulation.setGeolocationOverride', { latitude: 63.936 + dLat, longitude: -21.0, accuracy: 10, speed });
   await fixAt(0.0002, 10);
   await page.waitForFunction(() => document.querySelector('#route-card').classList.contains('min'), { timeout: 5_000 }).catch(() => fail('moving did not minimize the route card'));
-  const minCard = await page.evaluate(() => ({ h: Math.round(document.querySelector('#route-card').getBoundingClientRect().height), text: `${document.querySelector('#route-title').textContent} | ${document.querySelector('#route-info').textContent}`, sep: getComputedStyle(document.querySelector('#route-info'), '::before').content }));
-  if (minCard.h > 60 || !/^To Landmannalaugar \| 1\d\d km · \d h \d+ min$/.test(minCard.text) || minCard.sep !== '"· "') fail(`minimized card: ${JSON.stringify(minCard)}`);
+  // Minimized: the dark glance panel with the arrival time, drive time and distance, and quick actions.
+  const minCard = await page.evaluate(() => {
+    const card = document.querySelector('#route-card');
+    const shown = (sel) => { const e = document.querySelector(sel); return !!e && e.getClientRects().length > 0; };
+    return {
+      h: Math.round(card.getBoundingClientRect().height),
+      text: `${document.querySelector('#route-title').textContent} | ${document.querySelector('#route-arrive').textContent} | ${document.querySelector('#route-time').textContent} | ${document.querySelector('#route-sub').textContent}`,
+      actions: [...document.querySelectorAll('#route-min-actions button')].filter((b) => b.getClientRects().length).map((b) => b.textContent.trim()),
+      stops: shown('#route-stops'),
+    };
+  });
+  if (minCard.h > 220 || !/^To Landmannalaugar \| \d\d:\d\d \| \d h \d+ min \| 1\d\d km · arrive about \d\d:\d\d$/.test(minCard.text) || minCard.actions.join('|') !== 'Add stop|Save|Export|End route' || minCard.stops) fail(`minimized card: ${JSON.stringify(minCard)}`);
   await page.screenshot({ path: `${OUT}route-min.png` });
+  // Add stop: the next map tap would add a waypoint; the hint says so and Cancel stops it.
+  await page.click('#route-add-stop');
+  if (await page.$eval('#route-hint', (e) => e.hidden) || !(await isMin())) fail('Add stop did not show its hint');
+  await page.click('#route-hint-cancel');
+  if (!(await page.$eval('#route-hint', (e) => e.hidden))) fail('Cancel did not stop adding a stop');
   await page.click('#route-title');
   if (await isMin()) fail('tapping the minimized card did not open it');
   await fixAt(0.0004, 10);
@@ -303,6 +321,7 @@ try {
   for (const d of [0.0003, 0.0001, 0.0002, 0.0001, 0]) await fixAt(d, 0);
   await new Promise((r) => setTimeout(r, 300));
   console.log('route card minimize ok:', minCard.text);
+  await openOptions();
   await page.click('#route-froads');
   if (await page.$eval('#route-prefer-switch', (e) => !e.hidden)) fail('"Prefer F-roads" shown with F-roads not allowed');
   const noRoute = () => page.waitForFunction(() => /No route without F-roads/.test(document.querySelector('#route-msg')?.textContent ?? ''), { timeout: 30_000 });
@@ -314,13 +333,16 @@ try {
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
   await page.click('#route-go');
   await noRoute();
+  await openOptions();
   await page.click('#route-froads'); // back on
   if (await page.$eval('#route-prefer-switch', (e) => e.hidden)) fail('"Prefer F-roads" hidden with F-roads allowed');
   // Preferring F-roads plans the route again (the time shown is still the real driving time).
   await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
+  await openOptions();
   await page.click('#route-prefer');
   await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 }).catch(() => fail('no route with F-roads preferred'));
   console.log('prefer F-roads ok:', await page.$eval('#route-info', (e) => e.textContent));
+  await openOptions();
   await page.click('#route-prefer'); // off again (the setting is remembered)
   // With a route shown, a new pin asks first: Keep route leaves it; Clear route drops the pin.
   const confirmState = () => page.evaluate(() => ({ confirm: !document.querySelector('#route-confirm').hidden, drawn: window.__app.map.getStyle().sources.route.data.features.length, title: document.querySelector('#route-title').textContent, markers: document.querySelectorAll('.maplibregl-marker').length }));
@@ -414,7 +436,7 @@ try {
     pins: document.querySelectorAll('.start-pin').length,
   }));
   const chosenKinds = await routeKinds();
-  if (!/^\d+ km · .*min$/.test(chosen.info) || chosen.from !== 'From the chosen point' || chosen.pins !== 1 || chosenKinds.includes('start:Point')) fail(`chosen start: ${JSON.stringify(chosen)} ${chosenKinds}`);
+  if (!/^\d+ km · .*min$/.test(chosen.info) || chosen.from !== 'The chosen point' || chosen.pins !== 1 || chosenKinds.includes('start:Point')) fail(`chosen start: ${JSON.stringify(chosen)} ${chosenKinds}`);
   console.log('start ok:', chosen.info);
   // With a route, × asks first: Keep route leaves everything; Clear route closes the card.
   await page.click('#route-close');
@@ -438,7 +460,7 @@ try {
   await page.click('#route-save-form button[type="submit"]');
   await page.waitForFunction(() => window.__app.saved.count === 1, { timeout: 5_000 }).catch(() => fail('pin not saved'));
   const savedPin = await page.evaluate(() => ({ button: document.querySelector('#route-save').textContent, stars: window.__app.map.getStyle().sources.saved.data.features.map((f) => f.properties.name) }));
-  if (savedPin.button !== '★ Saved' || savedPin.stars.join() !== 'Hekla view') fail(`saved pin: ${JSON.stringify(savedPin)}`);
+  if (savedPin.button !== 'Saved' || savedPin.stars.join() !== 'Hekla view') fail(`saved pin: ${JSON.stringify(savedPin)}`);
   await page.click('#route-close');
   await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-19.64, 63.975], zoom: 11 }); m.once('idle', r); }));
   await page.screenshot({ path: `${OUT}saved-star.png` });
@@ -499,7 +521,7 @@ try {
   if (rows.join('|') !== 'Hekla view|To Landmannalaugar') fail(`saved list: ${rows}`);
   await page.click('#saved-list li:nth-child(2) .track-info');
   const opened = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, info: document.querySelector('#route-info').textContent, drawn: window.__app.map.getStyle().sources.route.data.features.length, button: document.querySelector('#route-save').textContent }));
-  if (opened.title !== 'To Landmannalaugar' || opened.info !== savedInfo || !opened.drawn || opened.button !== '★ Saved') fail(`opened saved route: ${JSON.stringify(opened)}`);
+  if (opened.title !== 'To Landmannalaugar' || opened.info !== savedInfo || !opened.drawn || opened.button !== 'Saved') fail(`opened saved route: ${JSON.stringify(opened)}`);
   await page.click('#route-close');
   await page.click('#route-confirm-yes');
   await page.click('#saved-list li:nth-child(1) .track-info');

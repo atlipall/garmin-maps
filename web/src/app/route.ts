@@ -47,6 +47,8 @@ export class RoutePlanner {
   private dest: Place | null = null;
   /** Waypoints between the start and the destination, in route order. */
   private vias: Place[] = [];
+  /** "Add stop": the next plain map tap adds a waypoint there. */
+  private pickingVia = false;
   /** A start chosen on the map; null: your position or the map centre. */
   private start: [number, number] | null = null;
   private startPin: maplibregl.Marker | null = null;
@@ -142,6 +144,7 @@ export class RoutePlanner {
     $<HTMLInputElement>('route-prefer').onchange = (e) => {
       this.prefer = (e.target as HTMLInputElement).checked;
       writeSetting('preferFRoads', this.prefer);
+      this.showSwitches();
       // While waiting for a position, the route that follows uses the new setting. The view stays.
       if (this.started && !this.waiting) {
         this.fitRoute = false;
@@ -153,6 +156,22 @@ export class RoutePlanner {
     $('route-choose').onclick = () => this.chooseOnMap();
     $('route-save').onclick = () => this.showSaveForm(true);
     $('route-export').onclick = () => void this.exportGpx();
+    $('route-options-toggle').onclick = () => this.showOptions($('route-options').hidden === true);
+    // The minimized card's quick actions (a tap elsewhere on it opens the card).
+    const quick = (id: string, fn: () => void) => {
+      $(id).onclick = (e) => {
+        e.stopPropagation();
+        fn();
+      };
+    };
+    quick('route-add-stop', () => this.pickVia(true));
+    quick('route-min-save', () => {
+      this.setMinimized(false, true);
+      this.showSaveForm(true);
+    });
+    quick('route-min-export', () => void this.exportGpx());
+    quick('route-end', () => $('route-close').click());
+    quick('route-hint-cancel', () => this.pickVia(false));
     $('route-save-cancel').onclick = () => this.showSaveForm(false);
     $<HTMLFormElement>('route-save-form').onsubmit = (e) => {
       e.preventDefault();
@@ -173,6 +192,11 @@ export class RoutePlanner {
       if (via) {
         const n = Number(via.properties.n);
         this.ask(`Remove waypoint ${n}?`, null, () => this.removeVia(n - 1), { yes: 'Remove', no: 'Keep' });
+        return;
+      }
+      if (this.pickingVia && !pressed) {
+        this.pickVia(false);
+        this.addVia({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat, near: this.nameAt(e.point) });
         return;
       }
       // A tap on a saved star opens its card (the Saved panel handles it).
@@ -327,6 +351,31 @@ export class RoutePlanner {
 
   private setVias(vias: Place[]): void {
     this.vias = vias;
+    // The card's Via rows, each with a remove button.
+    $('route-via-list').replaceChildren(...vias.map((v, i) => {
+      const row = document.createElement('div');
+      row.className = 'stop';
+      const mark = document.createElement('span');
+      mark.className = 'stop-mark via';
+      mark.textContent = String(i + 1);
+      const text = document.createElement('div');
+      text.className = 'stop-text';
+      const label = document.createElement('span');
+      label.className = 'stop-label';
+      label.textContent = 'Via';
+      const name = document.createElement('span');
+      name.className = 'stop-name';
+      name.textContent = v.name ?? v.near ?? coordsText(v);
+      text.append(label, name);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'via-remove';
+      remove.setAttribute('aria-label', `Remove waypoint ${i + 1}`);
+      remove.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+      remove.onclick = () => this.removeVia(i);
+      row.append(mark, text, remove);
+      return row;
+    }));
     (this.map.getSource('route-vias') as maplibregl.GeoJSONSource).setData({
       type: 'FeatureCollection',
       features: vias.map((v, i) => ({ type: 'Feature', properties: { n: i + 1 }, geometry: { type: 'Point', coordinates: [v.lon, v.lat] } })),
@@ -391,6 +440,7 @@ export class RoutePlanner {
 
   private clearRoute(): void {
     this.seq++;
+    this.pickVia(false);
     this.planning = false;
     this.started = false;
     this.choosing = false;
@@ -401,6 +451,7 @@ export class RoutePlanner {
   private drawRoute(data: GeoJSON.FeatureCollection): void {
     (this.map.getSource('route') as maplibregl.GeoJSONSource).setData(data);
     this.shown = data.features.length > 0;
+    $('route-card').classList.toggle('routed', this.shown);
     if (!this.shown) this.last = null;
     this.showSave();
   }
@@ -410,12 +461,14 @@ export class RoutePlanner {
     const button = $<HTMLButtonElement>('route-save');
     button.hidden = !this.dest || (this.started && !this.last);
     button.disabled = this.saved;
-    button.textContent = this.saved ? '★ Saved' : '☆ Save';
+    button.querySelector('span')!.textContent = this.saved ? 'Saved' : 'Save';
     if (button.hidden) this.showSaveForm(false);
     // Export only for a drawn route.
     $('route-export').hidden = !this.last;
     // No empty row on a route panel that's still being planned.
-    if ($('route-save-form').hidden) $('route-actions').hidden = $('route-go').hidden && button.hidden;
+    if ($('route-save-form').hidden) $('route-actions').hidden = $('route-go').hidden && button.hidden && $('route-export').hidden;
+    $<HTMLButtonElement>('route-min-save').disabled = button.hidden || this.saved;
+    $<HTMLButtonElement>('route-min-export').disabled = !this.last;
   }
 
   private showSaveForm(open: boolean): void {
@@ -491,7 +544,8 @@ export class RoutePlanner {
   }
 
   private showFrom(): void {
-    $('route-from-text').textContent = `From ${FROM_TEXT[this.startKind()]}`;
+    const from = FROM_TEXT[this.startKind()];
+    $('route-from-text').textContent = from[0].toUpperCase() + from.slice(1);
   }
 
   /** The "Use my location" / "Choose on the map" choices; choosing on the map is the emphasised
@@ -513,6 +567,22 @@ export class RoutePlanner {
   private showSwitches(): void {
     $('route-switch').hidden = !this.started;
     $('route-prefer-switch').hidden = !this.started || !this.allow;
+    $('route-options-toggle').hidden = !this.started;
+    if (!this.started) this.showOptions(false);
+    $('route-options-sum').textContent = !this.allow ? 'No F-roads' : this.prefer ? 'F-roads preferred' : 'F-roads allowed';
+    $('route-stop-to').hidden = !this.started;
+    if (this.dest) $('route-to-text').textContent = this.dest.name ?? this.dest.near ?? coordsText(this.dest);
+  }
+
+  private showOptions(open: boolean): void {
+    $('route-options').hidden = !open;
+    $('route-options-toggle').setAttribute('aria-expanded', String(open));
+  }
+
+  /** "Add stop" (from the minimized card): the next map tap adds a waypoint; Cancel stops it. */
+  private pickVia(on: boolean): void {
+    this.pickingVia = on;
+    $('route-hint').hidden = !on;
   }
 
   /** The card as a route panel (title "To …", the F-road switch), for a route or its preparations. */
@@ -636,6 +706,15 @@ export class RoutePlanner {
     this.showSave();
     const via = this.vias.length ? ` · via ${this.vias.length} waypoint${this.vias.length === 1 ? '' : 's'}` : '';
     this.setInfo(`${fmtKm(reply.metres)} · ${fmtTime(reply.seconds)}${via}`, offRoadText(reply.offRoadStartM, reply.offRoadEndM), '');
+    // The blue band: drive time, distance and when you'd arrive leaving now (no guidance, so it
+    // doesn't count down as you drive).
+    const arrive = new Date(Date.now() + reply.seconds * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    $('route-time').textContent = fmtTime(reply.seconds);
+    const sub = document.createElement('span');
+    sub.className = 'arrive-part';
+    sub.textContent = ` · arrive about ${arrive}`;
+    $('route-sub').replaceChildren(fmtKm(reply.metres), sub);
+    $('route-arrive').textContent = arrive;
     let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity];
     for (const [lon, lat] of [...reply.coords, ...(reply.offRoadStart ?? []), ...(reply.offRoadEnd ?? [])]) {
       if (lon < w) w = lon;
