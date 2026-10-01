@@ -27,6 +27,15 @@ try {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
   });
   const page = await browser.newPage();
+  // A failed click names its element (the intermittent "not clickable" errors otherwise don't).
+  const rawClick = page.click.bind(page);
+  page.click = async (selector, options) => {
+    try {
+      return await rawClick(selector, options);
+    } catch (err) {
+      throw new Error(`click ${selector}: ${err.message}`);
+    }
+  };
   await page.setViewport({ width: 1024, height: 1024 });
   page.on('console', (m) => ['error', 'warn'].includes(m.type()) && console.log('[page]', m.type(), m.text()));
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));

@@ -13,7 +13,13 @@ function open(): Promise<IDBDatabase> {
     req.onupgradeneeded = () => {
       for (const name of STORES) if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath: 'id' });
     };
-    req.onsuccess = () => resolve(req.result);
+    // Another tab holding an older version open blocks an upgrade: say so rather than wait forever.
+    req.onblocked = () => reject(new Error('The app is open in another tab or window; close it and try again.'));
+    req.onsuccess = () => {
+      // A newer version opened elsewhere: let it upgrade.
+      req.result.onversionchange = () => req.result.close();
+      resolve(req.result);
+    };
     req.onerror = () => reject(req.error ?? new Error('Could not open storage.'));
   });
 }

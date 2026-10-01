@@ -223,7 +223,9 @@ export function fastestRoute(g: RoadGraph, from: number | Terminal[], to: number
   const extra = new Map<number, number>();
   for (const t of targets) extra.set(t.node, Math.min(t.cost, extra.get(t.node) ?? Infinity));
   // An F-road counted at fWeight is as if driven 1/fWeight times faster.
-  const maxMs = g.maxSpeed / 3.6 / Math.min(1, fWeight);
+  // 1 % above top speed: NOD lengths (2.4 m units) run a little short of the straight-line distance,
+  // and the estimate must never exceed the real cost.
+  const maxMs = (g.maxSpeed * 1.01) / 3.6 / Math.min(1, fWeight);
   // Admissible: the straight-line time at top speed to the nearest-in-total target.
   const h = (v: number) => {
     let m = Infinity;

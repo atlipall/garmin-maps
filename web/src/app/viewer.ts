@@ -281,17 +281,18 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       keepClear: (left) => map.setPadding({ top: 0, bottom: 0, right: 0, left }),
       ended: () => {},
     });
-    const here = () => locate.lastFix?.at ?? null;
+    // A fix from the last two minutes (an old one would start guidance from the wrong place).
+    const fresh = () => { const f = locate.lastFix; return f && Date.now() - f.time < 120_000 ? f : null; };
     routePlanner.onStart = () => {
       const nav = routePlanner.navRoute();
       if (!nav) return;
       locate.navigate();
-      navigator.start(nav, here());
+      navigator.start(nav, fresh());
     };
     routePlanner.onPlanned = (ok) => {
       if (!navigator.active) return;
       const nav = ok ? routePlanner.navRoute() : null;
-      if (nav) navigator.start(nav, here());
+      if (nav) navigator.start(nav, fresh());
       else navigator.couldNotReplan();
     };
     routePlanner.onCleared = () => navigator.end();
@@ -308,6 +309,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       },
       (r) => routePlanner.openSaved(r),
       () => tracks.reload(),
+      () => tracks.all,
     );
     app.saved = saved;
     // Google Drive sync of the saved items and tracks (offered when the app has a Google client ID).

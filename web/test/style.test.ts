@@ -24,7 +24,8 @@ describe('buildStyle', () => {
     expect(style.sources.garmin).toEqual({ type: 'vector', tiles: [OPTS.tiles], minzoom: 4, maxzoom: 14 });
     expect(style.glyphs).toBe(OPTS.glyphs);
     const pg = style.layers.find((l) => l.id === 'pg-60') as { filter: unknown; paint: Record<string, unknown> };
-    expect(pg.filter).toEqual(['==', ['get', 't'], 0x3c]);
+    // Areas only: area labels are points in the same layer.
+    expect(pg.filter).toEqual(['all', ['==', ['get', 't'], 0x3c], ['==', ['geometry-type'], 'Polygon']]);
     expect(pg.paint['fill-color']).toBe('#0000ff');
   });
 

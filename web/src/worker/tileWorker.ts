@@ -32,6 +32,8 @@ const cache = new SubdivisionCache(750_000);
  *  and again right before posting a result, so a cancelled tile does as little wasted work as
  *  practical; entries are removed once consumed so the set can't grow without bound. */
 const cancelled = new Set<number>();
+/** Ids of requests being handled now. */
+const inFlight = new Set<number>();
 /** Tiles are built one at a time: building several at once holds all their decoded subdivisions in
  *  memory together (a pinch-out requests dozens of tiles, most cancelled moments later), and a tile
  *  cancelled while waiting its turn is skipped without being decoded at all. */
@@ -45,9 +47,12 @@ function oneTileAtATime<T>(job: () => Promise<T>): Promise<T> {
 self.onmessage = async (e: MessageEvent) => {
   const msg = e.data;
   if (msg.type === 'cancel') {
-    cancelled.add(msg.id);
+    // Only for a request still being handled: a cancel that crossed its reply would never be
+    // consumed and pile up.
+    if (inFlight.has(msg.id)) cancelled.add(msg.id);
     return;
   }
+  inFlight.add(msg.id);
   try {
     if (msg.type === 'open') {
       // A new file shares no subdivisions with whatever was cached for the last one, and no DEM
@@ -165,5 +170,8 @@ self.onmessage = async (e: MessageEvent) => {
   } catch (err) {
     if (cancelled.delete(msg.id)) return;
     self.postMessage({ type: 'error', id: msg.id, message: err instanceof Error ? err.message : String(err) });
+  } finally {
+    inFlight.delete(msg.id);
+    cancelled.delete(msg.id);
   }
 };

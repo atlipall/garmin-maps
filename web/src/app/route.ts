@@ -253,6 +253,13 @@ export class RoutePlanner {
     this.dropPending();
     this.clearRoute();
     this.setVias([]);
+    // A new place starts afresh: from your position (not an earlier chosen start), with your own
+    // F-road settings (not those of a saved route opened before).
+    this.clearStart();
+    this.allow = readSetting('allowFRoads', true);
+    this.prefer = readSetting('preferFRoads', false);
+    $<HTMLInputElement>('route-froads').checked = this.allow;
+    $<HTMLInputElement>('route-prefer').checked = this.prefer;
     this.keepOpen = false;
     this.saved = false;
     this.setMinimized(false);
@@ -296,7 +303,7 @@ export class RoutePlanner {
   /** The card to remember across restarts: the place and, once routed, where from. */
   snapshot(): SessionRoute | null {
     if (!this.dest) return null;
-    return { dest: this.dest, routed: this.started, from: this.start ?? this.fromCentre, vias: this.vias, ...(this.last ? { at: this.last.from } : {}) };
+    return { dest: this.dest, routed: this.started && !this.choosing, from: this.start ?? this.fromCentre, vias: this.vias, ...(this.last ? { at: this.last.from } : {}) };
   }
 
   /** Brings back a remembered card; a route is planned again without moving the map. One from your
@@ -326,6 +333,7 @@ export class RoutePlanner {
     // Keyboard and screen readers: the question takes focus (an alertdialog, read out).
     queueMicrotask(() => (labels.via ? $('route-confirm-via') : $('route-confirm-yes')).focus({ preventScroll: true }));
     $('route-confirm').hidden = false;
+    $('route-card').classList.add('asking');
     $('route-card').hidden = false;
     this.setMinimized(false);
   }
@@ -418,6 +426,7 @@ export class RoutePlanner {
     this.pending?.marker?.remove();
     this.pending = null;
     $('route-confirm').hidden = true;
+    $('route-card').classList.remove('asking');
   }
 
   clear(): void {
@@ -438,7 +447,7 @@ export class RoutePlanner {
   /** The current speed (m/s, from the GPS): once moving with a route, the card gets out of the way
    *  (unless it was opened again by hand). */
   moving(mps: number): void {
-    if (mps < MOVING_MPS || !this.started || this.minimized || this.keepOpen || this.pending || this.choosing || !$('route-choices').hidden) return;
+    if (mps < MOVING_MPS || !this.started || this.minimized || this.keepOpen || this.pending || this.choosing || !$('route-choices').hidden || !$('route-save-form').hidden) return;
     this.setMinimized(true);
   }
 
@@ -548,6 +557,7 @@ export class RoutePlanner {
 
   private clearStart(): void {
     this.start = null;
+    this.fromCentre = null;
     this.startPin?.remove();
     this.startPin = null;
   }

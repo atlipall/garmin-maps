@@ -65,12 +65,13 @@ export function prepareSignIn(): Promise<void> {
     const script = document.createElement('script');
     script.src = GIS;
     script.async = true;
-    script.onload = () => (w.google ? resolve(w.google) : reject(new Error('Google sign-in did not load.')));
-    script.onerror = () => {
-      gis = null;
-      reject(new Error('Google sign-in could not be loaded (offline?).'));
-    };
+    script.onload = () => (w.google?.accounts?.oauth2 ? resolve(w.google) : reject(new Error('Google sign-in did not load.')));
+    script.onerror = () => reject(new Error('Google sign-in could not be loaded (offline?).'));
     document.head.append(script);
+  }).catch((err) => {
+    // Any failure: the next tap tries again (a script that loaded without Google's sign-in, say).
+    gis = null;
+    throw err;
   });
   return gis.then((g) => {
     client ??= g.accounts.oauth2.initTokenClient({
@@ -106,6 +107,11 @@ export function signIn(): Promise<string> {
 export function signOut(): void {
   const s = syncState();
   const g = (window as unknown as { google?: Gis }).google;
-  if (s.token && g) g.accounts.oauth2.revoke(s.token);
+  // Withdraw the access at Google too: through its script when loaded, else straight to its revoke
+  // endpoint (best effort; an access token lapses within the hour anyway).
+  if (s.token && g?.accounts?.oauth2) g.accounts.oauth2.revoke(s.token);
+  else if (s.token) {
+    fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `token=${encodeURIComponent(s.token)}`, keepalive: true }).catch(() => {});
+  }
   setSyncState({ on: false });
 }

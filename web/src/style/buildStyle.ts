@@ -29,7 +29,8 @@ export function buildStyle(typ: Typ, opts: { tiles: string; glyphs: string; dem?
     .sort((a, b) => (typ.drawLevel.get(a) ?? 0) - (typ.drawLevel.get(b) ?? 0) || a - b);
   for (const t of polygonTypes) {
     const s = typ.polygons.get(t);
-    const base = { id: `pg-${t}`, type: 'fill' as const, source: 'garmin', 'source-layer': 'polygons', filter: byType(t) };
+    // Area labels are points in the same layer: only the areas themselves are filled.
+    const base = { id: `pg-${t}`, type: 'fill' as const, source: 'garmin', 'source-layer': 'polygons', filter: ['all', byType(t), ['==', ['geometry-type'], 'Polygon']] };
     if (s?.pattern) {
       images.set(`pg-${t}`, s.pattern);
       layers.push({ ...base, paint: { 'fill-pattern': `pg-${t}`, 'fill-antialias': false } } as LayerSpecification);

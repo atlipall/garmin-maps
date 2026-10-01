@@ -47,6 +47,8 @@ interface CacheEntry {
 export class SubdivisionCache {
   private readonly entries = new Map<string, CacheEntry>();
   private totalPoints = 0;
+  /** Bumped by clear(): a load started before it doesn't count towards the budget after it. */
+  private generation = 0;
 
   constructor(private readonly maxPoints: number = 500_000) {}
 
@@ -59,16 +61,19 @@ export class SubdivisionCache {
       return existing.promise;
     }
     const entry = { points: null } as CacheEntry;
+    const generation = this.generation;
     entry.promise = load().then(
       (objs) => {
         entry.value = objs;
         entry.points = objs.reduce((n, o) => n + o.coords.length, 0);
-        this.totalPoints += entry.points;
-        this.evict();
+        if (generation === this.generation && this.entries.get(key) === entry) {
+          this.totalPoints += entry.points;
+          this.evict();
+        }
         return objs;
       },
       (err) => {
-        this.entries.delete(key);
+        if (this.entries.get(key) === entry) this.entries.delete(key);
         throw err;
       },
     );
@@ -83,6 +88,7 @@ export class SubdivisionCache {
 
   /** Drops every cached (and in-flight) entry, e.g. when a worker opens a different file. */
   clear(): void {
+    this.generation++;
     this.entries.clear();
     this.totalPoints = 0;
   }
@@ -458,6 +464,8 @@ export async function buildTile(
     .filter((f) => !subPixel(f.geometry as Pt[][]))
     .map((f) => ({ ...f, geometry: (f.geometry as Pt[][]).map((part) => simplifyLine(part, PIXEL / 4)) }));
   dedupeLabels(layers.polygons, (f) => labelInfo.get(f), labelContext);
+  // Labels another tile shows (their name dropped) needn't be sent at all.
+  layers.polygons = layers.polygons.filter((f) => f.type !== 1 || f.tags.name !== undefined);
   const data = fromGeojsonVt(
     { points: { features: layers.points }, lines: { features: layers.lines }, polygons: { features: layers.polygons } } as never,
     { version: 2, extent: EXTENT },

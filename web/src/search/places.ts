@@ -5,6 +5,7 @@ import { objectName, type GarminMap } from '../map/garminMap';
 import { CONTOUR_LINE_TYPES, isNumber } from '../map/zoom';
 import { RoadClassCollector, roadClass, type RoadClasses } from '../routing/roadClass';
 import { normalize } from './normalize';
+import { polygonLabelAnchor } from '../tiles/buildTile';
 
 export interface Place {
   name: string;
@@ -36,6 +37,17 @@ export function bboxCenter(coords: Array<[number, number]>): [number, number] {
   return [(minX + maxX) / 2, (minY + maxY) / 2];
 }
 
+/** The vertex of `coords` nearest `p`. */
+function nearestVertex(coords: Array<[number, number]>, p: [number, number]): [number, number] {
+  let best = coords[0];
+  let d = Infinity;
+  for (const c of coords) {
+    const e = (c[0] - p[0]) ** 2 + (c[1] - p[1]) ** 2;
+    if (e < d) [best, d] = [c, e];
+  }
+  return best;
+}
+
 /** Named objects of the most detailed level, deduplicated by name within ~0.05°, plus the F-road/
  *  track class of every line whose class isn't 0, keyed by tile id and NET offset (Task 5). */
 export async function collectIndex(map: GarminMap): Promise<{ places: Place[]; roads: RoadClasses }> {
@@ -53,9 +65,11 @@ export async function collectIndex(map: GarminMap): Promise<{ places: Place[]; r
     if (obj.kind === 'point') {
       [lon, lat] = obj.coords[0].map(mapUnitsToDeg);
     } else {
-      const [cx, cy] = bboxCenter(obj.coords);
-      lon = mapUnitsToDeg(cx);
-      lat = mapUnitsToDeg(cy);
+      // A point on the feature: a line's vertex nearest its middle, an area's label point (the
+      // middle of the bounding box can lie off a bent road or a crescent lake).
+      const [x, y] = obj.kind === 'polygon' ? polygonLabelAnchor(obj.coords) : nearestVertex(obj.coords, bboxCenter(obj.coords));
+      lon = mapUnitsToDeg(x);
+      lat = mapUnitsToDeg(y);
     }
     lon = round5(lon);
     lat = round5(lat);

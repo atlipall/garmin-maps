@@ -23,7 +23,8 @@ export class Progress {
   /** Seconds from the start to each route point. */
   private readonly time: number[];
   private last = 0;
-  private lastAlong = 0;
+  /** Metres along the route at the last fix; null before the first (or after a long gap). */
+  private lastAlong: number | null = null;
 
   constructor(readonly coords: LonLat[], segs: RoadSeg[] | undefined, readonly seconds: number) {
     this.cum = cumulative(coords);
@@ -44,7 +45,9 @@ export class Progress {
   /** The nearest point of the route to `p`. */
   locate(p: LonLat): Where {
     const near = this.nearest(p, Math.max(0, this.last - 20), Math.min(this.coords.length - 1, this.last + 400));
-    const best = near.off > 100 ? this.nearest(p, 0, this.coords.length - 1) : near;
+    // Nothing near where you were (a tunnel, the app in the background): look along the whole route,
+    // nearest first, without favouring the old spot.
+    const best = near.off > 100 ? this.nearest(p, 0, this.coords.length - 1, false) : near;
     this.last = best.index;
     this.lastAlong = best.along;
     return best;
@@ -60,7 +63,7 @@ export class Progress {
     return { metres: Math.max(0, this.total - along), seconds: Math.max(0, this.time[this.time.length - 1] - t) };
   }
 
-  private nearest(p: LonLat, from: number, to: number): Where {
+  private nearest(p: LonLat, from: number, to: number, stay = true): Where {
     const k = Math.cos(p[1] * (Math.PI / 180));
     let best = { along: 0, off: Infinity, index: 0, score: Infinity };
     for (let i = from; i < to; i++) {
@@ -74,7 +77,7 @@ export class Progress {
       // Where the route passes close to itself (a hairpin, a block in town), the stretch near where
       // you were wins over a later one that's only slightly nearer: no skipping turns ahead.
       const along = this.cum[i] + metres(this.coords[i], q);
-      const score = off + Math.max(0, Math.abs(along - this.lastAlong) - 150) * 0.1;
+      const score = off + (stay && this.lastAlong !== null ? Math.max(0, Math.abs(along - this.lastAlong) - 150) * 0.1 : 0);
       if (score < best.score) best = { along, off, index: i, score };
     }
     if (from === to) return { along: this.cum[from], off: metres(p, this.coords[from]), index: from };

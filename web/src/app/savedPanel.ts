@@ -1,6 +1,6 @@
 import type * as maplibregl from 'maplibre-gl';
 import { deleteSaved, listSaved, putSaved, type Saved, type SavedPin, type SavedRoute } from '../saved/saved';
-import { listTracks, putTrack } from '../gpx/store';
+import { listTracks, putTrack, type StoredTrack } from '../gpx/store';
 import { backupFileName, makeBackup, parseBackup, toStore } from '../saved/backup';
 import { deletions, noteDeleted, setDeletions } from '../saved/deleted';
 import { gpxFileName, routeGpx, shareFile } from '../gpx/export';
@@ -63,6 +63,8 @@ export class SavedPanel {
     private readonly openRoute: (r: SavedRoute) => void,
     /** Reads the GPX tracks again after a restore brought some in. */
     private readonly reloadTracks: () => Promise<void>,
+    /** The GPX tracks as the Tracks panel holds them. */
+    private readonly tracksNow: () => StoredTrack[] = () => [],
   ) {
     map.addImage('saved-star', starImage(), { pixelRatio: 2 });
     map.addSource('saved', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -112,9 +114,11 @@ export class SavedPanel {
   }
 
   /** Everything saved plus the GPX tracks, as one file (the share sheet on a phone, else a download). */
+  /** Built from what the panels already hold, without waiting on storage: iOS lets a tap open the
+   *  share sheet only straight away. */
   private async backup(): Promise<void> {
     this.status('');
-    const text = JSON.stringify(makeBackup(await listSaved(), await listTracks(), deletions()));
+    const text = JSON.stringify(makeBackup(this.items, this.tracksNow(), deletions()));
     await shareFile(backupFileName(), text, 'application/json');
   }
 

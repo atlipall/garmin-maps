@@ -114,7 +114,7 @@ export class Navigator {
   }
 
   /** Starts guidance along `nav` (or carries on along a route planned again). */
-  start(nav: NavRoute, at: LonLat | null): void {
+  start(nav: NavRoute, fix: { at: LonLat; accuracy: number } | null): void {
     this.nav = nav;
     const r = nav.route;
     const segs = r.segs?.length ? r.segs : [{ start: 0, name: null, type: 0, junction: false, seconds: r.seconds }];
@@ -136,7 +136,7 @@ export class Navigator {
     $('nav-bottom').hidden = false;
     $('nav-to').textContent = nav.title;
     this.show({ along: 0, off: 0, index: 0 });
-    if (at) this.fix(at, 0);
+    if (fix) this.fix(fix.at, fix.accuracy);
   }
 
   /** Planning again from here failed: say so, and don't ask again until back on the route. */

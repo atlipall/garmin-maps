@@ -72,6 +72,11 @@ export class TracksPanel {
     if (open) this.error.textContent = '';
   }
 
+  /** The tracks as listed (for a backup made within the tap that asks for it). */
+  get all(): StoredTrack[] {
+    return this.tracks;
+  }
+
   /** Number of stored tracks (for tests). */
   get count(): number {
     return this.tracks.length;

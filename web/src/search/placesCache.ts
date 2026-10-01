@@ -5,7 +5,7 @@ import type { Place } from './places';
 /** Compact on-disk form of a `Place`: [name, lon, lat, kindCode, type]. */
 type PackedPlace = [string, number, number, number, number];
 const KINDS: Kind[] = ['point', 'line', 'polygon'];
-const PLACES_VERSION = 2;
+const PLACES_VERSION = 3;
 
 /** Encodes the on-disk `places.json` cache body: the map-file `key`, the places (packed), and the
  *  F-road/track classes keyed by tile id and NET offset. */
