@@ -137,7 +137,6 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   const height = new HeightControl();
   const locate = new LocationControl((lon, lat) => pool.elevation(lon, lat), height.element);
   map.addControl(locate, 'bottom-right');
-  if (session) locate.restore(session.location);
   // Keep the screen on while location is on (a ⋯ menu switch, remembered on this device).
   const awake = browserScreenAwake();
   let keepAwake = readSetting('keepAwake', true);
@@ -158,6 +157,8 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     syncAwake();
   };
   syncAwake();
+  // Location as it was last time: after the line above, so keeping the screen on hears of it.
+  if (session) locate.restore(session.location);
   // Corner controls stack upwards in the order added: the height pill sits above the scale bar.
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
   map.addControl(height, 'bottom-left');
@@ -194,7 +195,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     showImport('', { hasMap: true, canCancel: true });
   };
 
-  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, sync: null as DriveSync | null, navigator: null as Navigator | null };
+  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, sync: null as DriveSync | null, navigator: null as Navigator | null, screenAwake: awake };
   window.__app = app;
   // F-road/track classes from the place-index pass, keyed by tile id and NET offset. Resolved
   // once `loadPlaces` finishes; a route requested before then awaits this instead. Rejected if
@@ -271,6 +272,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     routePlanner.onCleared = () => navigator.end();
     locate.onFix = (at, accuracy) => navigator.fix(at, accuracy);
     app.navigator = navigator;
+    app.screenAwake = awake;
     // Saved pins (stars on the map) and routes, from the route card's Save.
     const saved = new SavedPanel(
       map,

@@ -8,17 +8,26 @@ function fakes() {
   let n = 0;
   const api: WakeLockApi = {
     request: async () => {
+      if (refuse > 0) {
+        refuse--;
+        log.push('refused');
+        throw new Error('NotAllowedError');
+      }
       const id = ++n;
       log.push(`request ${id}`);
       return { release: async () => { log.push(`release ${id}`); } };
     },
   };
+  const touches: Array<() => void> = [];
+  let refuse = 0;
   const doc = {
     get visible() { return visible; },
     onVisibilityChange: (fn: () => void) => listeners.push(fn),
+    onTouch: (fn: () => void) => touches.push(fn),
   };
   const setVisible = async (v: boolean) => { visible = v; listeners.forEach((fn) => fn()); await flush(); };
-  return { api, doc, log, setVisible };
+  const touch = async () => { touches.forEach((fn) => fn()); await flush(); };
+  return { api, doc, log, setVisible, touch, refuseNext: (k: number) => { refuse = k; } };
 }
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -53,5 +62,15 @@ describe('ScreenAwake', () => {
     refused.setWanted(true); await flush();
     refused.setWanted(false); await flush();
     expect(none.supported).toBe(false);
+  });
+
+  test('a refused request (no tap yet, at startup) is tried again on the next touch', async () => {
+    const f = fakes();
+    f.refuseNext(1);
+    const awake = new ScreenAwake(f.api, f.doc);
+    awake.setWanted(true); await flush();
+    await f.touch();
+    await f.touch(); // already held: no new request
+    expect(f.log).toEqual(['refused', 'request 1']);
   });
 });

@@ -585,6 +585,8 @@ try {
   if (was.locate === 'off' && (Math.abs(now.center[0] + 19.5) > 0.001 || Math.abs(now.center[1] - 64.05) > 0.001 || Math.abs(now.zoom - 9.5) > 0.01)) fail(`view not restored: ${JSON.stringify(now)}`);
   await page.click('#route-close');
   await page.click('#route-confirm-yes');
+  // Location came back on with the app, so the screen is kept on (the setting is on by default).
+  if (was.locate !== 'off') await page.waitForFunction(() => window.__app.screenAwake.held, { timeout: 5_000 }).catch(() => fail('screen not kept on after the app reopened with location on'));
   console.log('restore after reload ok');
   // Saved pins and routes are kept across the reload: the star is back, and a saved route opens as
   // it was drawn (no planning: its numbers are there at once).
