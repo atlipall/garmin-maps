@@ -52,6 +52,11 @@ describe('maneuvers', () => {
     expect(kinds(maneuvers(corner, [seg(0, '1'), seg(1, '1')], 'X'))[1]).toBe('turn: Turn right to stay on road 1');
   });
 
+  test('a turn onto another road counts even where the network shows no junction (one-way streets)', () => {
+    const coords: LonLat[] = [[0, 0], [0, 0.002], [-0.002, 0.002]];
+    expect(kinds(maneuvers(coords, [seg(0, 'GRENSÁSVEGUR'), seg(1, 'MIKLABRAUT', { junction: false })], 'X'))[1]).toBe('turn: Turn left onto Miklabraut');
+  });
+
   test('a waypoint is its own instruction', () => {
     const coords: LonLat[] = [[0, 0], [0, 0.002], [0, 0.004]];
     const ms = maneuvers(coords, [seg(0, '1'), seg(1, '1', { via: 1 })], 'X');
@@ -78,5 +83,15 @@ describe('Progress', () => {
     expect(Math.round(half.metres)).toBe(334);
     expect(Math.round(half.seconds)).toBe(70); // half of road 1 (10 s) + road 26 (60 s)
     expect(p.left(p.total).seconds).toBe(0);
+  });
+
+  test('a hairpin: a fix between the two sides stays on the side you were on', () => {
+    // North 555 m, 33 m east, back south 555 m: the two sides 33 m apart.
+    const hair: LonLat[] = [[0, 0], [0, 0.005], [0.0003, 0.005], [0.0003, 0]];
+    const p = new Progress(hair, undefined, 100);
+    p.locate([0, 0.0025]);
+    // 18 m from the way up, 15 m from the way down: still on the way up.
+    const w = p.locate([0.000162, 0.0026]);
+    expect(Math.round(w.along)).toBe(289);
   });
 });

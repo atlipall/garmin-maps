@@ -32,12 +32,32 @@ export async function routeShape(g: RoadGraph, index: NodeIndex, route: Route, l
   return { coords, segs };
 }
 
-/** A node where three or more roads meet (somewhere a driver has a choice): one with edges to at
- *  least three different nodes. */
+/** Each node's neighbours by edges into it (one-way streets and dual carriageways lead only one
+ *  way), made once per graph. */
+const incoming = new WeakMap<RoadGraph, Map<number, number[]>>();
+function into(g: RoadGraph, v: number): number[] {
+  let m = incoming.get(g);
+  if (!m) {
+    m = new Map();
+    for (let u = 0; u + 1 < g.edgeStart.length; u++) {
+      for (let e = g.edgeStart[u]; e < g.edgeStart[u + 1]; e++) {
+        const w = g.edgeTo[e];
+        const list = m.get(w);
+        if (list) list.push(u);
+        else m.set(w, [u]);
+      }
+    }
+    incoming.set(g, m);
+  }
+  return m.get(v) ?? [];
+}
+
+/** A node where three or more roads meet (somewhere a driver has a choice): one joined to at least
+ *  three different nodes, by edges out of it or into it. */
 function isJunction(g: RoadGraph, u: number): boolean {
-  const to = new Set<number>();
-  for (let e = g.edgeStart[u]; e < g.edgeStart[u + 1]; e++) to.add(g.edgeTo[e]);
-  return to.size >= 3;
+  const near = new Set<number>(into(g, u));
+  for (let e = g.edgeStart[u]; e < g.edgeStart[u + 1]; e++) near.add(g.edgeTo[e]);
+  return near.size >= 3;
 }
 
 /** The road (tile, NET) from node point `a` to node `v`: from each place `a` lies on a line of that

@@ -128,9 +128,12 @@ export function maneuvers(coords: LonLat[], segs: RoadSeg[], dest: string): Mane
       i = j;
       continue;
     }
-    if (!s.junction || s.type === ROUNDABOUT) continue;
+    if (s.type === ROUNDABOUT) continue;
     const road = roadLabel(s.name);
     const changed = road !== roadLabel(segs[i - 1].name);
+    // A choice to make: a junction, or a different road (a junction the network can miss where
+    // one-way streets and dual carriageways meet).
+    if (!s.junction && !changed) continue;
     const angle = turnAngle(coords, cum, k);
     const turn = classify(angle);
     if (turn === 'straight') {
