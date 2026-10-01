@@ -154,6 +154,16 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     awake.setWanted(keepAwake && locating);
   };
   keepAwakeItem.hidden = !awake.supported;
+  // Navigation: off the route it plans again by itself; this switch makes it ask first on F-roads and
+  // tracks (leaving the route there may be on purpose).
+  let askInHighlands = readSetting('askRerouteHighlands', false);
+  const askItem = $<HTMLButtonElement>('ask-highlands');
+  askItem.setAttribute('aria-checked', String(askInHighlands));
+  askItem.onclick = () => {
+    askInHighlands = !askInHighlands;
+    writeSetting('askRerouteHighlands', askInHighlands);
+    askItem.setAttribute('aria-checked', String(askInHighlands));
+  };
   keepAwakeItem.onclick = () => {
     keepAwake = !keepAwake;
     writeSetting('keepAwake', keepAwake);
@@ -283,6 +293,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     const navigator = new Navigator({
       replan: (passed) => routePlanner.replanFromHere(passed),
       keepClear: (left) => map.setPadding({ top: 0, bottom: 0, right: 0, left }),
+      askInHighlands: () => askInHighlands,
       ended: () => {},
     });
     // A fix from the last two minutes (an old one would start guidance from the wrong place).

@@ -391,6 +391,14 @@ try {
   await fixOn(routeLine[0]);
   let nav = await navState();
   if (!nav.on || nav.card || nav.to !== 'To Landmannalaugar' || !/^\d+ (m|km)$|^\d+\.\d km$/.test(nav.dist) || !nav.text || !/^\d\d:\d\d$/.test(nav.arrive)) fail(`navigation started: ${JSON.stringify(nav)}`);
+  // Off the route on an ordinary road: a new route at once, no question.
+  for (let k = 0; k < 3; k++) await fixOn(routeLine[2], 0.003 + k * 0.0001);
+  nav = await navState();
+  if (nav.asking) fail(`asked before rerouting: ${JSON.stringify(nav)}`);
+  await page.waitForFunction(() => document.querySelector('#nav-banner').className === '' && document.querySelector('#nav-dist').textContent !== 'Planning…', { timeout: 60_000 }).catch(async () => fail(`no new route when off the route: ${JSON.stringify(await navState())}`));
+  console.log('rerouted by itself:', (await navState()).text);
+  await fixOn(routeLine[0]);
+  nav = await navState();
   const kmAtStart = parseFloat(nav.km);
   await fixOn(routeLine[Math.floor(routeLine.length / 3)]);
   nav = await navState();
@@ -412,8 +420,17 @@ try {
   const youX = await page.evaluate((p) => window.__app.map.project(p).x, third);
   if (youX < 700 || youX > 1000) fail(`head unit: your position at x=${Math.round(youX)}, not in the map area right of the guidance`);
   await page.setViewport({ width: 1024, height: 1024 });
-  // Off the route (~330 m north of it) for three fixes: the question. Keep going: quiet until back.
-  const mid = routeLine[Math.floor(routeLine.length / 3)];
+  // Off the route in the highlands (on an F-road or track) with "Ask before rerouting in the
+  // highlands" on, ~330 m north of it for three fixes: the question. Keep going: quiet until back.
+  await page.evaluate(() => document.querySelector('#ask-highlands').click());
+  const mid = await page.evaluate(() => {
+    const { coords, segs } = window.__app.navigator.nav.route;
+    const i = segs.findIndex((s) => [0x11, 0x12, 0x13].includes(s.type) || /^F\s?\d/i.test(s.name ?? ''));
+    if (i < 0) return null;
+    const end = i + 1 < segs.length ? segs[i + 1].start : coords.length - 1;
+    return coords[Math.floor((segs[i].start + end) / 2)];
+  });
+  if (!mid) fail('no F-road or track on the route to Landmannalaugar');
   for (let k = 0; k < 3; k++) await fixOn(mid, 0.003);
   nav = await navState();
   if (!nav.asking || nav.banner !== 'off' || nav.dist !== 'Off route') fail(`off the route: ${JSON.stringify(nav)}`);

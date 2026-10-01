@@ -2,6 +2,7 @@ import { maneuvers, type Maneuver, type Turn } from '../routing/maneuvers';
 import type { LonLat } from '../routing/plan';
 import { Progress, type Where } from '../routing/progress';
 import type { JoinedRoute } from '../routing/waypoints';
+import { roadClass } from '../routing/roadClass';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -32,6 +33,8 @@ export interface NavHooks {
   replan(passed: number): void;
   /** Keeps the map's centre clear of a column of `left` pixels (0: none). */
   keepClear(left: number): void;
+  /** The "Ask before rerouting in the highlands" setting. */
+  askInHighlands(): boolean;
   /** Navigation ended (the route stays). */
   ended(): void;
 }
@@ -102,11 +105,26 @@ export class Navigator {
     };
     $('nav-replan').onclick = () => {
       this.ask(false);
-      this.replanning = true;
-      this.banner(WARNING, 'Planning…', 'A new route from here', null, 'off');
-      const along = this.lastOn?.along ?? 0;
-      this.hooks.replan(this.viaAlong.filter((a) => a <= along).length);
+      this.replan();
     };
+  }
+
+  /** Plans the route again from here, leaving out the waypoints already passed. */
+  private replan(): void {
+    this.replanning = true;
+    this.banner(WARNING, 'Planning…', 'A new route from here', null, 'off');
+    const along = this.lastOn?.along ?? 0;
+    this.hooks.replan(this.viaAlong.filter((a) => a <= along).length);
+  }
+
+  /** Where you left the route was an F-road or a track: the highlands. */
+  private inHighlands(): boolean {
+    const segs = this.nav?.route.segs;
+    const i = this.lastOn?.index;
+    if (!segs?.length || i === undefined) return false;
+    let k = 0;
+    while (k + 1 < segs.length && segs[k + 1].start <= i) k++;
+    return roadClass(segs[k].type, segs[k].name) !== 0;
   }
 
   get active(): boolean {
@@ -174,7 +192,12 @@ export class Navigator {
     } else if (where.off > OFF_ROUTE_M && accuracy <= ROUGH_FIX_M) this.offFixes++;
     const off = this.offFixes >= OFF_ROUTE_FIXES;
     if (!off) this.lastOn = where;
-    if (off && !this.quiet && !this.asking) this.ask(true);
+    // Off the route: a new route straight away; in the highlands, where leaving the route may be on
+    // purpose (a viewpoint, a ford), ask first if the setting says so.
+    if (off && !this.quiet && !this.asking) {
+      if (this.hooks.askInHighlands() && this.inHighlands()) this.ask(true);
+      else return this.replan();
+    }
     if (off) {
       if (this.noRoute) this.banner(WARNING, 'No new route', "Couldn't plan a route from here", null, 'off');
       else this.banner(WARNING, 'Off route', `You're ${fmtDist(where.off)} from the route`, null, 'off');
