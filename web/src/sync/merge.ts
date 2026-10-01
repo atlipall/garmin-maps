@@ -24,9 +24,15 @@ export interface SyncPlan {
 
 type Item = { id: string; added: number; updated?: number };
 
+/** A time further ahead than this (a device whose clock runs fast) is stored as now plus this: kept
+ *  as it was, a deletion or edit "an hour from now" would beat everything done elsewhere for an
+ *  hour, and every sync would carry it on. */
+const FUTURE_MS = 5 * 60_000;
+
 /** One kind of item: for each id, the copy changed last wins, unless the item was deleted after
- *  that change. */
-function mergeKind<T extends Item>(mine: T[], theirs: T[], deleted: Record<string, number>) {
+ *  that change. Items changed "in the future" get their time capped (and written back). */
+function mergeKind<T extends Item>(mine: T[], theirs: T[], deleted: Record<string, number>, limit: number) {
+  const at = (x: T) => changedAt(x);
   const local = new Map(mine.map((x) => [x.id, x]));
   const remote = new Map(theirs.map((x) => [x.id, x]));
   const kept: T[] = [];
@@ -36,8 +42,9 @@ function mergeKind<T extends Item>(mine: T[], theirs: T[], deleted: Record<strin
   for (const id of new Set([...local.keys(), ...remote.keys()])) {
     const l = local.get(id);
     const r = remote.get(id);
-    const win = !l ? r! : !r ? l : changedAt(r) > changedAt(l) ? r : l;
-    const gone = deleted[id] !== undefined && deleted[id] >= changedAt(win);
+    let win = !l ? r! : !r ? l : at(r) > at(l) ? r : l;
+    if (at(win) > limit) win = { ...win, updated: limit };
+    const gone = deleted[id] !== undefined && deleted[id] >= at(win);
     if (gone) {
       if (l) remove.push(id);
       if (r) remoteDiffers = true;
@@ -51,12 +58,19 @@ function mergeKind<T extends Item>(mine: T[], theirs: T[], deleted: Record<strin
 }
 
 export function planSync(local: Local, remote: Backup | null, now = new Date()): SyncPlan {
+  const limit = now.getTime() + FUTURE_MS;
   const deleted: Record<string, number> = { ...(remote?.deleted ?? {}) };
   for (const [id, at] of Object.entries(local.deleted)) deleted[id] = Math.max(at, deleted[id] ?? 0);
-  const saved = mergeKind(local.saved, remote?.saved ?? [], deleted);
-  const tracks = mergeKind(local.tracks, remote?.tracks ?? [], deleted);
+  for (const id of Object.keys(deleted)) deleted[id] = Math.min(deleted[id], limit);
+  const saved = mergeKind(local.saved, remote?.saved ?? [], deleted, limit);
+  const tracks = mergeKind(local.tracks, remote?.tracks ?? [], deleted, limit);
   const theirDeleted = remote?.deleted ?? {};
   const deletedDiffers = Object.keys(deleted).length !== Object.keys(theirDeleted).length || Object.entries(deleted).some(([id, at]) => theirDeleted[id] !== at);
   const upload = !remote || saved.remoteDiffers || tracks.remoteDiffers || deletedDiffers ? makeBackup(saved.kept, tracks.kept, deleted, now) : null;
   return { putSaved: saved.put, putTracks: tracks.put, removeSaved: saved.remove, removeTracks: tracks.remove, deleted, upload };
+}
+
+/** Two sync files as one (two devices that first synced at the same moment each made one). */
+export function mergeFiles(a: Backup, b: Backup, now = new Date()): Backup {
+  return planSync({ saved: a.saved, tracks: a.tracks, deleted: a.deleted ?? {} }, b, now).upload ?? b;
 }

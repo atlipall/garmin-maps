@@ -29,5 +29,12 @@ describe('isSaved', () => {
     expect(isSaved({ ...route, route: { ...route.route, coords: [[1, 2]] } })).toBe(false);
     expect(isSaved({ ...route, route: { status: 'no-route' } })).toBe(false);
     expect(isSaved({ ...route, vias: [{ lon: 'x' }] })).toBe(false);
+    // Road stretches must fit their line: one starting outside it would hang turn-by-turn.
+    const segs = (start: number) => ({ ...route, route: { ...route.route, segs: [{ start, name: '1', type: 1, junction: true, seconds: 10 }] } });
+    expect(isSaved(segs(0))).toBe(true);
+    expect(isSaved(segs(-1e308))).toBe(false);
+    expect(isSaved(segs(5))).toBe(false);
+    expect(isSaved({ ...route, route: { ...route.route, segs: [{ start: 0, name: 7, type: 1, junction: true, seconds: 10 }] } })).toBe(false);
+    expect(isSaved({ ...route, route: { ...route.route, offRoadEnd: [[1, 2]] } })).toBe(false);
   });
 });

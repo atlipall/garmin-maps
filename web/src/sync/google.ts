@@ -23,12 +23,17 @@ export interface SyncState {
   expires?: number;
   lastSync?: number;
   fileId?: string;
+  /** The sync file's version after the last sync here (unchanged since: no download needed). */
+  version?: string;
+  /** When something last changed here, and the last such change a sync has taken in. */
+  changedAt?: number;
+  syncedAt?: number;
 }
 
 export function syncState(): SyncState {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    return s && typeof s === 'object' ? { on: s.on === true, token: s.token, expires: s.expires, lastSync: s.lastSync, fileId: s.fileId } : { on: false };
+    return s && typeof s === 'object' ? { on: s.on === true, token: s.token, expires: s.expires, lastSync: s.lastSync, fileId: s.fileId, version: s.version, changedAt: s.changedAt, syncedAt: s.syncedAt } : { on: false };
   } catch {
     return { on: false };
   }

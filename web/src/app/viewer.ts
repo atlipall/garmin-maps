@@ -297,7 +297,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       await saved.reload();
       await tracks.reload();
     });
-    saved.onChanged = tracks.onChanged = () => sync.schedule();
+    saved.onChanged = tracks.onChanged = () => sync.changed();
     app.sync = sync;
     routePlanner.onSave = (item) => saved.add(item);
     $('sync-open').onclick = () => {

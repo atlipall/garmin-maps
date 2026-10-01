@@ -1,4 +1,5 @@
 import { parseBackup, type Backup } from '../saved/backup';
+import { mergeFiles } from './merge';
 
 /** The one file the app keeps in the user's Google Drive, in the hidden app-data folder (only this
  *  app can see it; the user's own files stay out of reach: scope drive.appdata). */
@@ -19,26 +20,49 @@ async function call(token: string, url: string, init: RequestInit = {}): Promise
   return res;
 }
 
-/** The sync file's id and contents, or nulls when there's none yet. */
-export async function readSyncFile(token: string): Promise<{ id: string | null; data: Backup | null }> {
-  const q = encodeURIComponent(`name='${SYNC_FILE}'`);
-  const list = (await (await call(token, `${API}/files?spaces=appDataFolder&q=${q}&fields=files(id)&pageSize=1`)).json()) as { files?: Array<{ id: string }> };
-  const id = list.files?.[0]?.id ?? null;
-  if (!id) return { id: null, data: null };
-  const text = await (await call(token, `${API}/files/${id}?alt=media`)).text();
-  return { id, data: parseBackup(text) };
+/** What's in Drive: the sync file to use (the oldest, if two devices each made one), its contents
+ *  merged with any others', and its version; `unchanged` when its version is the one given and
+ *  there's only one (nothing downloaded then). */
+export interface SyncFile {
+  id: string | null;
+  data: Backup | null;
+  version: string | null;
+  /** Other sync files, merged into `data`; deleted once it's written. */
+  extra: string[];
+  unchanged?: boolean;
 }
 
-/** Writes the sync file (creating it in the app-data folder the first time); returns its id. */
-export async function writeSyncFile(token: string, id: string | null, data: Backup): Promise<string> {
+export async function readSyncFile(token: string, knownVersion: string | null = null): Promise<SyncFile> {
+  const q = encodeURIComponent(`name='${SYNC_FILE}'`);
+  const list = (await (await call(token, `${API}/files?spaces=appDataFolder&q=${q}&orderBy=createdTime&fields=files(id,version)`)).json()) as { files?: Array<{ id: string; version?: string }> };
+  const files = list.files ?? [];
+  if (!files.length) return { id: null, data: null, version: null, extra: [] };
+  const [first, ...rest] = files;
+  const version = first.version ?? null;
+  if (!rest.length && knownVersion && version === knownVersion) return { id: first.id, data: null, version, extra: [], unchanged: true };
+  let data = parseBackup(await (await call(token, `${API}/files/${first.id}?alt=media`)).text());
+  for (const f of rest) data = mergeFiles(data, parseBackup(await (await call(token, `${API}/files/${f.id}?alt=media`)).text()));
+  return { id: first.id, data, version, extra: rest.map((f) => f.id) };
+}
+
+/** Writes the sync file (creating it in the app-data folder the first time); returns its id and
+ *  new version. */
+export async function writeSyncFile(token: string, id: string | null, data: Backup): Promise<{ id: string; version: string | null }> {
   const body = JSON.stringify(data);
   if (id) {
-    await call(token, `${UPLOAD}/files/${id}?uploadType=media`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
-    return id;
+    const res = await call(token, `${UPLOAD}/files/${id}?uploadType=media&fields=id,version`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
+    const f = (await res.json()) as { id: string; version?: string };
+    return { id, version: f.version ?? null };
   }
   const boundary = `garmin-map-${Math.random().toString(36).slice(2)}`;
   const meta = JSON.stringify({ name: SYNC_FILE, parents: ['appDataFolder'], mimeType: 'application/json' });
   const multipart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${boundary}--`;
-  const res = await call(token, `${UPLOAD}/files?uploadType=multipart&fields=id`, { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipart });
-  return ((await res.json()) as { id: string }).id;
+  const res = await call(token, `${UPLOAD}/files?uploadType=multipart&fields=id,version`, { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipart });
+  const f = (await res.json()) as { id: string; version?: string };
+  return { id: f.id, version: f.version ?? null };
+}
+
+/** Deletes a sync file (an extra one, merged into the main one). */
+export async function deleteSyncFile(token: string, id: string): Promise<void> {
+  await call(token, `${API}/files/${id}`, { method: 'DELETE' });
 }

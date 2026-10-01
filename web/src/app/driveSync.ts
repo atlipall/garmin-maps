@@ -1,9 +1,10 @@
 import { deleteTrack, listTracks, putTrack } from '../gpx/store';
 import { deletions, setDeletions } from '../saved/deleted';
 import { deleteSaved, listSaved, putSaved } from '../saved/saved';
-import { DriveError, readSyncFile, writeSyncFile } from '../sync/drive';
+import { deleteSyncFile, DriveError, readSyncFile, writeSyncFile } from '../sync/drive';
 import { GOOGLE_CLIENT_ID, prepareSignIn, setSyncState, signIn, signOut, syncState, validToken } from '../sync/google';
 import { planSync } from '../sync/merge';
+import { changedAt } from '../saved/backup';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 /** A change here is synced this long after the last one (ms), so a burst of edits is one sync. */
@@ -43,7 +44,14 @@ export class DriveSync {
     document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && this.schedule(0));
   }
 
-  /** Something changed here: sync soon. */
+  /** Something changed here (saved, deleted, restored, a track shown or hidden): sync soon. */
+  changed(): void {
+    if (!GOOGLE_CLIENT_ID || !syncState().on) return;
+    setSyncState({ ...syncState(), changedAt: Date.now() });
+    this.schedule();
+  }
+
+  /** Sync soon (also on coming back to the app or online). */
   schedule(delay = AFTER_CHANGE_MS): void {
     if (!GOOGLE_CLIENT_ID || !syncState().on) return;
     clearTimeout(this.timer);
@@ -84,16 +92,40 @@ export class DriveSync {
     if (!navigator.onLine) return this.render("Offline: syncs when you're back online.");
     this.render('Syncing…');
     try {
-      const { id, data } = await readSyncFile(token);
-      const plan = planSync({ saved: await listSaved(), tracks: await listTracks(), deleted: deletions() }, data);
-      for (const s of plan.putSaved) await putSaved(s);
-      for (const t of plan.putTracks) await putTrack(t);
+      // Nothing changed here and the file is as this device left it: nothing to download or send.
+      const start = syncState();
+      const localChange = start.changedAt;
+      const dirty = localChange !== undefined && localChange !== start.syncedAt;
+      const file = await readSyncFile(token, dirty ? null : start.version ?? null);
+      if (file.unchanged) {
+        setSyncState({ ...syncState(), lastSync: Date.now() });
+        return this.render();
+      }
+      const plan = planSync({ saved: await listSaved(), tracks: await listTracks(), deleted: deletions() }, file.data);
+      // Something edited or deleted here while this sync ran wins over what it brings in.
+      const nowSaved = new Map((await listSaved()).map((x) => [x.id, x]));
+      const nowTracks = new Map((await listTracks()).map((x) => [x.id, x]));
+      const goneNow = deletions();
+      const newer = <T extends { id: string; added: number; updated?: number }>(mine: T | undefined, theirs: T) =>
+        (!!mine && changedAt(mine) > changedAt(theirs)) || (goneNow[theirs.id] ?? -Infinity) >= changedAt(theirs);
+      const putSaved_ = plan.putSaved.filter((x) => !newer(nowSaved.get(x.id), x));
+      const putTracks_ = plan.putTracks.filter((x) => !newer(nowTracks.get(x.id), x));
+      for (const x of putSaved_) await putSaved(x);
+      for (const t of putTracks_) await putTrack(t);
       for (const i of plan.removeSaved) await deleteSaved(i);
       for (const i of plan.removeTracks) await deleteTrack(i);
-      setDeletions(plan.deleted);
-      const fileId = plan.upload ? await writeSyncFile(token, id, plan.upload) : id;
-      setSyncState({ ...syncState(), lastSync: Date.now(), fileId: fileId ?? undefined });
-      if (plan.putSaved.length || plan.putTracks.length || plan.removeSaved.length || plan.removeTracks.length) await this.reload();
+      // Deletions made here meanwhile are kept: merge, don't overwrite.
+      const gone = deletions();
+      for (const [id, at] of Object.entries(plan.deleted)) gone[id] = Math.max(at, gone[id] ?? 0);
+      setDeletions(gone);
+      let { id, version } = file;
+      if (plan.upload) ({ id, version } = await writeSyncFile(token, id, plan.upload));
+      for (const extra of file.extra) await deleteSyncFile(token, extra).catch(() => {});
+      // A change here during the sync, or one not sent (kept over what came in): sync again.
+      const skipped = putSaved_.length !== plan.putSaved.length || putTracks_.length !== plan.putTracks.length;
+      setSyncState({ ...syncState(), lastSync: Date.now(), fileId: id ?? undefined, version: version ?? undefined, syncedAt: skipped ? undefined : localChange });
+      if (skipped || syncState().changedAt !== localChange) this.schedule();
+      if (putSaved_.length || putTracks_.length || plan.removeSaved.length || plan.removeTracks.length) await this.reload();
       this.render();
     } catch (err) {
       if (err instanceof DriveError && err.status === 401) {

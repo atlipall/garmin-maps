@@ -20,11 +20,28 @@ export const changedAt = (x: { added: number; updated?: number }) => x.updated ?
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** A stored GPX track that looks right. */
+const isStrOrNull = (v: unknown) => v === null || typeof v === 'string';
+const isPoint = (p: unknown) => {
+  const q = p as { lon: unknown; lat: unknown; ele?: unknown; time?: unknown };
+  return !!q && isNum(q.lon) && isNum(q.lat) && Math.abs(q.lat) <= 90 && Math.abs(q.lon) <= 180
+    && (q.ele === undefined || q.ele === null || isNum(q.ele)) && (q.time === undefined || q.time === null || isNum(q.time));
+};
+/** A track colour as the app makes them (#rrggbb): anything else (a url(), say) would be fetched
+ *  when the colour is used. */
+export const isColor = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+
+/** A stored GPX track that looks right, all the way down to its points (one that isn't would break
+ *  the Tracks panel on every synced device). */
 export function isTrack(v: unknown): v is StoredTrack {
   const t = v as StoredTrack;
-  return !!t && typeof t.id === 'string' && typeof t.name === 'string' && typeof t.color === 'string' && typeof t.visible === 'boolean'
-    && isNum(t.added) && !!t.stats && !!t.gpx && Array.isArray(t.gpx.lines) && Array.isArray(t.gpx.waypoints);
+  if (!t || typeof t.id !== 'string' || typeof t.name !== 'string' || !isColor(t.color) || typeof t.visible !== 'boolean' || !isNum(t.added)) return false;
+  if (t.updated !== undefined && !isNum(t.updated)) return false;
+  const s = t.stats;
+  if (!s || !isNum(s.distance) || !(s.climb === null || isNum(s.climb)) || !(s.duration === null || isNum(s.duration))) return false;
+  const g = t.gpx;
+  return !!g && isStrOrNull(g.name) && Array.isArray(g.lines) && Array.isArray(g.waypoints)
+    && g.lines.every((l) => !!l && (l.kind === 'track' || l.kind === 'route') && isStrOrNull(l.name) && Array.isArray(l.points) && l.points.every(isPoint))
+    && g.waypoints.every((w) => isPoint(w) && isStrOrNull(w.name));
 }
 
 export function makeBackup(saved: Saved[], tracks: StoredTrack[], deleted: Record<string, number> = {}, now = new Date()): Backup {

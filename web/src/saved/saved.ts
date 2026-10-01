@@ -39,6 +39,16 @@ export type Saved = SavedPin | SavedRoute;
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isLonLat = (v: unknown): v is LonLat => Array.isArray(v) && v.length === 2 && isNum(v[0]) && isNum(v[1]);
 const isLine = (v: unknown): boolean => Array.isArray(v) && v.length >= 2 && v.every(isLonLat);
+const isLeg = (v: unknown) => v === null || v === undefined || (Array.isArray(v) && v.length === 2 && v.every(isLonLat));
+const isPlace = (v: unknown) => {
+  const p = v as { name: unknown; near?: unknown; lon: unknown; lat: unknown };
+  return !!p && (p.name === null || typeof p.name === 'string') && (p.near === undefined || typeof p.near === 'string') && isNum(p.lon) && isNum(p.lat);
+};
+/** Road stretches that fit their line (a stretch starting outside it would hang turn-by-turn). */
+const isSegs = (v: unknown, points: number) => v === undefined || (Array.isArray(v) && v.every((s, i) =>
+  !!s && Number.isInteger(s.start) && s.start >= 0 && s.start < points && (i === 0 || s.start >= v[i - 1].start)
+  && (s.name === null || typeof s.name === 'string') && isNum(s.type) && typeof s.junction === 'boolean' && isNum(s.seconds) && s.seconds >= 0
+  && (s.via === undefined || (Number.isInteger(s.via) && s.via > 0))));
 
 /** A stored item that looks right (an older or damaged entry is left out of the list). */
 export function isSaved(v: unknown): v is Saved {
@@ -47,9 +57,10 @@ export function isSaved(v: unknown): v is Saved {
   if (s.kind === 'pin') return isNum(s.lon) && isNum(s.lat);
   if (s.kind !== 'route') return false;
   const r = s.route;
-  const vias = s.vias === undefined || (Array.isArray(s.vias) && s.vias.every((v) => !!v && isNum(v.lon) && isNum(v.lat)));
-  return vias && !!s.dest && isNum(s.dest.lon) && isNum(s.dest.lat) && isLonLat(s.from) && typeof s.allowFRoads === 'boolean' && typeof s.preferFRoads === 'boolean'
-    && !!r && r.status === 'ok' && isLine(r.coords) && isNum(r.metres) && isNum(r.seconds);
+  const vias = s.vias === undefined || (Array.isArray(s.vias) && s.vias.every(isPlace));
+  return vias && isPlace(s.dest) && isLonLat(s.from) && typeof s.allowFRoads === 'boolean' && typeof s.preferFRoads === 'boolean'
+    && !!r && r.status === 'ok' && isLine(r.coords) && isNum(r.metres) && isNum(r.seconds)
+    && isLeg(r.offRoadStart) && isLeg(r.offRoadEnd) && isSegs(r.segs, r.coords.length);
 }
 
 export const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

@@ -146,7 +146,7 @@ export class TracksPanel {
     li.dataset.id = t.id;
     const swatch = document.createElement('span');
     swatch.className = 'swatch';
-    swatch.style.background = t.color;
+    swatch.style.backgroundColor = t.color;
     const info = document.createElement('button');
     info.type = 'button';
     info.className = 'track-info';

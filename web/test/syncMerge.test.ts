@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { makeBackup } from '../src/saved/backup';
 import type { SavedPin } from '../src/saved/saved';
-import { planSync } from '../src/sync/merge';
+import { mergeFiles, planSync } from '../src/sync/merge';
 
 const pin = (id: string, added: number, updated?: number): SavedPin => ({ id, kind: 'pin', name: id, added, lon: -19, lat: 64, ...(updated ? { updated } : {}) });
 const ids = (xs: Array<{ id: string }>) => xs.map((x) => x.id);
@@ -40,5 +40,24 @@ describe('planSync', () => {
     const p = planSync({ saved: [pin('a', 1)], tracks: [], deleted: { x: 5 } }, remote);
     expect(p.upload).toBeNull();
     expect([p.putSaved, p.removeSaved]).toEqual([[], []]);
+  });
+
+  test('a time from the future (a device whose clock runs fast) is stored capped, so later edits win', () => {
+    const now = new Date(1_000_000_000_000);
+    const t = now.getTime();
+    // Another device deleted "a" with its clock an hour fast: stored as now + 5 min, not an hour on.
+    const first = planSync({ saved: [], tracks: [], deleted: {} }, makeBackup([], [], { a: t + 3_600_000 }), now);
+    expect(first.upload!.deleted).toEqual({ a: t + 5 * 60_000 });
+    // Ten minutes later "a" is saved again elsewhere: that edit wins over the capped deletion.
+    const later = new Date(t + 10 * 60_000);
+    const again = planSync({ saved: [pin('a', t + 8 * 60_000)], tracks: [], deleted: first.deleted }, first.upload, later);
+    expect(again.removeSaved).toEqual([]);
+    expect(ids(again.upload!.saved)).toEqual(['a']);
+  });
+
+  test('two sync files merge into one with both devices\' items', () => {
+    const merged = mergeFiles(makeBackup([pin('a', 1)], []), makeBackup([pin('b', 2)], [], { c: 3 }));
+    expect(ids(merged.saved).sort()).toEqual(['a', 'b']);
+    expect(merged.deleted).toEqual({ c: 3 });
   });
 });

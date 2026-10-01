@@ -40,3 +40,15 @@ describe('toStore', () => {
     expect(toStore([], [pin('a', 1, 5), pin('b', 1, 5)], { a: 6, b: 4 }).map((x) => x.id)).toEqual(['b']);
   });
 });
+
+describe('isTrack', () => {
+  test('checks a track all the way down: points, colour (a url() would be fetched), stats', async () => {
+    const { isTrack } = await import('../src/saved/backup');
+    const good = { ...track, gpx: { name: null, lines: [{ kind: 'track', name: null, points: [{ lon: -19, lat: 64, ele: null, time: null }] }], waypoints: [{ name: 'Hut', lon: -19, lat: 64, ele: 600 }] } };
+    expect(isTrack(good)).toBe(true);
+    expect(isTrack({ ...good, color: 'url(https://example.com/x)' })).toBe(false);
+    expect(isTrack({ ...good, gpx: { ...good.gpx, lines: [{ kind: 'track', name: null }] } })).toBe(false);
+    expect(isTrack({ ...good, gpx: { ...good.gpx, lines: [{ kind: 'track', name: null, points: [{ lon: 'x', lat: 64 }] }] } })).toBe(false);
+    expect(isTrack({ ...good, stats: { distance: 'far' } })).toBe(false);
+  });
+});
