@@ -103,6 +103,9 @@ try {
   await page.$eval('#search', (e) => { e.value = ''; e.dispatchEvent(new Event('input')); });
   await page.click('#menu-button');
   if (await page.evaluate(() => document.activeElement?.closest('#menu') === null)) fail('opening the menu did not move focus into it');
+  // The app's own map moves (following you heading up) leave the menu open.
+  await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.once('moveend', r); m.easeTo({ bearing: m.getBearing() + 30, duration: 200 }); }));
+  if (await page.$eval('#menu', (e) => e.hidden)) fail('the menu closed when the map turned by itself');
   await page.keyboard.press('Escape');
   if (await page.evaluate(() => !document.querySelector('#menu').hidden || document.activeElement?.id !== 'menu-button')) fail('Escape did not close the menu back to its button');
   await page.click('#menu-button');

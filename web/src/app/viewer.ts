@@ -206,7 +206,11 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     $(close).addEventListener('click', () => $('menu-button').focus());
   }
   const focusPanel = (panel: string) => $(panel).querySelector<HTMLElement>('h2')?.focus();
-  map.on('movestart', () => setMenu(false));
+  // Moving the map by hand closes the menu; the app's own moves (following you, turning heading up)
+  // don't.
+  map.on('movestart', (e) => {
+    if ((e as { originalEvent?: Event }).originalEvent) setMenu(false);
+  });
   let closed = false;
   $('replace').onclick = () => {
     // Nothing is deleted here: the stored map stays until a new import commits (and Cancel
