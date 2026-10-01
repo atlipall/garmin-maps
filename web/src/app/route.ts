@@ -8,6 +8,7 @@ import { FONT_REGULAR } from '../style/buildStyle';
 import type { LonLat } from '../routing/plan';
 import { bestInsert, joinLegs, type JoinedRoute } from '../routing/waypoints';
 import { gpxFileName, routeGpx, shareFile } from '../gpx/export';
+import type { NavRoute } from './navigation';
 import { newId, type RouteOk, type Saved, type SavedRoute } from '../saved/saved';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -82,6 +83,12 @@ export class RoutePlanner {
   private saved = false;
   /** Stores a saved pin or route (the Saved panel). */
   onSave: ((item: Saved) => Promise<void>) | null = null;
+  /** "Start": navigate along the route shown. */
+  onStart: (() => void) | null = null;
+  /** A route was planned (`ok`) or couldn't be (for navigation, which plans again on the way). */
+  onPlanned: ((ok: boolean) => void) | null = null;
+  /** The route and place were cleared. */
+  onCleared: (() => void) | null = null;
 
   /** `searchFrom`: your recent GPS position, else the map centre. `useLocation` turns location on. */
   constructor(
@@ -154,6 +161,7 @@ export class RoutePlanner {
     $('route-choose').onclick = () => this.chooseOnMap();
     $('route-save').onclick = () => this.showSaveForm(true);
     $('route-export').onclick = () => void this.exportGpx();
+    $('route-start').onclick = () => this.onStart?.();
     $('route-options-toggle').onclick = () => this.showOptions($('route-options').hidden === true);
     $('route-save-cancel').onclick = () => this.showSaveForm(false);
     $<HTMLFormElement>('route-save-form').onsubmit = (e) => {
@@ -261,6 +269,23 @@ export class RoutePlanner {
     this.fitRoute = true;
     this.showSave();
     this.onChange?.();
+  }
+
+  /** The route shown, for navigation. */
+  navRoute(): NavRoute | null {
+    if (!this.last || !this.dest) return null;
+    const place = this.dest.name ?? this.dest.near ?? 'the dropped pin';
+    return { route: this.last.route, title: $('route-title').textContent || `To ${place}`, dest: place };
+  }
+
+  /** Plans the route again from your position (navigation, off the route), without the waypoints
+   *  already passed and without moving the map. */
+  replanFromHere(passed: number): void {
+    if (!this.dest) return;
+    this.clearStart();
+    this.setVias(this.vias.slice(passed));
+    this.fitRoute = false;
+    void this.route();
   }
 
   /** The card to remember across restarts: the place and, once routed, where from. */
@@ -395,6 +420,7 @@ export class RoutePlanner {
     this.clearStart();
     $('route-card').hidden = true;
     this.showSave();
+    this.onCleared?.();
     this.keepOpen = false;
     this.setMinimized(false);
     this.onChange?.();
@@ -440,8 +466,9 @@ export class RoutePlanner {
     button.disabled = this.saved;
     button.querySelector('span')!.textContent = this.saved ? 'Saved' : 'Save';
     if (button.hidden) this.showSaveForm(false);
-    // Export only for a drawn route.
+    // Export and Start only for a drawn route.
     $('route-export').hidden = !this.last;
+    $('route-start').hidden = !this.last || !this.onStart;
     // No empty row on a route panel that's still being planned.
     if ($('route-save-form').hidden) $('route-actions').hidden = $('route-go').hidden && button.hidden && $('route-export').hidden;
   }
@@ -648,6 +675,7 @@ export class RoutePlanner {
       } else if (reply.status !== 'same-place' || stops.length === 2) {
         this.planning = false;
         this.drawRoute(EMPTY);
+        this.onPlanned?.(false);
         const leg = stops.length === 2 ? '' : i + 2 < stops.length ? `To waypoint ${i + 1}: ` : 'To the destination: ';
         this.setInfo('', '', leg + routeMessage(reply, i === 0 ? kind : 'chosen'));
         return;
@@ -656,11 +684,13 @@ export class RoutePlanner {
     this.planning = false;
     if (!legs.length) {
       this.drawRoute(EMPTY);
+      this.onPlanned?.(false);
       this.setInfo('', '', routeMessage({ status: 'same-place' }, kind));
       return;
     }
     this.setVias(this.vias);
     this.showRoute(legs.length === 1 ? legs[0] : joinLegs(legs), from, kind, fit);
+    this.onPlanned?.(true);
   }
 
   /** Draws a found (or saved) route with its numbers, and fits it in view when `fit`. */

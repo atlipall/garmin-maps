@@ -115,6 +115,51 @@
       #tracks-error, #saved-error { color: #b00020; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
       #tracks-error:not(:empty), #saved-error:not(:empty) { margin-top: 8px; }
       #import-gpx { margin-top: 10px; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 16px; cursor: pointer; }
+      /* Turn-by-turn: the turn banner on top, the off-route question and the trip panel at the
+         bottom; on a wide landscape screen (a car head unit) both in a column on the left. */
+      #nav-banner { position: absolute; z-index: 5; left: calc(env(safe-area-inset-left) + 10px); right: calc(env(safe-area-inset-right) + 10px); top: calc(env(safe-area-inset-top) + 8px); max-width: 520px; border-radius: 20px; overflow: hidden; color: #fff; box-shadow: 0 8px 24px #0a14284d; }
+      #nav-main { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: #1d3f8f; }
+      #nav-icon svg { display: block; width: 56px; height: 56px; }
+      .nav-text { display: grid; gap: 2px; min-width: 0; }
+      #nav-dist { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+      #nav-text { font-size: 19px; font-weight: 600; overflow-wrap: anywhere; }
+      #nav-then { display: flex; align-items: center; gap: 10px; padding: 9px 16px; background: #152e6b; color: #d7e1f7; font-size: 15px; font-weight: 600; }
+      #nav-then[hidden] { display: none; }
+      #nav-then-icon svg { display: block; width: 20px; height: 20px; }
+      #nav-then-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #nav-then-dist { color: #aebee3; }
+      #nav-banner.off #nav-main { background: #9a4a00; }
+      #nav-banner.arrived #nav-main { background: #1d6b3a; }
+      #nav-bottom { position: absolute; z-index: 5; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; display: flex; flex-direction: column; gap: 10px; }
+      #nav-bottom[hidden], #nav-banner[hidden], #nav-prompt[hidden] { display: none; }
+      #nav-prompt { background: #fff; color: var(--ink); border-radius: 20px; padding: 16px; display: grid; gap: 10px; box-shadow: 0 8px 28px #0000004d; }
+      .nav-q { font-size: 18px; font-weight: 800; }
+      #nav-prompt p { margin: 0; font-size: 14px; color: #4b5466; }
+      .nav-row { display: flex; align-items: center; gap: 10px; }
+      #nav-prompt button { flex: 1; min-height: 50px; border: 1.5px solid #d4d9e1; border-radius: 14px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 700; cursor: pointer; }
+      #nav-prompt button.primary { border-color: #1d3f8f; background: #1d3f8f; color: #fff; }
+      #nav-panel { background: #161c28f0; color: #fff; border-radius: 20px; padding: 12px 12px 14px 18px; display: grid; gap: 6px; box-shadow: 0 8px 28px #0000004d; }
+      #nav-to { font-size: 14px; font-weight: 600; color: #aab4c6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .nav-arrive { display: grid; padding-right: 16px; border-right: 1px solid #ffffff24; }
+      .nav-arrive .label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8fa0bd; }
+      #nav-arrive { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+      .nav-left { flex: 1; display: grid; gap: 2px; }
+      #nav-time { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      #nav-km { font-size: 15px; color: #c9d2e3; font-variant-numeric: tabular-nums; }
+      #nav-end { min-width: 64px; min-height: 48px; padding: 0 14px; border: 0; border-radius: 24px; background: #ff8a8029; color: #ff8a80; font-size: 15px; font-weight: 700; cursor: pointer; }
+      /* While navigating the banner takes the top of a phone screen; the route card waits (it comes
+         back for a question, such as adding a waypoint). */
+      body.navigating #topbar, body.navigating #menu-button, body.navigating #map .maplibregl-ctrl-top-right { display: none !important; }
+      body.navigating #route-card:not(:has(#route-confirm:not([hidden]))) { display: none !important; }
+      @media (min-width: 900px) and (orientation: landscape) {
+        #nav-banner { left: calc(env(safe-area-inset-left) + 16px); right: auto; top: 16px; width: 380px; }
+        #nav-icon svg { width: 72px; height: 72px; }
+        #nav-main { flex-direction: column; align-items: flex-start; padding: 20px; gap: 10px; }
+        #nav-dist { font-size: 52px; }
+        #nav-text { font-size: 26px; font-weight: 700; }
+        #nav-bottom { left: calc(env(safe-area-inset-left) + 16px); right: auto; width: 380px; }
+        body.navigating #map .maplibregl-ctrl-top-right { display: block !important; }
+      }
       /* Route card (B): a header that turns into a blue summary band once routed, the stops as a
          From / Via / To timeline, route options behind a row, and outline actions. */
       #route-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; background: #fff; border-radius: 18px; box-shadow: 0 8px 28px #1e283c38; overflow: hidden; display: flex; flex-direction: column; }
@@ -163,6 +208,8 @@
       #route-options[hidden] { display: none; }
       #route-switch, #route-prefer-switch { display: flex; align-items: center; gap: 10px; min-height: 36px; font-size: 15px; }
       #route-switch input, #route-prefer-switch input { width: 20px; height: 20px; accent-color: #1d3f8f; }
+      #route-start { min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 14px; background: #1d3f8f; color: #fff; font-size: 18px; font-weight: 800; cursor: pointer; }
+      #route-start[hidden] { display: none; }
       #route-actions { display: flex; gap: 10px; }
       #route-actions > button { flex: 1; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 12px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 700; cursor: pointer; }
       #route-actions > button[hidden] { display: none; }
@@ -278,6 +325,25 @@
         <input id="backup-file" type="file" accept=".json,application/json" hidden />
       </div>
     </section>
+    <section id="nav-banner" aria-live="polite" hidden>
+      <div id="nav-main"><div id="nav-icon" aria-hidden="true"></div><div class="nav-text"><div id="nav-dist"></div><div id="nav-text"></div></div></div>
+      <div id="nav-then" hidden><span>Then</span><span id="nav-then-icon" aria-hidden="true"></span><span id="nav-then-text"></span><span id="nav-then-dist"></span></div>
+    </section>
+    <div id="nav-bottom" hidden>
+      <section id="nav-prompt" hidden>
+        <div class="nav-q">Plan the route again from here?</div>
+        <p>Keep going if you left the route on purpose, for a viewpoint or a ford. Guidance picks up again when you're back on it.</p>
+        <div class="nav-row"><button id="nav-replan" type="button" class="primary">Plan again</button><button id="nav-keep" type="button">Keep going</button></div>
+      </section>
+      <section id="nav-panel">
+        <div id="nav-to"></div>
+        <div class="nav-row">
+          <div class="nav-arrive"><span class="label">Arrive</span><span id="nav-arrive"></span></div>
+          <div class="nav-left"><div id="nav-time"></div><div id="nav-km"></div></div>
+          <button id="nav-end" type="button">End</button>
+        </div>
+      </section>
+    </div>
     <section id="route-card" aria-live="polite" hidden>
       <div id="route-head">
         <div id="route-head-text">
@@ -304,6 +370,7 @@
           <label id="route-switch" hidden><input id="route-froads" type="checkbox" checked /> Allow F-roads and tracks</label>
           <label id="route-prefer-switch" hidden><input id="route-prefer" type="checkbox" /> Prefer F-roads and tracks</label>
         </div>
+        <button id="route-start" type="button" hidden><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8 19-8-4.5L4 21z" fill="currentColor"/></svg>Start</button>
         <div id="route-actions"><button id="route-go" type="button">Route here</button><button id="route-save" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Save</span></button><button id="route-export" type="button"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Export GPX</span></button></div>
         <form id="route-save-form" hidden><input id="route-save-name" type="text" maxlength="80" aria-label="Name" autocomplete="off" /><button type="submit" class="primary">Save</button><button id="route-save-cancel" type="button">Cancel</button></form>
       </div>

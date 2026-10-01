@@ -315,6 +315,86 @@ try {
   for (const d of [0.0003, 0.0001, 0.0002, 0.0001, 0]) await fixAt(d, 0);
   await new Promise((r) => setTimeout(r, 300));
   console.log('route card minimize ok:', minCard.text);
+
+  // 3c. Turn-by-turn: Start; drive along the route (fixes from its own line); off the route asks
+  // (Keep going stays quiet until back on it; Plan again carries on along a new route); arrive; End.
+  const routeLine = await page.evaluate(() => window.__app.map.getStyle().sources.route.data.features.find((f) => f.properties.kind === 'route').geometry.coordinates);
+  const fixOn = async (p, dLat = 0) => {
+    await gps.send('Emulation.setGeolocationOverride', { latitude: p[1] + dLat, longitude: p[0], accuracy: 8, speed: 20 });
+    await new Promise((r) => setTimeout(r, 250));
+  };
+  const navState = () => page.evaluate(() => ({
+    on: document.body.classList.contains('navigating'),
+    banner: document.querySelector('#nav-banner').className,
+    dist: document.querySelector('#nav-dist').textContent,
+    text: document.querySelector('#nav-text').textContent,
+    then: document.querySelector('#nav-then').hidden ? '' : document.querySelector('#nav-then-text').textContent,
+    km: document.querySelector('#nav-km').textContent,
+    arrive: document.querySelector('#nav-arrive').textContent,
+    asking: !document.querySelector('#nav-prompt').hidden,
+    card: getComputedStyle(document.querySelector('#route-card')).display !== 'none',
+    to: document.querySelector('#nav-to').textContent,
+  }));
+  if (await page.$eval('#route-start', (e) => e.hidden)) fail('no Start button on a shown route');
+  await page.click('#route-start');
+  await fixOn(routeLine[0]);
+  let nav = await navState();
+  if (!nav.on || nav.card || nav.to !== 'To Landmannalaugar' || !/^\d+ (m|km)$|^\d+\.\d km$/.test(nav.dist) || !nav.text || !/^\d\d:\d\d$/.test(nav.arrive)) fail(`navigation started: ${JSON.stringify(nav)}`);
+  const kmAtStart = parseFloat(nav.km);
+  await fixOn(routeLine[Math.floor(routeLine.length / 3)]);
+  nav = await navState();
+  if (!(parseFloat(nav.km) < kmAtStart) || nav.banner !== '') fail(`driving along: ${JSON.stringify(nav)} (started with ${kmAtStart} km left)`);
+  console.log('navigating:', nav.dist, '·', nav.text, nav.then ? `· then ${nav.then}` : '', '·', nav.km);
+  const third = routeLine[Math.floor(routeLine.length / 3)];
+  // (A fix after a resize: the next one centres the map, as it would a second later in a car.)
+  await page.setViewport({ width: 390, height: 844 });
+  await fixOn(third, 0.00001);
+  await fixOn(third, 0.00002);
+  await new Promise((r) => setTimeout(r, 1200));
+  await page.screenshot({ path: `${OUT}nav-phone.png` });
+  // A head unit: the guidance in a column on the left, the map centred on you to its right.
+  await page.setViewport({ width: 1280, height: 720 });
+  await fixOn(third);
+  await fixOn(third, 0.00001);
+  await new Promise((r) => setTimeout(r, 1200));
+  await page.screenshot({ path: `${OUT}nav-headunit.png` });
+  const youX = await page.evaluate((p) => window.__app.map.project(p).x, third);
+  if (youX < 700 || youX > 1000) fail(`head unit: your position at x=${Math.round(youX)}, not in the map area right of the guidance`);
+  await page.setViewport({ width: 1024, height: 1024 });
+  // Off the route (~330 m north of it) for three fixes: the question. Keep going: quiet until back.
+  const mid = routeLine[Math.floor(routeLine.length / 3)];
+  for (let k = 0; k < 3; k++) await fixOn(mid, 0.003);
+  nav = await navState();
+  if (!nav.asking || nav.banner !== 'off' || nav.dist !== 'Off route') fail(`off the route: ${JSON.stringify(nav)}`);
+  await page.click('#nav-keep');
+  for (let k = 0; k < 3; k++) await fixOn(mid, 0.0031 + k * 0.0001);
+  if ((await navState()).asking) fail('asked again after Keep going while still off the route');
+  await fixOn(mid);
+  nav = await navState();
+  if (nav.banner !== '' || nav.asking) fail(`back on the route: ${JSON.stringify(nav)}`);
+  // Off again: Plan again carries on along a new route from here.
+  for (let k = 0; k < 3; k++) await fixOn(mid, 0.003);
+  await page.click('#nav-replan');
+  await page.waitForFunction(() => document.querySelector('#nav-banner').className === '' && document.querySelector('#nav-dist').textContent !== 'Planning…', { timeout: 60_000 }).catch(async () => fail(`plan again: ${JSON.stringify(await navState())}`));
+  nav = await navState();
+  if (!nav.on || nav.asking) fail(`after planning again: ${JSON.stringify(nav)}`);
+  console.log('replanned:', nav.text, '·', nav.km);
+  // The end of the (new) route: arrived.
+  const newLine = await page.evaluate(() => window.__app.map.getStyle().sources.route.data.features.find((f) => f.properties.kind === 'route').geometry.coordinates);
+  await fixOn(newLine[newLine.length - 1]);
+  nav = await navState();
+  if (nav.banner !== 'arrived' || nav.dist !== 'Arrived') fail(`arrival: ${JSON.stringify(nav)}`);
+  await page.click('#nav-end');
+  nav = await navState();
+  if (nav.on || !nav.card) fail(`End: ${JSON.stringify(nav)}`);
+  // Back at Selfoss, standing still, with the original route for the steps that follow.
+  await gps.send('Emulation.setGeolocationOverride', { latitude: 63.936, longitude: -21.0, accuracy: 10, speed: 0 });
+  await page.click('#route-close');
+  await page.click('#route-confirm-yes');
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
+  await page.click('#route-go');
+  await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
+  console.log('turn-by-turn ok');
   await openOptions();
   await page.click('#route-froads');
   if (await page.$eval('#route-prefer-switch', (e) => !e.hidden)) fail('"Prefer F-roads" shown with F-roads not allowed');

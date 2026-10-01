@@ -27,6 +27,16 @@ describe('joinLegs', () => {
     expect(r.seconds).toBe(150);
     expect(r.offRoadVia).toEqual([]);
   });
+  test('road stretches are moved to their place in the joined line; the first after a waypoint has its number', () => {
+    const seg = (start: number, name: string) => ({ start, name, type: 1, junction: false, seconds: 10 });
+    const r = joinLegs([
+      leg([[0, 0], [1, 0], [2, 0]], 1000, 60, { segs: [seg(0, 'A'), seg(1, 'B')] }),
+      leg([[2, 0], [3, 0], [4, 0]], 1000, 60, { segs: [seg(0, 'C'), seg(1, 'D')] }),
+    ]);
+    expect(r.segs!.map((s) => [s.start, s.name, s.via])).toEqual([[0, 'A', undefined], [1, 'B', undefined], [2, 'C', 1], [3, 'D', undefined]]);
+    expect(joinLegs([leg([[0, 0], [1, 0]], 1, 1), leg([[1, 0], [2, 0]], 1, 1, { segs: [seg(0, 'X')] })]).segs).toBeUndefined();
+  });
+
   test('off-road legs at the ends stay, those at waypoints are listed separately', () => {
     const s: [LonLat, LonLat] = [[-0.1, 0], [0, 0]];
     const toWp: [LonLat, LonLat] = [[1, 0], [1, 0.1]];

@@ -8,6 +8,10 @@ export interface RoadLine {
   net: number;
   cls: RoadClass;
   coords: Array<[number, number]>;
+  /** The road's name or number as the map labels it, and its Garmin line type (for turn
+   *  instructions); absent in synthetic test lines. */
+  name?: string | null;
+  type?: number;
 }
 
 /** Road lines that may come within `radiusM` metres of (x, y) (map units): those of every

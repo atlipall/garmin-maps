@@ -21,8 +21,8 @@ describe('routeShape', () => {
   gb.edge(b, a, 100, 36, 0, null, { tile: 0, net: 7 });
   const g = gb.build();
   const lineList: RoadLine[] = [
-    { tile: 0, net: 7, cls: 0, coords: [[0, 0], [10, 5], [20, 5]] },
-    { tile: 0, net: 7, cls: 0, coords: [[40, 0], [30, 5], [20, 5]] },
+    { tile: 0, net: 7, cls: 0, coords: [[0, 0], [10, 5], [20, 5]], name: 'F26', type: 0x12 },
+    { tile: 0, net: 7, cls: 0, coords: [[40, 0], [30, 5], [20, 5]], name: 'F26', type: 0x12 },
     { tile: 0, net: 9, cls: 0, coords: [[20, 5], [20, 50]] },
   ];
   const lines = async () => lineList;
@@ -31,12 +31,15 @@ describe('routeShape', () => {
 
   test('an edge whose road is split into several lines follows them, either way round', async () => {
     const idx = new NodeIndex(g);
-    expect(units(await routeShape(g, idx, route([a, b]), lines))).toEqual([[0, 0], [10, 5], [20, 5], [30, 5], [40, 0]]);
-    expect(units(await routeShape(g, idx, route([b, a]), lines))).toEqual([[40, 0], [30, 5], [20, 5], [10, 5], [0, 0]]);
+    const ab = await routeShape(g, idx, route([a, b]), lines);
+    expect(units(ab.coords)).toEqual([[0, 0], [10, 5], [20, 5], [30, 5], [40, 0]]);
+    // One road stretch, with the road's name and type and the edge's time (100 m at 36 km/h).
+    expect(ab.segs).toEqual([{ start: 0, name: 'F26', type: 0x12, junction: false, seconds: 10 }]);
+    expect(units((await routeShape(g, idx, route([b, a]), lines)).coords)).toEqual([[40, 0], [30, 5], [20, 5], [10, 5], [0, 0]]);
   });
 
   test('an edge without matching lines is drawn straight', async () => {
-    expect(units(await routeShape(g, new NodeIndex(g), route([a, b]), async () => []))).toEqual([[0, 0], [40, 0]]);
+    expect(units((await routeShape(g, new NodeIndex(g), route([a, b]), async () => [])).coords)).toEqual([[0, 0], [40, 0]]);
   });
 });
 
@@ -70,7 +73,7 @@ describe.skipIf(!hasRealData)('routeShape on real data', () => {
       return objs;
     };
 
-    const shape = await routeShape(g, idx, route, roadLineSource(map, decode, roads));
+    const shape = (await routeShape(g, idx, route, roadLineSource(map, decode, roads))).coords;
     expect(shape.length).toBeGreaterThan(route.nodes.length);
 
     const toUnits = ([lon, lat]: [number, number]): [number, number] => [Math.round(lon * UNITS_PER_DEG), Math.round(lat * UNITS_PER_DEG)];
@@ -97,7 +100,7 @@ describe.skipIf(!hasRealData)('routeShape on real data', () => {
     const idx = new NodeIndex(g);
     const route = fastestRoute(g, idx.nearest(-21.92, 64.13, 2000)!.node, idx.nearest(-19.35, 64.81, 2000)!.node, true)!;
     const decode = async (tile: MapTile, sd: Subdivision) => decodeSubdivision(await map.readSubdivision(tile, sd), sd, { sections: 0, badSections: 0 });
-    const shape = await routeShape(g, idx, route, roadLineSource(map, decode, roads));
+    const shape = (await routeShape(g, idx, route, roadLineSource(map, decode, roads))).coords;
     let drawn = 0;
     for (let i = 1; i < shape.length; i++) drawn += metresBetween(shape[i - 1][0] * UNITS_PER_DEG, shape[i - 1][1] * UNITS_PER_DEG, shape[i][0] * UNITS_PER_DEG, shape[i][1] * UNITS_PER_DEG);
     console.log(`drawn ${(drawn / 1000).toFixed(1)} km of ${(route.metres / 1000).toFixed(1)} km`);

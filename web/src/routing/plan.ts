@@ -3,6 +3,24 @@ import { cutLine, lineMetres, Snapper, type Anchor, type RoadLines, type Side } 
 
 export type LonLat = [number, number];
 
+/** A stretch of the route along one road, from `coords[start]` to the next stretch's start: what
+ *  turn instructions are made from. `junction`: a road branches off where it starts; `via`: a
+ *  waypoint's number, on the first stretch after it. */
+export interface RoadSeg {
+  start: number;
+  name: string | null;
+  type: number;
+  junction: boolean;
+  seconds: number;
+  via?: number;
+}
+
+/** A graph route drawn along its roads, with its road stretches. */
+export interface Shaped {
+  coords: LonLat[];
+  segs: RoadSeg[];
+}
+
 export type RouteReply =
   | {
       status: 'ok';
@@ -16,6 +34,9 @@ export type RouteReply =
       offRoadEnd: [LonLat, LonLat] | null;
       offRoadStartM: number;
       offRoadEndM: number;
+      /** The roads along `coords` (none for a route along a single stretch, and in routes saved
+       *  before turn instructions). */
+      segs?: RoadSeg[];
     }
   | { status: 'no-road-start' | 'no-road-end' | 'no-route' | 'no-route-any' | 'no-routing-data' | 'same-place' };
 
@@ -43,7 +64,7 @@ export async function planRoute(
   from: LonLat,
   to: LonLat,
   allowFRoads: boolean,
-  shape: (route: Route) => Promise<LonLat[]>,
+  shape: (route: Route) => Promise<LonLat[] | Shaped>,
   preferFRoads = false,
 ): Promise<RouteReply> {
   if (graph.nodeX.length === 0) return { status: 'no-routing-data' };
@@ -62,7 +83,7 @@ export async function planRoute(
   };
   const start = offRoad(from, a, true);
   const end = offRoad(to, b, false);
-  const ok = (coords: LonLat[], metres: number, secs: number): RouteReply => ({
+  const ok = (coords: LonLat[], metres: number, secs: number, segs?: RoadSeg[]): RouteReply => ({
     status: 'ok',
     coords,
     metres,
@@ -71,6 +92,7 @@ export async function planRoute(
     offRoadEnd: end.leg,
     offRoadStartM: start.metres,
     offRoadEndM: end.metres,
+    ...(segs ? { segs } : {}),
   });
 
   // Different places that join the road at the same point: only the off-road legs (the road part
@@ -88,9 +110,19 @@ export async function planRoute(
   const last = route.nodes[route.nodes.length - 1];
   const sa = a.sides.find((s) => s.node === first && s.leave > 0) as Side;
   const sb = b.sides.find((s) => s.node === last && s.arrive > 0) as Side;
-  const middle = await shape(route);
+  const shaped = await shape(route);
+  const middle = Array.isArray(shaped) ? shaped : shaped.coords;
   const coords = [...sa.path.map(deg), ...middle.slice(1), ...[...sb.path].reverse().slice(1).map(deg)];
-  return ok(coords, sa.metres + route.metres + sb.metres, route.seconds);
+  // The road stretches, moved past the partial stretch at the start; the partial stretches' times go
+  // to the first and last.
+  let segs: RoadSeg[] | undefined;
+  if (!Array.isArray(shaped) && shaped.segs.length) {
+    const offset = sa.path.length - 1;
+    segs = shaped.segs.map((s, i) => ({ ...s, start: i === 0 ? 0 : s.start + offset }));
+    segs[0].seconds += seconds(sa.metres, sa.leave);
+    segs[segs.length - 1].seconds += seconds(sb.metres, sb.arrive);
+  }
+  return ok(coords, sa.metres + route.metres + sb.metres, route.seconds, segs);
 }
 
 /** The way straight along the road when both ends lie on the same stretch between two nodes and

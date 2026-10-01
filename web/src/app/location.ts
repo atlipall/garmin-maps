@@ -107,6 +107,8 @@ export class LocationControl implements maplibregl.IControl {
   onStateChange: ((state: LocationState) => void) | null = null;
   /** Called with the smoothed GPS speed (m/s) on each fix that has one. */
   onSpeed: ((mps: number) => void) | null = null;
+  /** Called on every GPS fix (for navigation): where, how accurate (m). */
+  onFix: ((at: [number, number], accuracy: number) => void) | null = null;
 
   /** The latest position fix, if any. */
   get lastFix(): Fix | null {
@@ -178,6 +180,15 @@ export class LocationControl implements maplibregl.IControl {
   /** The mode, to remember across restarts. */
   get current(): LocationState {
     return this.state;
+  }
+
+  /** Follows with heading up, turning location on if it's off (navigation; call from a tap). */
+  navigate(): void {
+    if (this.state.mode === 'off') {
+      this.firstFix = true;
+      this.start();
+    }
+    this.setState({ mode: 'heading', paused: false }, true);
   }
 
   /** Brings back a remembered mode at startup (no tap: the compass is asked for on the next touch). */
@@ -279,6 +290,7 @@ export class LocationControl implements maplibregl.IControl {
     const v = pos.coords.speed;
     if (v !== null && Number.isFinite(v)) this.speed = this.speed === null ? v : this.speed + (v - this.speed) * SPEED_SMOOTHING;
     if (this.speed !== null) this.onSpeed?.(this.speed);
+    this.onFix?.(at, pos.coords.accuracy);
     if (this.firstFix && !this.state.paused) {
       this.firstFix = false;
       this.follow(true, true);

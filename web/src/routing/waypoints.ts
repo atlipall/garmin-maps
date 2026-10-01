@@ -1,4 +1,4 @@
-import type { LonLat, RouteReply } from './plan';
+import type { LonLat, RoadSeg, RouteReply } from './plan';
 
 type RouteOk = Extract<RouteReply, { status: 'ok' }>;
 
@@ -32,8 +32,14 @@ export function joinLegs(legs: RouteOk[]): JoinedRoute {
   const last = legs[legs.length - 1];
   const coords: LonLat[] = [];
   const via: Array<[LonLat, LonLat]> = [];
+  // The road stretches, each leg's moved to where its line starts in the joined one, the first after
+  // each waypoint marked with the waypoint's number. None when a leg has none.
+  const segs: RoadSeg[] | undefined = legs.every((l) => l.segs?.length) ? [] : undefined;
   legs.forEach((leg, i) => {
-    const c = coords.length && sameLonLat(coords[coords.length - 1], leg.coords[0]) ? leg.coords.slice(1) : leg.coords;
+    const dup = coords.length > 0 && sameLonLat(coords[coords.length - 1], leg.coords[0]);
+    const base = coords.length - (dup ? 1 : 0);
+    segs?.push(...leg.segs!.map((s, k) => ({ ...s, start: s.start + base, ...(i > 0 && k === 0 ? { via: i } : {}) })));
+    const c = dup ? leg.coords.slice(1) : leg.coords;
     coords.push(...c);
     if (i > 0 && leg.offRoadStart) via.push(leg.offRoadStart);
     if (i < legs.length - 1 && leg.offRoadEnd) via.push(leg.offRoadEnd);
@@ -48,6 +54,7 @@ export function joinLegs(legs: RouteOk[]): JoinedRoute {
     offRoadStartM: first.offRoadStartM,
     offRoadEndM: last.offRoadEndM,
     offRoadVia: via,
+    ...(segs ? { segs } : {}),
   };
 }
 

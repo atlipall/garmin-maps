@@ -1,8 +1,9 @@
 import type { RawObject } from '../img/rgn';
 import type { Subdivision } from '../img/tre';
-import type { GarminMap, MapTile } from '../map/garminMap';
+import { objectName, type GarminMap, type MapTile } from '../map/garminMap';
 import { paddedSubdivisionBounds } from '../tiles/buildTile';
 import { metresBetween, UNITS_PER_DEG, type NodeIndex, type RoadGraph, type Route } from './graph';
+import type { RoadSeg, Shaped } from './plan';
 import type { RoadClass, RoadClasses } from './roadClass';
 import { followRoad, type RoadLine, type RoadLines } from './snap';
 
@@ -13,32 +14,42 @@ const same = (a: [number, number], b: [number, number]) => a[0] === b[0] && a[1]
  * NET offset, from `lines`) from one end node to the other, across the several lines a road is
  * often drawn as. An edge whose road can't be followed to its other end is drawn straight.
  */
-export async function routeShape(g: RoadGraph, index: NodeIndex, route: Route, lines: RoadLines): Promise<Array<[number, number]>> {
+export async function routeShape(g: RoadGraph, index: NodeIndex, route: Route, lines: RoadLines): Promise<Shaped> {
   const deg = (p: [number, number]): [number, number] => [p[0] / UNITS_PER_DEG, p[1] / UNITS_PER_DEG];
   const coords: Array<[number, number]> = [];
+  const segs: RoadSeg[] = [];
   let prev = route.nodes[0];
   coords.push(deg([g.nodeX[prev], g.nodeY[prev]]));
   for (const e of route.edges) {
     const v = g.edgeTo[e];
     const a: [number, number] = [g.nodeX[prev], g.nodeY[prev]];
     const b: [number, number] = [g.nodeX[v], g.nodeY[v]];
-    const piece = g.edgeNet[e] >= 0 ? await along(lines, index, g.edgeTile[e], g.edgeNet[e], a, v) : null;
-    for (const p of (piece ?? [a, b]).slice(1)) coords.push(deg(p));
+    const found = g.edgeNet[e] >= 0 ? await along(lines, index, g.edgeTile[e], g.edgeNet[e], a, v) : null;
+    segs.push({ start: coords.length - 1, name: found?.line.name ?? null, type: found?.line.type ?? 0, junction: isJunction(g, prev), seconds: g.edgeLen[e] / (g.edgeSpeed[e] / 3.6) });
+    for (const p of (found?.path ?? [a, b]).slice(1)) coords.push(deg(p));
     prev = v;
   }
-  return coords;
+  return { coords, segs };
+}
+
+/** A node where three or more roads meet (somewhere a driver has a choice): one with edges to at
+ *  least three different nodes. */
+function isJunction(g: RoadGraph, u: number): boolean {
+  const to = new Set<number>();
+  for (let e = g.edgeStart[u]; e < g.edgeStart[u + 1]; e++) to.add(g.edgeTo[e]);
+  return to.size >= 3;
 }
 
 /** The road (tile, NET) from node point `a` to node `v`: from each place `a` lies on a line of that
  *  road, followed both ways to the next node; the way that arrives at `v`. */
-async function along(lines: RoadLines, index: NodeIndex, tile: number, net: number, a: [number, number], v: number): Promise<Array<[number, number]> | null> {
+async function along(lines: RoadLines, index: NodeIndex, tile: number, net: number, a: [number, number], v: number): Promise<{ path: Array<[number, number]>; line: RoadLine } | null> {
   for (const line of await lines(a[0], a[1], 0)) {
     if (line.tile !== tile || line.net !== net) continue;
     for (let i = 0; i < line.coords.length; i++) {
       if (!same(line.coords[i], a)) continue;
       for (const dir of [1, -1] as const) {
         const got = await followRoad(lines, index, line, i + dir, dir, a);
-        if (got?.node === v) return got.path;
+        if (got?.node === v) return { path: got.path, line };
       }
     }
   }
@@ -78,7 +89,7 @@ export function roadLineSource(map: GarminMap, decode: (tile: MapTile, sd: Subdi
         wanted.push(decode(tile, sd).then((objs) => {
           const lines = made.get(key) ?? objs
             .filter((o) => o.kind === 'line' && o.labelSrc === 'net')
-            .map((o) => ({ tile: i, net: o.label, cls: classOf[i].get(o.label) ?? 0, coords: o.coords }));
+            .map((o) => ({ tile: i, net: o.label, cls: classOf[i].get(o.label) ?? 0, coords: o.coords, name: objectName(tile, o), type: o.type }));
           made.set(key, lines);
           return lines;
         }));

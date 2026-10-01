@@ -16,6 +16,7 @@ import { HeightControl, LocationControl } from './location';
 import { RoutePlanner } from './route';
 import { SavedPanel } from './savedPanel';
 import { DriveSync } from './driveSync';
+import { Navigator } from './navigation';
 import { loadSession, saveSession } from './session';
 import { TracksPanel } from './tracks';
 import { TilePool, type OpenMeta } from '../worker/pool';
@@ -193,7 +194,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     showImport('', { hasMap: true, canCancel: true });
   };
 
-  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, sync: null as DriveSync | null };
+  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, sync: null as DriveSync | null, navigator: null as Navigator | null };
   window.__app = app;
   // F-road/track classes from the place-index pass, keyed by tile id and NET offset. Resolved
   // once `loadPlaces` finishes; a route requested before then awaits this instead. Rejected if
@@ -248,6 +249,28 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     if (session?.route) routePlanner.restore(session.route);
     routePlanner.onChange = remember;
     locate.onSpeed = (mps) => routePlanner.moving(mps);
+    // Turn-by-turn along the route shown: Start follows you heading up; every fix moves the guidance on.
+    const navigator = new Navigator({
+      replan: (passed) => routePlanner.replanFromHere(passed),
+      keepClear: (left) => map.setPadding({ top: 0, bottom: 0, right: 0, left }),
+      ended: () => {},
+    });
+    const here = () => locate.lastFix?.at ?? null;
+    routePlanner.onStart = () => {
+      const nav = routePlanner.navRoute();
+      if (!nav) return;
+      locate.navigate();
+      navigator.start(nav, here());
+    };
+    routePlanner.onPlanned = (ok) => {
+      if (!navigator.active) return;
+      const nav = ok ? routePlanner.navRoute() : null;
+      if (nav) navigator.start(nav, here());
+      else navigator.couldNotReplan();
+    };
+    routePlanner.onCleared = () => navigator.end();
+    locate.onFix = (at, accuracy) => navigator.fix(at, accuracy);
+    app.navigator = navigator;
     // Saved pins (stars on the map) and routes, from the route card's Save.
     const saved = new SavedPanel(
       map,
