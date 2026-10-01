@@ -13,6 +13,8 @@ const LONG_PRESS_MS = 600;
 /** In heading-up mode the position sits this fraction of the screen height below the centre
  *  (about 70% of the way down), leaving more of the way ahead in view. */
 const LOOK_AHEAD = 0.2;
+/** After a pinch or scroll zoom, following waits this long (ms) before moving the map again. */
+const HANDS_ON_MS = 800;
 /** Weight of each new GPS speed reading in the smoothed speed used for the follow zoom. */
 const SPEED_SMOOTHING = 0.4;
 /** The height pill is refreshed once the position has moved this far (m). */
@@ -81,6 +83,8 @@ export class LocationControl implements maplibregl.IControl {
   private targetZoom: number | null = null;
   /** Zoom follows speed (see ../location/followZoom.ts) until the user zooms by hand. */
   private autoZoom = false;
+  /** Until then the user is zooming by hand: following doesn't move the map under their fingers. */
+  private handsOnUntil = 0;
   private followZoom: number | null = null;
   /** Smoothed GPS speed (m/s), null when the GPS reports none. */
   private speed: number | null = null;
@@ -144,9 +148,14 @@ export class LocationControl implements maplibregl.IControl {
     const manualZoom = () => {
       this.targetZoom = null;
       this.autoZoom = false;
+      this.handsOnUntil = Date.now() + HANDS_ON_MS;
     };
     const canvas = map.getCanvasContainer();
     let lastTap = 0;
+    // Fingers still on the map: keep holding off following.
+    canvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length >= 2) this.handsOnUntil = Date.now() + HANDS_ON_MS;
+    }, { passive: true });
     canvas.addEventListener('wheel', manualZoom, { passive: true });
     canvas.addEventListener('dblclick', manualZoom);
     canvas.addEventListener('touchstart', (e) => {
@@ -168,8 +177,9 @@ export class LocationControl implements maplibregl.IControl {
   }
 
   private press(): void {
-    // Turning location on or resuming after a drag zooms in; switching north/heading up keeps the zoom.
-    const startsFollowing = this.state.mode === 'off' || this.state.paused;
+    // Turning location on zooms in; resuming after a drag, and switching north/heading up, keep the
+    // zoom you're at (heading up zoomed out stays zoomed out).
+    const startsFollowing = this.state.mode === 'off';
     if (this.state.mode === 'off') {
       this.firstFix = true;
       this.start();
@@ -212,6 +222,12 @@ export class LocationControl implements maplibregl.IControl {
     if ((next.mode === 'off') !== (prev.mode === 'off')) this.onActiveChange?.(next.mode !== 'off');
     this.render();
     this.onStateChange?.(next);
+    // Following heading up, a pinch only zooms: turning the map by hand would pause heading up (and
+    // a pinch nearly always turns a little). Otherwise two fingers may turn the map as usual.
+    if (this.map) {
+      if (next.mode === 'heading' && !next.paused) this.map.touchZoomRotate.disableRotation();
+      else this.map.touchZoomRotate.enableRotation();
+    }
     if (next.mode !== 'off' && !next.paused) this.follow(true, zoomIn);
   }
 
@@ -344,6 +360,8 @@ export class LocationControl implements maplibregl.IControl {
   private follow(jump: boolean, zoomIn = false): void {
     const map = this.map;
     if (!map || !this.fix || this.state.mode === 'off' || this.state.paused) return;
+    // Not in the middle of a pinch or scroll zoom: the next fix catches up.
+    if (Date.now() < this.handsOnUntil) return;
     const heading = this.state.mode === 'heading';
     const bearing = heading ? (this.heading ?? map.getBearing()) : 0;
     if (zoomIn) this.startZoom(map);

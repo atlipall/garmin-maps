@@ -33,7 +33,8 @@ try {
     try {
       return await rawClick(selector, options);
     } catch (err) {
-      throw new Error(`click ${selector}: ${err.message}`);
+      const at = new Error().stack?.split('\n').find((l) => l.includes('e2e.mjs') && !l.includes('page.click')) ?? '';
+      throw new Error(`click ${selector} (${at.trim()}): ${err.message}`);
     }
   };
   await page.setViewport({ width: 1024, height: 1024 });
@@ -177,7 +178,8 @@ try {
   if ((await locState()) !== 'heading') fail(`resume after pause: ${await locState()}`);
   await new Promise((r) => setTimeout(r, 900));
   const resumedZoom = await page.evaluate(() => window.__app.map.getZoom());
-  if (resumedZoom < 15.9) fail(`resuming did not zoom in: z${resumedZoom}`);
+  // Resuming keeps the zoom you're at (heading up zoomed out stays zoomed out).
+  if (Math.abs(resumedZoom - 11) > 0.1) fail(`resuming changed the zoom: z${resumedZoom}`);
   // Driving at 90 km/h heading 40°: the follow zoom eases out to 13, heading-up follows the GPS
   // course, and the position sits low on the screen (look-ahead).
   const gps = await page.createCDPSession();
@@ -205,6 +207,20 @@ try {
   await new Promise((r) => setTimeout(r, 800));
   const afterWalk = await page.evaluate(() => window.__app.map.getZoom());
   if (Math.abs(afterWalk - handZoom) > 0.05) fail(`speed zoom overrode a hand zoom: ${handZoom.toFixed(2)} -> ${afterWalk.toFixed(2)}`);
+  // Heading up stays on through a hand zoom, and a pinch can't turn the map (that would pause it).
+  const headingNow = await page.evaluate(() => ({ state: document.querySelector('.locate-button').dataset.state, noRotate: window.__app.map.touchZoomRotate._rotationDisabled }));
+  if (headingNow.state !== 'heading' || !headingNow.noRotate) fail(`heading up after a hand zoom: ${JSON.stringify(headingNow)}`);
+  // Dragged away and zoomed out, a tap resumes heading up at that zoom (no zoom back in).
+  await page.mouse.move(box.x, box.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 120, box.y + 40, { steps: 6 });
+  await page.mouse.up();
+  await page.evaluate(() => window.__app.map.jumpTo({ zoom: 9 }));
+  await page.click('.locate-button');
+  await drive(13, 1);
+  await new Promise((r) => setTimeout(r, 1000));
+  const resumed = await page.evaluate(() => ({ state: document.querySelector('.locate-button').dataset.state, zoom: window.__app.map.getZoom() }));
+  if (resumed.state !== 'heading' || Math.abs(resumed.zoom - 9) > 0.1) fail(`resume heading up keeps the zoom: ${JSON.stringify(resumed)}`);
   console.log(`driving ok: z${car.zoom.toFixed(1)}, bearing ${car.bearing.toFixed(0)}, position at ${Math.round(car.y * 100)}%`);
   await new Promise((r) => setTimeout(r, 800)); // let the resume animation finish
   await page.screenshot({ path: `${OUT}location.png` });
