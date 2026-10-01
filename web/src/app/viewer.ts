@@ -84,8 +84,15 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   $('perf').hidden = !debug;
   let bad = 0;
 
+  // A worker that crashed (often out of memory on a phone) rejects the tiles it was building; the
+  // pool starts a new one, so try once more there (MapLibre never retries a failed tile itself).
+  const again = <T>(get: () => Promise<T>, signal: AbortSignal): Promise<T> =>
+    get().catch((err) => {
+      if (signal.aborted || (err as Error)?.name === 'AbortError') throw err;
+      return get();
+    });
   maplibregl.addProtocol('garmin', async (params, abortController) => {
-    const r = await pool.tile(...parseZxy(params.url), abortController.signal);
+    const r = await again(() => pool.tile(...parseZxy(params.url), abortController.signal), abortController.signal);
     perf.record(r.ms, r.badSections, r.features);
     if (r.badSections) {
       bad += r.badSections;
@@ -96,7 +103,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   });
   if (meta.demBounds) {
     maplibregl.addProtocol('dem', async (params, abortController) => {
-      const r = await pool.dem(...parseZxy(params.url), abortController.signal);
+      const r = await again(() => pool.dem(...parseZxy(params.url), abortController.signal), abortController.signal);
       if (r.bitmap) return { data: r.bitmap };
       if (r.rgba) return { data: await createImageBitmap(new ImageData(new Uint8ClampedArray(r.rgba), 256, 256)) };
       throw new Error(`empty DEM tile ${params.url}`);

@@ -70,6 +70,9 @@ export interface NodNode {
   end: number;
 }
 
+/** More links than this from one node means the data is damaged. */
+const MAX_ARCS = 64;
+
 /** Decodes the node record at `off` in NOD1. */
 export function parseNode(nod1: Uint8Array, off: number, hdr: NodHeader): NodNode {
   const align = hdr.align;
@@ -103,6 +106,9 @@ export function parseNode(nod1: Uint8Array, off: number, hdr: NodHeader): NodNod
   let indexA = -1;
   let prevForward = false;
   for (;;) {
+    // A record that runs off the end of the data (a truncated or damaged map), or one with more
+    // links than any junction has: stop here rather than reading on forever.
+    if (p + 2 > nod1.length || node.arcs.length >= MAX_ARCS) break;
     const fa = nod1[p++];
     const fb = nod1[p++];
     let target: number;

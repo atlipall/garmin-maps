@@ -17,7 +17,12 @@ const PRECACHE = [...new Set([
 /** How long a navigation waits for the network before serving the cached shell. */
 const NAV_TIMEOUT_MS = 3000;
 
+/** Remembers the app's last two caches, newest last (a cache outside OWN, so it survives). */
+const ORDER = 'garmin-app-order-v1';
+
 const cacheable = (res) => res && res.ok && res.type === 'basic';
+/** A cached response, from this version's cache first, else an older one still kept. */
+const cached = (req) => caches.open(CACHE).then((c) => c.match(req)).then((hit) => hit || caches.match(req));
 const put = (key, res) => caches.open(CACHE).then((c) => c.put(key, res)).catch(() => {});
 
 self.addEventListener('install', (e) => {
@@ -27,10 +32,19 @@ self.addEventListener('install', (e) => {
     .then(() => self.skipWaiting()));
 });
 
+// The previous version's cache stays until the next update: a page still running the old version
+// (an iPhone Home Screen app can for days) can then still load its files, such as a worker it starts
+// later (importing a map, or a map worker restarted after a crash). Older ones are dropped.
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((k) => k.startsWith(OWN) && k !== CACHE).map((k) => caches.delete(k))))
-    .then(() => self.clients.claim()));
+  e.waitUntil((async () => {
+    const order = await caches.open(ORDER);
+    const had = await order.match('order').then((r) => (r ? r.json() : []), () => []);
+    const keep = [...had.filter((k) => k !== CACHE), CACHE].slice(-2);
+    await order.put('order', new Response(JSON.stringify(keep)));
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((k) => k.startsWith(OWN) && k !== ORDER && !keep.includes(k)).map((k) => caches.delete(k)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener('fetch', (e) => {
@@ -51,14 +65,14 @@ self.addEventListener('fetch', (e) => {
     e.respondWith((async () => {
       const res = await Promise.race([net.catch(() => null), timeout]);
       if (res && res.ok) return res;
-      const cached = await caches.match('./');
+      const cached = await caches.open(CACHE).then((c) => c.match('./'));
       if (cached) return cached;
       return res || net; // no cached shell: wait for (or fail with) the network
     })());
     return;
   }
 
-  e.respondWith(caches.match(req).then((hit) => {
+  e.respondWith(cached(req).then((hit) => {
     const net = fetch(req).then((res) => {
       if (cacheable(res)) put(req, res.clone());
       return res;

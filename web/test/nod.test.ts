@@ -50,6 +50,14 @@ describe('NOD reader', () => {
     expect(n1.end).toBe(24);
   });
 
+  test('a node record that runs off the end of the data (a truncated map) stops instead of reading on', () => {
+    const cut = sample().slice(0, 11);
+    cut[6] = 0x00; // node 0's only arc without its "last link" flag: the next would start past the end
+    const n0 = parseNode(cut, 0, HDR);
+    expect(n0.arcs.length).toBe(1);
+    expect(n0.end).toBe(11);
+  });
+
   test('NOD2 road records give start nodes; following arcs reaches every node', () => {
     const nod2 = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x03]);
     expect(nod2StartNodes(nod2)).toEqual([0]);

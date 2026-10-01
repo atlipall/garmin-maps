@@ -66,4 +66,9 @@ describe('collapseNearby', () => {
     ];
     expect(collapseNearby(hits).map((p) => [p.kind, p.lon])).toEqual([['line', -19.30], ['point', -19.31], ['line', -16.0]]);
   });
+
+  test('points of the same name are all kept: two farms "Stekkur" 10 km apart are two places', () => {
+    const farms = [place('Stekkur', 'point', 0x6402, -19.30, 65.30), place('Stekkur', 'point', 0x6402, -19.10, 65.30)];
+    expect(collapseNearby(farms)).toHaveLength(2);
+  });
 });

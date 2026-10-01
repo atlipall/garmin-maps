@@ -402,8 +402,13 @@ try {
   nav = await navState();
   const newCard = await page.$eval('#route-title', (e) => e.textContent);
   if (nav.on || !nav.card || !/^Dropped pin/.test(newCard)) fail(`New route while navigating: ${JSON.stringify({ ...nav, newCard })}`);
-  // Back at Selfoss, standing still, with the original route for the steps that follow.
-  await gps.send('Emulation.setGeolocationOverride', { latitude: 63.936, longitude: -21.0, accuracy: 10, speed: 0 });
+  // Back at Selfoss, standing still, with the original route for the steps that follow. The speed is
+  // smoothed over fixes: a few still ones bring it down, or a leftover driving speed would
+  // minimize the next route's card (as it should while moving) under the next steps' clicks.
+  for (const d of [0.0003, 0.0001, 0.0002, 0.0001, 0]) {
+    await gps.send('Emulation.setGeolocationOverride', { latitude: 63.936 + d, longitude: -21.0, accuracy: 10, speed: 0 });
+    await new Promise((r) => setTimeout(r, 150));
+  }
   await page.click('#route-close');
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
   await page.click('#route-go');

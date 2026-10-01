@@ -131,6 +131,12 @@ export function nearness(p: Place, from: [number, number]): number {
 export function collapseNearby(hits: Place[], km = 15): Place[] {
   const kept: Place[] = [];
   for (const p of hits) {
+    // Points (farms, hills, huts) are kept: the same name 10 km apart is two places. Only roads,
+    // rivers and areas, which the map stores in pieces, are collapsed.
+    if (p.kind === 'point') {
+      kept.push(p);
+      continue;
+    }
     const cat = placeCategory(p);
     const dup = kept.some((k) => k.name.toLowerCase() === p.name.toLowerCase() && placeCategory(k) === cat
       && distanceKm([k.lon, k.lat], [p.lon, p.lat]) < km);

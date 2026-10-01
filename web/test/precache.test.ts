@@ -63,7 +63,7 @@ describe('injectPrecache', () => {
 });
 
 describe('activate', () => {
-  test("deletes only this app's older caches: not the old root app's, not other sites' on the origin", async () => {
+  test("keeps this version's cache and the one before; deletes older ones of this app only", async () => {
     const deleted: string[] = [];
     let onActivate: ((e: { waitUntil(p: Promise<unknown>): void }) => void) | undefined;
     const self = {
@@ -71,14 +71,21 @@ describe('activate', () => {
       addEventListener: (type: string, fn: never) => { if (type === 'activate') onActivate = fn; },
       clients: { claim: async () => {} },
     };
+    const stored = new Map<string, string>([['order', JSON.stringify(['garmin-app-older', 'garmin-app-prev'])]]);
     const caches = {
-      keys: async () => ['garmin-app-dev', 'garmin-app-0123456789ab', 'garmin-map-0123456789ab', 'other-project-v1'],
+      keys: async () => ['garmin-app-dev', 'garmin-app-prev', 'garmin-app-older', 'garmin-app-order-v1', 'garmin-map-0123456789ab', 'other-project-v1'],
       delete: async (k: string) => { deleted.push(k); return true; },
+      open: async () => ({
+        match: async (k: string) => (stored.has(k) ? new Response(stored.get(k)) : undefined),
+        put: async (k: string, r: Response) => { stored.set(k, await r.text()); },
+      }),
     };
     new Function('self', 'caches', TEMPLATE)(self, caches);
     let done: Promise<unknown> = Promise.resolve();
     onActivate!({ waitUntil: (p) => { done = p; } });
     await done;
-    expect(deleted).toEqual(['garmin-app-0123456789ab']);
+    // 'garmin-app-dev' is this (unbuilt) version's cache.
+    expect(deleted).toEqual(['garmin-app-older']);
+    expect(JSON.parse(stored.get('order')!)).toEqual(['garmin-app-prev', 'garmin-app-dev']);
   });
 });
