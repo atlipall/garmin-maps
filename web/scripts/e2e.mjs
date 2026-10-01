@@ -18,6 +18,9 @@ const fail = (msg) => {
 
 await mkdir(OUT, { recursive: true });
 const hgts = (await readdir(HGT_DIR)).filter((n) => n.endsWith('.hgt')).map((n) => HGT_DIR + n);
+/** The built service worker, and its contents while a test stands in a newer one. */
+const SW = WEB + 'dist/app/sw.js';
+let swBuilt = null;
 const server = await preview({ root: WEB, preview: { port: PORT, strictPort: true } });
 let browser;
 try {
@@ -34,7 +37,17 @@ try {
       return await rawClick(selector, options);
     } catch (err) {
       const at = new Error().stack?.split('\n').find((l) => l.includes('e2e.mjs') && !l.includes('page.click')) ?? '';
-      throw new Error(`click ${selector} (${at.trim()}): ${err.message}`);
+      // Why: the nearest hidden ancestor (or none), its size, and the route card's state.
+      const why = await page.evaluate((sel) => {
+        const el = document.querySelector(sel);
+        if (!el) return 'no such element';
+        let hid = el;
+        while (hid && getComputedStyle(hid).display !== 'none' && !hid.hidden) hid = hid.parentElement;
+        const r = el.getBoundingClientRect();
+        const card = document.querySelector('#route-card');
+        return JSON.stringify({ hiddenAt: hid ? `${hid.tagName}#${hid.id}.${hid.className}` : null, rect: [r.x, r.y, r.width, r.height].map(Math.round), card: card && { cls: card.className, hidden: card.hidden, title: document.querySelector('#route-title')?.textContent, info: document.querySelector('#route-info')?.textContent, confirm: document.querySelector('#route-confirm')?.hidden } });
+      }, selector).catch((e) => `(state unavailable: ${e.message})`);
+      throw new Error(`click ${selector} (${at.trim()}): ${err.message} — ${why}`);
     }
   };
   await page.setViewport({ width: 1024, height: 1024 });
@@ -929,7 +942,33 @@ try {
   await waitReady();
   if (await page.$('#import:not([hidden])')) fail('empty pointer lost the stored map');
   console.log('empty pointer falls back ok');
+
+  // 10. A new version deployed while the app is open (sw.js with a later build): coming back into
+  // view installs it and the notice offers Reload, which then works offline too (the new version is
+  // fully cached before it takes over). (Not checking when offline is a unit test: puppeteer's offline
+  // mode covers the page, not the service worker's own fetches.)
+  swBuilt = await readFile(SW, 'utf8');
+  const newer = swBuilt
+    .replace(/const CACHE = "garmin-app-[0-9a-f]+"/, 'const CACHE = "garmin-app-e2e000newer"')
+    .replace(/const BUILD = (\{[^;]*\});/, (_, b) => `const BUILD = ${JSON.stringify({ ...JSON.parse(b), builtAt: '2999-01-01T00:00:00.000Z' })};`);
+  if (newer === swBuilt || !newer.includes('2999-01-01')) fail('could not stamp a newer sw.js');
+  await writeFile(SW, newer);
+  if (!(await page.$eval('#update', (e) => e.hidden))) fail('update notice before there was a new version');
+  // The app coming back into view (as when switching back to it on a phone) is when it checks.
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.waitForFunction(() => !document.querySelector('#update').hidden, { timeout: 30_000 }).catch(() => fail('no notice after a new version was installed'));
+  await page.screenshot({ path: `${OUT}update-notice.png` });
+  await page.click('#update-close');
+  if (await page.$eval('#update', (e) => getComputedStyle(e).display !== 'none')) fail('× did not hide the update notice');
+  await page.setOfflineMode(true);
+  await page.reload();
+  await waitReady();
+  // (This test's newer worker holds the same page, so it is still "new": told again at start.)
+  await page.waitForFunction(() => !document.querySelector('#update').hidden, { timeout: 10_000 }).catch(() => fail('a newer version already in control at start was not told'));
+  await page.setOfflineMode(false);
+  console.log('update notice ok');
 } finally {
+  if (swBuilt) await writeFile(SW, swBuilt);
   await browser?.close();
   await new Promise((resolve) => server.httpServer.close(resolve));
 }

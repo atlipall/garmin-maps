@@ -11,16 +11,17 @@ const FILES = [
   { path: 'fonts/Noto Sans Regular/0-255.pbf', hash: 'e5' },
   { path: 'sw.js', hash: 'f6' },
 ];
+const BUILD = { version: 'abc1234', builtAt: '2026-10-01T12:00:00.000Z' };
 
 /** Evaluates the service worker's top-level constants with a stubbed `self`. */
-function constants(src: string): { CACHE: string; PRECACHE: string[] } {
+function constants(src: string): { CACHE: string; PRECACHE: string[]; BUILD: unknown } {
   const body = src.slice(0, src.indexOf("self.addEventListener('install'"));
-  return new Function('self', `${body}; return { CACHE, PRECACHE };`)({ location: { origin: 'x' } });
+  return new Function('self', `${body}; return { CACHE, PRECACHE, BUILD };`)({ location: { origin: 'x' } });
 }
 
 describe('injectPrecache', () => {
-  test('stamps the cache name and lists every built file except sw.js and source maps', () => {
-    const out = injectPrecache(TEMPLATE, FILES);
+  test('stamps the cache name and build, and lists every built file except sw.js and source maps', () => {
+    const out = injectPrecache(TEMPLATE, FILES, BUILD);
     const kept = FILES.filter((f) => f.path !== 'sw.js' && !f.path.endsWith('.map'));
     const { CACHE, PRECACHE } = constants(out);
     expect(CACHE).toBe(cacheName(kept));
@@ -36,7 +37,8 @@ describe('injectPrecache', () => {
     expect(PRECACHE).toContain('./fonts/Noto%20Sans%20Italic/0-255.pbf');
     expect(new Set(PRECACHE).size).toBe(PRECACHE.length);
     expect(PRECACHE.some((u) => u.endsWith('.map') || u.endsWith('sw.js'))).toBe(false);
-    expect(out).not.toMatch(/__CACHE__|__PRECACHE__/);
+    expect(constants(out).BUILD).toEqual(BUILD);
+    expect(out).not.toMatch(/__CACHE__|__PRECACHE__|__BUILD__/);
   });
 
   test('the cache name changes with any file content and ignores list order', () => {
@@ -46,15 +48,16 @@ describe('injectPrecache', () => {
   });
 
   test('the unstamped template has safe dev defaults', () => {
-    const { CACHE, PRECACHE } = constants(TEMPLATE);
+    const { CACHE, PRECACHE, BUILD: build } = constants(TEMPLATE);
     expect(CACHE).toBe('garmin-app-dev');
+    expect(build).toBeNull();
     expect(PRECACHE[0]).toBe('./');
     expect(PRECACHE).toContain('./manifest.webmanifest');
   });
 
   test('refuses a template without exactly one of each placeholder', () => {
-    expect(() => injectPrecache('const CACHE = "x";', FILES)).toThrow(/__CACHE__/);
-    expect(() => injectPrecache(TEMPLATE + TEMPLATE, FILES)).toThrow(/found 2/);
+    expect(() => injectPrecache('const CACHE = "x";', FILES, BUILD)).toThrow(/__CACHE__/);
+    expect(() => injectPrecache(TEMPLATE + TEMPLATE, FILES, BUILD)).toThrow(/found 2/);
   });
 
   test('toUrl encodes each path segment', () => {

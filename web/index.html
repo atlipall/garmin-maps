@@ -61,6 +61,13 @@
       #menu [role="switch"]::after { content: ""; flex: none; width: 40px; height: 24px; border-radius: 12px; background: #c9ccd1 radial-gradient(circle at 12px 12px, #fff 9px, transparent 10px); transition: background-position 0.15s; }
       #menu [role="switch"][aria-checked="true"]::after { background: #1f7ae0 radial-gradient(circle at 28px 12px, #fff 9px, transparent 10px); }
       #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 64px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: 13px; color: #8a3b00; }
+      /* "A new version is ready": under the top row, below its search results, the menu and panels; hidden while navigating
+         (see updateNotice.ts) and under the import screen, where a reload would lose an import. */
+      #update { position: absolute; z-index: 2; top: calc(var(--top) + var(--btn) + var(--gap)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; max-width: calc(100% - 2 * var(--gap)); box-sizing: border-box; padding: 4px 4px 4px 14px; font-size: 14px; white-space: nowrap; }
+      #update[hidden], body.navigating #update { display: none; }
+      #update span { overflow: hidden; text-overflow: ellipsis; }
+      #update-reload { margin-left: 6px; padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+      #update-close { width: 36px; height: 36px; border: 0; background: none; font-size: 20px; line-height: 1; color: #667; cursor: pointer; }
       #perf { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); top: calc(var(--top) + var(--btn) + var(--gap)); padding: 6px 8px; font: 11px ui-monospace, monospace; white-space: pre; }
       /* MapLibre's corner controls, kept clear of the notch / home indicator and our top row.
          '#map' raises specificity above maplibre-gl.css, which loads after this sheet. */
@@ -293,6 +300,7 @@
       <div id="app-version"></div>
     </div>
     <div id="perf" class="panel" hidden></div>
+    <div id="update" class="panel" role="status" hidden><span>A new version is ready</span><button id="update-reload" type="button">Reload</button><button id="update-close" type="button" aria-label="Not now">×</button></div>
     <section id="tracks" class="panel" aria-labelledby="tracks-title" hidden>
       <div class="tracks-head">
         <h2 id="tracks-title" tabindex="-1">Tracks</h2>

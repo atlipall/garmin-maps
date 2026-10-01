@@ -1,10 +1,12 @@
 /* Offline support: precache the whole app shell; cache everything else same-origin on first use.
  *
  * `npm run build` rewrites the two placeholders below (scripts/precache.ts, run by the Vite plugin
- * in vite.config.ts): CACHE becomes `garmin-app-<hash of the built files>` and PRECACHE lists every
- * built file, so each deploy installs a fresh complete copy and `activate` drops the old one. The
- * defaults keep an unbuilt copy (dev) working. */
+ * in vite.config.ts): CACHE becomes `garmin-app-<hash of the built files>`, PRECACHE lists every
+ * built file, so each deploy installs a fresh complete copy and `activate` drops the old one, and
+ * BUILD is the build's {version, builtAt}, which a page asks for to tell whether it is out of date
+ * (src/app/updates.ts). The defaults keep an unbuilt copy (dev) working. */
 const CACHE = self.__CACHE__ || 'garmin-app-dev';
+const BUILD = self.__BUILD__ || null;
 /** Caches this app owns. Others on the origin (other sites under atlipall.github.io, and the
  *  pre-/app/ root app's `garmin-map-*` caches, which the root sw.js retires) are left alone. */
 const OWN = 'garmin-app-';
@@ -45,6 +47,11 @@ self.addEventListener('activate', (e) => {
     await Promise.all(keys.filter((k) => k.startsWith(OWN) && k !== ORDER && !keep.includes(k)).map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
+});
+
+// A page asks which build this is (with a port to answer on).
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'build' && e.ports[0]) e.ports[0].postMessage(BUILD);
 });
 
 self.addEventListener('fetch', (e) => {

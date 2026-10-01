@@ -1,10 +1,13 @@
+import { BUILD } from '../buildInfo';
 import { hasStoredData, loadStored, type Stored } from '../storage/store';
 import { showImport } from './importScreen';
+import { showUpdateNotice } from './updateNotice';
+import { browserEnv, UpdateWatcher } from './updates';
 import { startViewer } from './viewer';
 
 export async function startApp(): Promise<void> {
   if ('serviceWorker' in navigator && import.meta.env.PROD) {
-    navigator.serviceWorker.register(new URL('./sw.js', document.baseURI)).catch((err) => console.warn('service worker', err));
+    void new UpdateWatcher(BUILD, showUpdateNotice, browserEnv(new URL('./sw.js', document.baseURI))).start();
   }
   let stored: Stored | null = null;
   try {
