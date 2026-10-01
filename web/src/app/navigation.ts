@@ -83,6 +83,12 @@ export class Navigator {
   private asking = false;
   private lastOn: Where | null = null;
   private arrived = false;
+  /** "Plan again" is under way: no off-route question or banner until the new route (or not). */
+  private replanning = false;
+  /** Metres along the route to each waypoint (from the route's road stretches). */
+  private viaAlong: number[] = [];
+  /** Planning again failed: say so until back on the route. */
+  private noRoute = false;
 
   constructor(private readonly hooks: NavHooks) {
     // Turning a phone, or a head unit's screen changing size, moves the guidance column.
@@ -94,9 +100,10 @@ export class Navigator {
     };
     $('nav-replan').onclick = () => {
       this.ask(false);
+      this.replanning = true;
       this.banner(WARNING, 'Planning…', 'A new route from here', null, 'off');
       const along = this.lastOn?.along ?? 0;
-      this.hooks.replan(this.steps.filter((m) => m.kind === 'via' && m.along <= along).length);
+      this.hooks.replan(this.viaAlong.filter((a) => a <= along).length);
     };
   }
 
@@ -111,6 +118,9 @@ export class Navigator {
     const segs = r.segs?.length ? r.segs : [{ start: 0, name: null, type: 0, junction: false, seconds: r.seconds }];
     this.progress = new Progress(r.coords, r.segs, r.seconds);
     this.steps = maneuvers(r.coords, segs, nav.dest);
+    this.viaAlong = (r.segs ?? []).filter((s) => s.via).map((s) => this.progress!.cum[s.start]);
+    this.replanning = false;
+    this.noRoute = false;
     this.offFixes = 0;
     this.quiet = false;
     this.arrived = false;
@@ -129,6 +139,8 @@ export class Navigator {
 
   /** Planning again from here failed: say so, and don't ask again until back on the route. */
   couldNotReplan(): void {
+    this.replanning = false;
+    this.noRoute = true;
     this.quiet = true;
     this.banner(WARNING, 'No new route', "Couldn't plan a route from here", null, 'off');
   }
@@ -148,16 +160,22 @@ export class Navigator {
   fix(at: LonLat, accuracy: number): void {
     if (!this.progress || !this.nav) return;
     const where = this.progress.locate(at);
+    // Arrived: guidance is done (walking the last bit off the road to a hut isn't "off route").
+    if (this.arrived) return this.panel({ ...where, along: this.progress.total });
+    // A new route is being planned: keep the trip panel going, nothing else.
+    if (this.replanning) return this.panel(this.lastOn ?? where);
     if (where.off <= BACK_ON_M) {
       this.offFixes = 0;
       this.quiet = false;
+      this.noRoute = false;
       if (this.asking) this.ask(false);
     } else if (where.off > OFF_ROUTE_M && accuracy <= ROUGH_FIX_M) this.offFixes++;
     const off = this.offFixes >= OFF_ROUTE_FIXES;
     if (!off) this.lastOn = where;
     if (off && !this.quiet && !this.asking) this.ask(true);
     if (off) {
-      this.banner(WARNING, 'Off route', `You're ${fmtDist(where.off)} from the route`, null, 'off');
+      if (this.noRoute) this.banner(WARNING, 'No new route', "Couldn't plan a route from here", null, 'off');
+      else this.banner(WARNING, 'Off route', `You're ${fmtDist(where.off)} from the route`, null, 'off');
       this.panel(this.lastOn ?? where);
       return;
     }
@@ -166,7 +184,7 @@ export class Navigator {
 
   private show(where: Where): void {
     const p = this.progress!;
-    if (p.total - where.along <= ARRIVED_M || this.arrived) {
+    if ((p.total - where.along <= ARRIVED_M && where.off <= OFF_ROUTE_M) || this.arrived) {
       this.arrived = true;
       this.banner(PIN, 'Arrived', this.nav!.dest, null, 'arrived');
       this.panel({ ...where, along: p.total });

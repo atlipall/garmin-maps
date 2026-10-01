@@ -271,6 +271,11 @@ export class RoutePlanner {
     this.onChange?.();
   }
 
+  /** The search box's ×: drops a place card it opened, but never a route (the card's × asks). */
+  clearPlace(): void {
+    if (!this.started && !this.shown && !this.planning) this.clear();
+  }
+
   /** The route shown, for navigation. */
   navRoute(): NavRoute | null {
     if (!this.last || !this.dest) return null;
@@ -291,17 +296,20 @@ export class RoutePlanner {
   /** The card to remember across restarts: the place and, once routed, where from. */
   snapshot(): SessionRoute | null {
     if (!this.dest) return null;
-    return { dest: this.dest, routed: this.started, from: this.start ?? this.fromCentre, vias: this.vias };
+    return { dest: this.dest, routed: this.started, from: this.start ?? this.fromCentre, vias: this.vias, ...(this.last ? { at: this.last.from } : {}) };
   }
 
-  /** Brings back a remembered card; a route is planned again without moving the map. */
-  restore(r: SessionRoute): void {
+  /** Brings back a remembered card; a route is planned again without moving the map. One from your
+   *  position waits for a fix only when location comes back on (`locating`); otherwise it starts
+   *  where it started last time, rather than turning location on. */
+  restore(r: SessionRoute, locating: boolean): void {
     this.pick(r.dest);
     if (!r.routed) return;
     this.setVias(r.vias ?? []);
     this.fitRoute = false;
     if (r.from) this.setStart(r.from);
-    else void this.useMyLocation();
+    else if (locating) void this.useMyLocation();
+    else if (r.at) this.setStart(r.at);
   }
 
   /** Asks `question` in the card: the `yes` button (label `labels.yes`, "Clear route" by default)
@@ -420,7 +428,6 @@ export class RoutePlanner {
     this.clearStart();
     $('route-card').hidden = true;
     this.showSave();
-    this.onCleared?.();
     this.keepOpen = false;
     this.setMinimized(false);
     this.onChange?.();
@@ -442,7 +449,9 @@ export class RoutePlanner {
     button.setAttribute('aria-label', min ? 'Show route details' : 'Minimize');
   }
 
+  /** Drops the route (a new place, a saved route opened, ×): navigation along it ends too. */
   private clearRoute(): void {
+    if (this.started || this.shown || this.planning) this.onCleared?.();
     this.seq++;
     this.planning = false;
     this.started = false;

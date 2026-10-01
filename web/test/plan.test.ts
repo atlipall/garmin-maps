@@ -123,6 +123,9 @@ describe('planRoute', () => {
     const r = ok(await planRoute(two.graph, two.index, two.lines, [0.002, 0], [0.008, 0], true, noShape));
     expect(r.metres).toBeCloseTo(m([0.002, 0], [0.008, 0]), 3);
     expect(r.coords.map((p) => Math.round(p[0] * 1000))).toEqual([2, 5, 8]);
+    // One road stretch with the whole time (so a waypoint route joined from such a leg keeps every
+    // leg's stretches, and turn-by-turn its instructions).
+    expect(r.segs).toEqual([{ start: 0, name: null, type: 0, junction: false, seconds: r.seconds }]);
     const back = ok(await planRoute(two.graph, two.index, two.lines, [0.008, 0], [0.002, 0], true, noShape));
     expect(back.coords.map((p) => Math.round(p[0] * 1000))).toEqual([8, 5, 2]);
     // One-way a → b: going back needs another way round (none here).

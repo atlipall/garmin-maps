@@ -97,10 +97,16 @@ export async function planRoute(
 
   // Different places that join the road at the same point: only the off-road legs (the road part
   // is the two snapped points, no distance or time).
-  if (metresBetween(a.at[0], a.at[1], b.at[0], b.at[1]) < SAME_PLACE_M) return ok([deg(a.at), deg(b.at)], 0, 0);
+  // A route along one stretch has a single road stretch (its road's name isn't known here), so a
+  // route joined from legs keeps every leg's stretches.
+  const one = (secs: number): RoadSeg[] => [{ start: 0, name: null, type: 0, junction: false, seconds: secs }];
+  if (metresBetween(a.at[0], a.at[1], b.at[0], b.at[1]) < SAME_PLACE_M) return ok([deg(a.at), deg(b.at)], 0, 0, one(0));
 
   const direct = alongOneStretch(a, b);
-  if (direct) return ok(direct.path.map(deg), direct.metres, seconds(direct.metres, direct.kmh));
+  if (direct) {
+    const secs = seconds(direct.metres, direct.kmh);
+    return ok(direct.path.map(deg), direct.metres, secs, one(secs));
+  }
 
   const sources: Terminal[] = a.sides.filter((s) => s.leave > 0).map((s) => ({ node: s.node, cost: seconds(s.metres, s.leave) }));
   const targets: Terminal[] = b.sides.filter((s) => s.arrive > 0).map((s) => ({ node: s.node, cost: seconds(s.metres, s.arrive) }));

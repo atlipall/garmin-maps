@@ -125,6 +125,8 @@ export function maneuvers(coords: LonLat[], segs: RoadSeg[], dest: string): Mane
       const exit = j - i;
       const road = roadLabel(segs[j]?.name ?? null);
       add({ index: k, kind: 'roundabout', exit, road, text: `At the roundabout, take the ${ordinal(exit)} exit${onto(road)}` });
+      // The way off the roundabout needs no turn of its own, but may be where a waypoint is.
+      if (segs[j]?.via) add({ index: segs[j].start, kind: 'via', via: segs[j].via, road, text: `Waypoint ${segs[j].via}` });
       i = j;
       continue;
     }
@@ -148,6 +150,8 @@ export function maneuvers(coords: LonLat[], segs: RoadSeg[], dest: string): Mane
     add({ index: k, kind, turn, road, text });
   }
   add({ index: coords.length - 1, kind: 'arrive', road: null, text: `Arrive at ${dest}` });
-  // Two instructions within 20 m of each other: the second is the one that matters.
-  return out.filter((m, i) => !(i + 1 < out.length && m.kind !== 'depart' && out[i + 1].along - m.along < 20 && out[i + 1].kind !== 'arrive'));
+  // Two turns within 20 m of each other: the second is the one that matters. Waypoints, roundabouts,
+  // setting off and arriving always stay.
+  const turnish = (m: Maneuver) => m.kind === 'turn' || m.kind === 'keep' || m.kind === 'continue';
+  return out.filter((m, i) => !(turnish(m) && i + 1 < out.length && turnish(out[i + 1]) && out[i + 1].along - m.along < 20));
 }

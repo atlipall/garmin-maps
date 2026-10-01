@@ -375,6 +375,10 @@ try {
   // Off again: Plan again carries on along a new route from here.
   for (let k = 0; k < 3; k++) await fixOn(mid, 0.003);
   await page.click('#nav-replan');
+  // A fix while the new route is on its way: no question again, no "Off route" over "Planning…".
+  await fixOn(mid, 0.0031);
+  nav = await navState();
+  if (nav.asking || nav.dist === 'Off route') fail(`off-route question back while planning again: ${JSON.stringify(nav)}`);
   await page.waitForFunction(() => document.querySelector('#nav-banner').className === '' && document.querySelector('#nav-dist').textContent !== 'Planning…', { timeout: 60_000 }).catch(async () => fail(`plan again: ${JSON.stringify(await navState())}`));
   nav = await navState();
   if (!nav.on || nav.asking) fail(`after planning again: ${JSON.stringify(nav)}`);
@@ -384,16 +388,31 @@ try {
   await fixOn(newLine[newLine.length - 1]);
   nav = await navState();
   if (nav.banner !== 'arrived' || nav.dist !== 'Arrived') fail(`arrival: ${JSON.stringify(nav)}`);
+  // Walking on past the end (to a hut off the road): still arrived, no off-route question.
+  for (let k = 0; k < 4; k++) await fixOn(newLine[newLine.length - 1], 0.003 + k * 0.0002);
+  nav = await navState();
+  if (nav.banner !== 'arrived' || nav.asking) fail(`after arriving, off the road: ${JSON.stringify(nav)}`);
   await page.click('#nav-end');
   nav = await navState();
   if (nav.on || !nav.card) fail(`End: ${JSON.stringify(nav)}`);
+  // Navigating again: a dropped pin's "New route" ends navigation and shows the new place's card.
+  await page.click('#route-start');
+  await page.mouse.click(600, 500, { button: 'right' });
+  await page.click('#route-confirm-yes');
+  nav = await navState();
+  const newCard = await page.$eval('#route-title', (e) => e.textContent);
+  if (nav.on || !nav.card || !/^Dropped pin/.test(newCard)) fail(`New route while navigating: ${JSON.stringify({ ...nav, newCard })}`);
   // Back at Selfoss, standing still, with the original route for the steps that follow.
   await gps.send('Emulation.setGeolocationOverride', { latitude: 63.936, longitude: -21.0, accuracy: 10, speed: 0 });
   await page.click('#route-close');
-  await page.click('#route-confirm-yes');
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
   await page.click('#route-go');
   await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
+  // The search box's × leaves a route alone (it only clears a place card it opened).
+  await page.evaluate(() => document.querySelector('#topbar').classList.remove('collapsed'));
+  await page.type('#search', 'hek');
+  await page.click('#search-clear');
+  if (!(await page.evaluate(() => window.__app.map.getStyle().sources.route.data.features.length))) fail('the search box × cleared the route');
   console.log('turn-by-turn ok');
   await openOptions();
   await page.click('#route-froads');

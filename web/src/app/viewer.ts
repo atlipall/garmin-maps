@@ -247,7 +247,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       () => locate.activate(),
     );
     app.routePlanner = routePlanner;
-    if (session?.route) routePlanner.restore(session.route);
+    if (session?.route) routePlanner.restore(session.route, session.location.mode !== 'off');
     routePlanner.onChange = remember;
     locate.onSpeed = (mps) => routePlanner.moving(mps);
     // Turn-by-turn along the route shown: Start follows you heading up; every fix moves the guidance on.
@@ -310,7 +310,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       resolveRoads(roads);
       app.search = (q) => index.search(q);
       app.placesReady = true;
-      wireSearch(map, index, searchFrom, (d) => app.routePlanner?.pick(d), () => app.routePlanner?.clear());
+      wireSearch(map, index, searchFrom, (d) => app.routePlanner?.pick(d), () => app.routePlanner?.clearPlace());
       const input = $<HTMLInputElement>('search');
       input.placeholder = 'Search places';
       input.disabled = false;

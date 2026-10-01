@@ -57,6 +57,15 @@ describe('maneuvers', () => {
     expect(kinds(maneuvers(coords, [seg(0, 'GRENSÁSVEGUR'), seg(1, 'MIKLABRAUT', { junction: false })], 'X'))[1]).toBe('turn: Turn left onto Miklabraut');
   });
 
+  test('a waypoint right before a turn, or just after a roundabout, keeps its instruction', () => {
+    // A waypoint 11 m before a left turn: both stay (only two turns that close are merged).
+    const near: LonLat[] = [[0, 0], [0, 0.002], [0, 0.0021], [-0.002, 0.0021]];
+    expect(kinds(maneuvers(near, [seg(0, '1'), seg(1, '1', { via: 1 }), seg(2, '26')], 'X')).slice(1, 3)).toEqual(['via: Waypoint 1', 'turn: Turn left onto road 26']);
+    const coords: LonLat[] = [[0, 0], [0, 0.002], [0.0003, 0.0023], [0.0006, 0.002], [0.0006, 0]];
+    const segs = [seg(0, '1'), seg(1, null, { type: ROUNDABOUT }), seg(2, null, { type: ROUNDABOUT }), seg(3, '1', { via: 1 })];
+    expect(kinds(maneuvers(coords, segs, 'X')).slice(1, 3)).toEqual(['roundabout: At the roundabout, take the 2nd exit onto road 1', 'via: Waypoint 1']);
+  });
+
   test('a waypoint is its own instruction', () => {
     const coords: LonLat[] = [[0, 0], [0, 0.002], [0, 0.004]];
     const ms = maneuvers(coords, [seg(0, '1'), seg(1, '1', { via: 1 })], 'X');

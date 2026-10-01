@@ -13,6 +13,9 @@ describe('parseSession', () => {
     expect(parseSession(JSON.stringify(session), session.map)).toEqual(session);
     const pin = { ...session, route: { dest: { name: null, lon: -19.3, lat: 64.2 }, routed: true, from: [-21, 64] as [number, number], vias: [] } };
     expect(parseSession(JSON.stringify(pin), session.map)).toEqual(pin);
+    // Where a route from your position last started, to restore it without turning location on.
+    const fromHere = { ...session, route: { ...session.route!, at: [-21, 63.94] as [number, number] } };
+    expect(parseSession(JSON.stringify(fromHere), session.map)?.route?.at).toEqual([-21, 63.94]);
     expect(parseSession(JSON.stringify({ ...session, route: null }), session.map)?.route).toBeNull();
     // Saved before waypoints: none.
     const { vias: _, ...older } = session.route!;
@@ -27,5 +30,6 @@ describe('parseSession', () => {
     expect(parseSession(JSON.stringify({ ...session, location: { mode: 'sideways', paused: false } }), session.map)).toBeNull();
     expect(parseSession(JSON.stringify({ ...session, route: { dest: { lon: 1 }, routed: true, from: null } }), session.map)).toBeNull();
     expect(parseSession(JSON.stringify({ ...session, route: { ...session.route, vias: [{ lon: 'x' }] } }), session.map)).toBeNull();
+    expect(parseSession(JSON.stringify({ ...session, route: { ...session.route, at: [1] } }), session.map)).toBeNull();
   });
 });
