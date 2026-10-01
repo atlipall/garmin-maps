@@ -79,6 +79,29 @@ try {
   sb = await bar();
   if (!sb.collapsed) fail(`empty search bar did not collapse: ${JSON.stringify(sb)}`);
   console.log('search bar ok');
+  // Keyboard: Arrow down + Enter picks a result (its card opens); the menu takes focus and Escape
+  // closes it; a panel takes focus and Escape closes it.
+  await page.click('#search-open');
+  await page.keyboard.type('hekla');
+  await page.waitForFunction(() => document.querySelectorAll('#results li[role="option"]').length > 0);
+  await page.keyboard.press('ArrowDown');
+  const activeOption = await page.evaluate(() => document.querySelector('#search').getAttribute('aria-activedescendant'));
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => !document.querySelector('#route-card').hidden, { timeout: 5_000 }).catch(() => fail('Enter on a search result did not open its card'));
+  const kbTitle = await page.$eval('#route-title', (e) => e.textContent);
+  if (activeOption !== 'result-0' || !/hekla/i.test(kbTitle)) fail(`keyboard search: ${activeOption} → ${kbTitle}`);
+  await page.click('#route-close');
+  await page.$eval('#search', (e) => { e.value = ''; e.dispatchEvent(new Event('input')); });
+  await page.click('#menu-button');
+  if (await page.evaluate(() => document.activeElement?.closest('#menu') === null)) fail('opening the menu did not move focus into it');
+  await page.keyboard.press('Escape');
+  if (await page.evaluate(() => !document.querySelector('#menu').hidden || document.activeElement?.id !== 'menu-button')) fail('Escape did not close the menu back to its button');
+  await page.click('#menu-button');
+  await page.click('#saved-open');
+  if (await page.evaluate(() => document.activeElement?.id !== 'saved-title')) fail('the Saved panel did not take focus');
+  await page.keyboard.press('Escape');
+  if (await page.evaluate(() => !document.querySelector('#saved').hidden)) fail('Escape did not close the Saved panel');
+  console.log('keyboard ok:', kbTitle);
 
   // 3b. location: a simulated GPS fix at Landmannalaugar; follow, heading up, pause on drag, height
   await browser.defaultBrowserContext().overridePermissions(`http://localhost:${PORT}`, ['geolocation', 'accelerometer', 'gyroscope', 'magnetometer']);

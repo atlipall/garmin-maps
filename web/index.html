@@ -53,10 +53,10 @@
       #map-file { font-weight: 600; overflow-wrap: anywhere; }
       #map-dem { font-size: 13px; color: #667; }
       #map-dem:empty { display: none; }
-      #app-version { padding: 8px 16px 6px; margin-top: 4px; border-top: 1px solid #0001; font-size: 12px; color: #778; font-variant-numeric: tabular-nums; }
-      #menu [role="menuitemcheckbox"] { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
-      #menu [role="menuitemcheckbox"]::after { content: ""; flex: none; width: 40px; height: 24px; border-radius: 12px; background: #c9ccd1 radial-gradient(circle at 12px 12px, #fff 9px, transparent 10px); transition: background-position 0.15s; }
-      #menu [role="menuitemcheckbox"][aria-checked="true"]::after { background: #1f7ae0 radial-gradient(circle at 28px 12px, #fff 9px, transparent 10px); }
+      #app-version { padding: 8px 16px 6px; margin-top: 4px; border-top: 1px solid #0001; font-size: 12px; color: #667; font-variant-numeric: tabular-nums; }
+      #menu [role="switch"] { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+      #menu [role="switch"]::after { content: ""; flex: none; width: 40px; height: 24px; border-radius: 12px; background: #c9ccd1 radial-gradient(circle at 12px 12px, #fff 9px, transparent 10px); transition: background-position 0.15s; }
+      #menu [role="switch"][aria-checked="true"]::after { background: #1f7ae0 radial-gradient(circle at 28px 12px, #fff 9px, transparent 10px); }
       #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 64px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: 13px; color: #8a3b00; }
       #perf { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); top: calc(var(--top) + var(--btn) + var(--gap)); padding: 6px 8px; font: 11px ui-monospace, monospace; white-space: pre; }
       /* MapLibre's corner controls, kept clear of the notch / home indicator and our top row.
@@ -110,11 +110,13 @@
       .track-info .name { font-weight: 600; overflow-wrap: anywhere; }
       .track-info .stats { font-size: 13px; color: #667; }
       .track-eye, .track-delete { min-width: 40px; height: 40px; border: 0; border-radius: 8px; background: none; color: #445; cursor: pointer; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
-      .track-eye[aria-pressed="false"] { color: #99a; }
+      .track-eye[aria-pressed="false"] { color: #778; }
       .track-delete.confirm { padding: 0 10px; background: #b00020; color: #fff; font-size: 14px; font-weight: 600; }
       #tracks-error, #saved-error { color: #b00020; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
       #tracks-error:not(:empty), #saved-error:not(:empty) { margin-top: 8px; }
       #import-gpx { margin-top: 10px; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 16px; cursor: pointer; }
+      .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+      #results li[aria-selected="true"] { background: #eef3ff; }
       /* Turn-by-turn: the turn banner on top, the off-route question and the trip panel at the
          bottom; on a wide landscape screen (a car head unit) both in a column on the left. */
       #nav-banner { position: absolute; z-index: 5; left: calc(env(safe-area-inset-left) + 10px); right: calc(env(safe-area-inset-right) + 10px); top: calc(env(safe-area-inset-top) + 8px); max-width: 520px; border-radius: 20px; overflow: hidden; color: #fff; box-shadow: 0 8px 24px #0a14284d; }
@@ -191,7 +193,7 @@
       #route-stops { display: grid; }
       #route-stops .stop + .stop, #route-stops .stop + #route-choices + .stop, #route-via-list .stop { border-top: 1px solid #eef0f3; }
       #route-change { min-height: 40px; padding: 0 4px; border: 0; background: none; color: var(--accent); font-size: 15px; font-weight: 700; cursor: pointer; }
-      .via-remove { width: 36px; height: 36px; border: 0; border-radius: 50%; background: #f1f3f6; color: #5b6475; display: grid; place-items: center; cursor: pointer; }
+      .via-remove { width: 40px; height: 40px; margin: -2px 0; border: 0; border-radius: 50%; background: #f1f3f6; color: #5b6475; display: grid; place-items: center; cursor: pointer; }
       #route-stop-to[hidden] { display: none; }
       #route-choices, #route-confirm { display: flex; flex-wrap: wrap; gap: 8px; }
       #route-choices { padding: 0 0 8px 34px; }
@@ -269,27 +271,27 @@
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
       </button>
       <div class="search-row">
-        <input id="search" type="search" placeholder="Loading places…" aria-label="Search places" disabled autocomplete="off" enterkeyhint="search" />
+        <input id="search" type="search" placeholder="Loading places…" aria-label="Search places" disabled autocomplete="off" enterkeyhint="search" role="combobox" aria-autocomplete="list" aria-controls="results" aria-expanded="false" />
         <button id="search-clear" type="button" aria-label="Clear search" hidden>×</button>
       </div>
-      <ul id="results"></ul>
+      <ul id="results" role="listbox" aria-label="Places found"></ul>
       <div id="search-hint" hidden></div>
     </div>
     <div id="badge" class="panel" role="status" aria-live="polite" hidden></div>
-    <button id="menu-button" class="panel" aria-label="Menu" aria-haspopup="true" aria-expanded="false" hidden>⋯</button>
-    <div id="menu" class="panel" role="menu" hidden>
-      <div id="map-name" role="presentation"><span class="label">Map</span><span id="map-file"></span><span id="map-dem"></span></div>
-      <button id="tracks-open" role="menuitem">Tracks (GPX)</button>
-      <button id="saved-open" role="menuitem">Saved pins and routes</button>
-      <button id="sync-open" role="menuitem">Sync and backup<span id="sync-menu-status"></span></button>
-      <button id="keep-awake" role="menuitemcheckbox" aria-checked="true">Keep screen on while locating</button>
-      <button id="replace" role="menuitem">Load another map</button>
-      <div id="app-version" role="presentation"></div>
+    <button id="menu-button" class="panel" aria-label="Menu" aria-controls="menu" aria-expanded="false" hidden>⋯</button>
+    <div id="menu" class="panel" hidden>
+      <div id="map-name"><span class="label">Map</span><span id="map-file"></span><span id="map-dem"></span></div>
+      <button id="tracks-open">Tracks (GPX)</button>
+      <button id="saved-open">Saved pins and routes</button>
+      <button id="sync-open">Sync and backup<span id="sync-menu-status"></span></button>
+      <button id="keep-awake" role="switch" aria-checked="true">Keep screen on while locating</button>
+      <button id="replace">Load another map</button>
+      <div id="app-version"></div>
     </div>
     <div id="perf" class="panel" hidden></div>
     <section id="tracks" class="panel" aria-labelledby="tracks-title" hidden>
       <div class="tracks-head">
-        <h2 id="tracks-title">Tracks</h2>
+        <h2 id="tracks-title" tabindex="-1">Tracks</h2>
         <button id="tracks-close" type="button" aria-label="Close tracks">×</button>
       </div>
       <p id="tracks-empty">No tracks yet. Import GPX files, for example ones recorded with another app, to see them on the map.</p>
@@ -300,7 +302,7 @@
     </section>
     <section id="saved" class="panel" aria-labelledby="saved-title" hidden>
       <div class="tracks-head">
-        <h2 id="saved-title">Saved</h2>
+        <h2 id="saved-title" tabindex="-1">Saved</h2>
         <button id="saved-close" type="button" aria-label="Close saved">×</button>
       </div>
       <p id="saved-empty">Nothing saved yet. Tap <b>Save</b> on a place or route card to keep it here.</p>
@@ -309,7 +311,7 @@
     </section>
     <section id="sync-panel" class="panel" aria-labelledby="sync-title" hidden>
       <div class="tracks-head">
-        <h2 id="sync-title">Sync and backup</h2>
+        <h2 id="sync-title" tabindex="-1">Sync and backup</h2>
         <button id="sync-close" type="button" aria-label="Close sync and backup">×</button>
       </div>
       <div id="sync" hidden>
@@ -325,13 +327,14 @@
         <input id="backup-file" type="file" accept=".json,application/json" hidden />
       </div>
     </section>
-    <section id="nav-banner" aria-live="polite" hidden>
+    <div id="nav-say" class="sr-only" aria-live="polite"></div>
+    <section id="nav-banner" aria-label="Next turn" hidden>
       <div id="nav-main"><div id="nav-icon" aria-hidden="true"></div><div class="nav-text"><div id="nav-dist"></div><div id="nav-text"></div></div></div>
       <div id="nav-then" hidden><span>Then</span><span id="nav-then-icon" aria-hidden="true"></span><span id="nav-then-text"></span><span id="nav-then-dist"></span></div>
     </section>
     <div id="nav-bottom" hidden>
-      <section id="nav-prompt" hidden>
-        <div class="nav-q">Plan the route again from here?</div>
+      <section id="nav-prompt" role="alertdialog" aria-labelledby="nav-q" hidden>
+        <div class="nav-q" id="nav-q">Plan the route again from here?</div>
         <p>Keep going if you left the route on purpose, for a viewpoint or a ford. Guidance picks up again when you're back on it.</p>
         <div class="nav-row"><button id="nav-replan" type="button" class="primary">Plan again</button><button id="nav-keep" type="button">Keep going</button></div>
       </section>
@@ -344,7 +347,7 @@
         </div>
       </section>
     </div>
-    <section id="route-card" aria-live="polite" hidden>
+    <section id="route-card" aria-label="Route" hidden>
       <div id="route-head">
         <div id="route-head-text">
           <div id="route-title"></div>
@@ -355,7 +358,7 @@
         <button id="route-close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       </div>
       <div id="route-body">
-        <div id="route-info"></div>
+        <div id="route-info" role="status"></div>
         <div id="route-stops">
           <div class="stop" id="route-from"><span class="stop-mark from"></span><div class="stop-text"><span class="stop-label">From</span><span class="stop-name" id="route-from-text"></span></div><button id="route-change" type="button" aria-expanded="false" aria-controls="route-choices">Change</button></div>
           <div id="route-choices" hidden><button id="route-use-gps" type="button">Use my location</button><button id="route-choose" type="button">Choose on the map</button></div>
@@ -363,8 +366,8 @@
           <div class="stop" id="route-stop-to" hidden><span class="stop-mark"><svg width="16" height="20" viewBox="0 0 14 18" aria-hidden="true"><path d="M7 0C3.1 0 0 3.1 0 7c0 5 7 11 7 11s7-6 7-11c0-3.9-3.1-7-7-7z" fill="#c0392b"/><circle cx="7" cy="7" r="2.6" fill="#fff"/></svg></span><div class="stop-text"><span class="stop-label">To</span><span class="stop-name" id="route-to-text"></span></div><span></span></div>
         </div>
         <div id="route-off"></div>
-        <div id="route-msg"></div>
-        <div id="route-confirm" hidden><div id="route-confirm-text"></div><button id="route-confirm-via" type="button" class="primary" hidden>Add as waypoint</button><button id="route-confirm-yes" type="button" class="primary">Clear route</button><button id="route-confirm-no" type="button">Keep route</button></div>
+        <div id="route-msg" role="status"></div>
+        <div id="route-confirm" role="alertdialog" aria-labelledby="route-confirm-text" hidden><div id="route-confirm-text"></div><button id="route-confirm-via" type="button" class="primary" hidden>Add as waypoint</button><button id="route-confirm-yes" type="button" class="primary">Clear route</button><button id="route-confirm-no" type="button">Keep route</button></div>
         <button id="route-options-toggle" type="button" aria-expanded="false" aria-controls="route-options" hidden><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" fill="none" stroke="#5b6475" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="#5b6475" stroke-width="2"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="#5b6475" stroke-width="2"/></svg><span class="grow">Route options</span><span id="route-options-sum"></span><svg class="chev" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="#5b6475" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <div id="route-options" hidden>
           <label id="route-switch" hidden><input id="route-froads" type="checkbox" checked /> Allow F-roads and tracks</label>

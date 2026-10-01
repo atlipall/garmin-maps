@@ -377,7 +377,6 @@ export class HeightControl implements maplibregl.IControl {
   constructor() {
     this.element.className = 'maplibregl-ctrl height-pill';
     this.element.hidden = true;
-    this.element.setAttribute('role', 'status');
     this.element.title = 'Ground height at your position';
   }
   onAdd(): HTMLElement {

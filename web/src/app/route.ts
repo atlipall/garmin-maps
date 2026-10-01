@@ -323,6 +323,8 @@ export class RoutePlanner {
     $('route-confirm-no').textContent = labels.no ?? 'Keep route';
     $('route-confirm-via').hidden = !labels.via;
     $('route-confirm-yes').classList.toggle('primary', !labels.via);
+    // Keyboard and screen readers: the question takes focus (an alertdialog, read out).
+    queueMicrotask(() => (labels.via ? $('route-confirm-via') : $('route-confirm-yes')).focus({ preventScroll: true }));
     $('route-confirm').hidden = false;
     $('route-card').hidden = false;
     this.setMinimized(false);

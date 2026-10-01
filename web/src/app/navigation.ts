@@ -89,6 +89,8 @@ export class Navigator {
   private viaAlong: number[] = [];
   /** Planning again failed: say so until back on the route. */
   private noRoute = false;
+  /** The instruction last announced to screen readers. */
+  private said = '';
 
   constructor(private readonly hooks: NavHooks) {
     // Turning a phone, or a head unit's screen changing size, moves the guidance column.
@@ -203,6 +205,11 @@ export class Navigator {
     $('nav-icon').innerHTML = iconSvg;
     $('nav-dist').textContent = dist;
     $('nav-text').textContent = text;
+    // Screen readers hear a new instruction once, not every distance update.
+    if (text !== this.said) {
+      this.said = text;
+      $('nav-say').textContent = state === 'off' || state === 'arrived' ? `${dist}. ${text}` : `In ${dist}, ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+    }
     $('nav-then').hidden = !then;
     if (then) {
       $('nav-then-icon').innerHTML = icon(then.m);
@@ -221,5 +228,6 @@ export class Navigator {
   private ask(on: boolean): void {
     this.asking = on;
     $('nav-prompt').hidden = !on;
+    if (on) $('nav-replan').focus({ preventScroll: true });
   }
 }

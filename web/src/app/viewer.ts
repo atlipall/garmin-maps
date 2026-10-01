@@ -188,7 +188,24 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     $('menu').hidden = !open;
     $('menu-button').setAttribute('aria-expanded', String(open));
   };
-  $('menu-button').onclick = () => setMenu($('menu').hidden !== false);
+  // Keyboard and screen readers: opening the menu moves focus into it; Escape closes it.
+  $('menu-button').onclick = () => {
+    const open = $('menu').hidden !== false;
+    setMenu(open);
+    if (open) $('menu').querySelector<HTMLButtonElement>('button:not([hidden])')?.focus();
+  };
+  $('menu').addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    setMenu(false);
+    $('menu-button').focus();
+  });
+  // The panels opened from the menu: focus their heading; Escape or × closes them and focus goes
+  // back to the menu button.
+  for (const [panel, close] of [['tracks', 'tracks-close'], ['saved', 'saved-close'], ['sync-panel', 'sync-close']]) {
+    $(panel).addEventListener('keydown', (e) => e.key === 'Escape' && $(close).click());
+    $(close).addEventListener('click', () => $('menu-button').focus());
+  }
+  const focusPanel = (panel: string) => $(panel).querySelector<HTMLElement>('h2')?.focus();
   map.on('movestart', () => setMenu(false));
   let closed = false;
   $('replace').onclick = () => {
@@ -246,6 +263,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     $('tracks-open').onclick = () => {
       setMenu(false);
       tracks.show(true);
+      focusPanel('tracks');
     };
     const routePlanner = new RoutePlanner(
       map,
@@ -303,11 +321,13 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     $('sync-open').onclick = () => {
       setMenu(false);
       $('sync-panel').hidden = false;
+      focusPanel('sync-panel');
     };
     $('sync-close').onclick = () => ($('sync-panel').hidden = true);
     $('saved-open').onclick = () => {
       setMenu(false);
       saved.show(true);
+      focusPanel('saved');
     };
   });
 
@@ -354,9 +374,41 @@ function wireSearch(
   const input = $<HTMLInputElement>('search');
   const list = $<HTMLUListElement>('results');
   let timer = 0;
+  // A search box with a list of suggestions: Arrow keys move through the results, Enter picks one
+  // (the first when none is chosen), Escape clears.
+  let active = -1;
+  const options = () => [...list.querySelectorAll<HTMLLIElement>('li')];
+  const setActive = (i: number) => {
+    const all = options();
+    active = all.length ? (i + all.length) % all.length : -1;
+    all.forEach((li, k) => li.setAttribute('aria-selected', String(k === active)));
+    if (active >= 0) {
+      input.setAttribute('aria-activedescendant', all[active].id);
+      all[active].scrollIntoView({ block: 'nearest' });
+    } else input.removeAttribute('aria-activedescendant');
+  };
+  const showList = () => {
+    input.setAttribute('aria-expanded', String(list.children.length > 0));
+    setActive(-1);
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive(active + (e.key === 'ArrowDown' ? 1 : -1));
+    } else if (e.key === 'Enter') {
+      const li = options()[active >= 0 ? active : 0];
+      if (li) {
+        e.preventDefault();
+        li.click();
+      }
+    } else if (e.key === 'Escape' && input.value) {
+      e.preventDefault();
+      clear.click();
+    }
+  });
   const render = () => {
     list.replaceChildren(
-      ...collapseNearby(index.search(input.value, 100, searchFrom().at)).slice(0, 20).map((p) => {
+      ...collapseNearby(index.search(input.value, 100, searchFrom().at)).slice(0, 20).map((p, i) => {
         const from = searchFrom();
         const d = describePlace(p, towns, from.at);
         const li = document.createElement('li');
@@ -371,15 +423,20 @@ function wireSearch(
         dist.textContent = d.distance ?? '';
         dist.title = from.gps ? 'from your position' : 'from the map centre';
         li.append(name, detail, dist);
+        li.id = `result-${i}`;
+        li.setAttribute('role', 'option');
+        li.setAttribute('aria-selected', 'false');
         li.onclick = () => {
           map.flyTo({ center: [p.lon, p.lat], zoom: p.kind === 'point' ? 14 : 12 });
           onPick({ name: titleCase(p.name), lon: p.lon, lat: p.lat });
           list.replaceChildren();
+          showList();
           input.blur();
         };
         return li;
       }),
     );
+    showList();
   };
   const clear = $<HTMLButtonElement>('search-clear');
   // While the box is focused and empty: how to pick a place that search can't find.
@@ -402,6 +459,7 @@ function wireSearch(
     input.value = '';
     clear.hidden = true;
     list.replaceChildren();
+    showList();
     onClear();
     input.focus();
     syncHint();
