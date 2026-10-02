@@ -101,14 +101,15 @@ export class TrackNav {
       else straightFrom = at;
     }
     if (this.active_ !== a) return; // ended meanwhile
-    const { route, approachM, joinIndex } = routeAlongTrack(a.track.name, a.line, a.segs, join, straightFrom, approach);
+    const { route, approachM } = routeAlongTrack(a.track.name, a.line, a.segs, join, straightFrom, approach);
     a.joinAlong = join.along;
     a.approachM = approachM;
-    this.draw(route.coords.slice(0, joinIndex + 1));
+    this.draw(route.coords);
     this.deps.navigator.start({ route, title: a.track.name, dest: `the end of ${a.track.name}`, track: true }, fix);
   }
 
-  /** The way to the track, drawn like a planned route (the track itself is drawn as a track). */
+  /** The route being navigated, drawn like a planned route: the way to the track and the track
+   *  from where it joins to its end (the part behind the join stays in the track's colour). */
   private draw(coords: LonLat[]): void {
     (this.deps.map.getSource('track-nav') as maplibregl.GeoJSONSource).setData({
       type: 'FeatureCollection',

@@ -765,8 +765,14 @@ try {
   await page.screenshot({ path: `${OUT}track-card.png` });
   await page.click('#track-navigate');
   await page.waitForFunction(() => document.body.classList.contains('navigating'), { timeout: 60_000 }).catch(async () => fail(`track navigation did not start: ${await page.$eval('#track-card-note', (e) => e.textContent)}`));
-  const trackNavState = await page.evaluate(() => ({ to: document.querySelector('#nav-to').textContent, steps: window.__app.navigator.steps.map((m) => m.text), approach: window.__app.map.getStyle().sources['track-nav'].data.features.length }));
-  if (trackNavState.to !== 'To Landmannalaugar' || !trackNavState.steps.includes('Join To Landmannalaugar') || !trackNavState.approach || trackNavState.steps.length < 4) fail(`navigating a saved route: ${JSON.stringify(trackNavState)}`);
+  // The route drawn is the way to the track and the track on to its end.
+  const trackNavState = await page.evaluate(() => {
+    const drawn = window.__app.map.getStyle().sources['track-nav'].data.features[0]?.geometry.coordinates ?? [];
+    const pts = window.__app.tracks.all.find((x) => x.name === 'To Landmannalaugar').gpx.lines[0].points;
+    const end = pts[pts.length - 1];
+    return { to: document.querySelector('#nav-to').textContent, steps: window.__app.navigator.steps.map((m) => m.text), drawnToEnd: !!drawn.length && drawn[drawn.length - 1][0] === end.lon && drawn[drawn.length - 1][1] === end.lat, drawnFromYou: !!drawn.length && Math.abs(drawn[0][1] - pts[0].lat - 0.018) < 0.01 };
+  });
+  if (trackNavState.to !== 'To Landmannalaugar' || !trackNavState.steps.includes('Join To Landmannalaugar') || !trackNavState.drawnToEnd || !trackNavState.drawnFromYou || trackNavState.steps.length < 4) fail(`navigating a saved route: ${JSON.stringify(trackNavState)}`);
   await page.screenshot({ path: `${OUT}track-nav.png` });
   console.log('to the track:', trackNavState.steps.slice(0, 4).join(' · '));
   await page.click('#nav-end');
