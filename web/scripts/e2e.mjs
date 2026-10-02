@@ -417,6 +417,16 @@ try {
   nav = await navState();
   if (!(parseFloat(nav.km) < kmAtStart) || nav.banner !== '') fail(`driving along: ${JSON.stringify(nav)} (started with ${kmAtStart} km left)`);
   console.log('navigating:', nav.dist, '·', nav.text, nav.then ? `· then ${nav.then}` : '', '·', nav.km);
+  // ☆ while navigating saves where you are at once (the map's own button waits); Undo takes it back.
+  const savedBefore = await page.evaluate(() => window.__app.saved.count);
+  if (await page.$eval('#map .save-here', (e) => getComputedStyle(e).display !== 'none')) fail('the map\'s save button shows while navigating');
+  await page.click('#nav-save');
+  await page.waitForFunction((n) => window.__app.saved.count === n + 1, { timeout: 5_000 }, savedBefore).catch(() => fail('☆ while navigating did not save'));
+  const navToast = await page.$eval('#here-toast-text', (e) => e.textContent);
+  if (!/^Saved “.+”$/.test(navToast)) fail(`saved while navigating: ${navToast}`);
+  console.log('saved while navigating:', navToast);
+  await page.click('#here-undo');
+  await page.waitForFunction((n) => window.__app.saved.count === n, { timeout: 5_000 }, savedBefore).catch(() => fail('Undo did not remove the pin'));
   const third = routeLine[Math.floor(routeLine.length / 3)];
   // (A fix after a resize: the next one centres the map, as it would a second later in a car.)
   await page.setViewport({ width: 390, height: 844 });
@@ -499,6 +509,20 @@ try {
   await page.type('#search', 'hek');
   await page.click('#search-clear');
   if (!(await page.evaluate(() => window.__app.map.getStyle().sources.route.data.features.length))) fail('the search box × cleared the route');
+  // The button by the locate button: a card with your position and a name; the route card waits.
+  await page.click('#map .save-here-button');
+  const here = await page.evaluate(() => ({ card: !document.querySelector('#here-card').hidden, route: getComputedStyle(document.querySelector('#route-card')).display, name: document.querySelector('#here-name').value, sub: document.querySelector('#here-sub').textContent }));
+  if (!here.card || here.route !== 'none' || !here.name || !/±\d+ m$/.test(here.sub)) fail(`save my location card: ${JSON.stringify(here)}`);
+  const n0 = await page.evaluate(() => window.__app.saved.count);
+  await page.$eval('#here-name', (e) => (e.value = ''));
+  await page.type('#here-name', 'Selfoss spot');
+  await page.click('#here-form button[type=submit]');
+  await page.waitForFunction((n) => window.__app.saved.count === n + 1, { timeout: 5_000 }, n0).catch(() => fail('save my location did not save'));
+  const savedHere = await page.evaluate(() => ({ card: !document.querySelector('#here-card').hidden, route: getComputedStyle(document.querySelector('#route-card')).display, toast: document.querySelector('#here-toast-text').textContent }));
+  if (savedHere.card || savedHere.route === 'none' || savedHere.toast !== 'Saved “Selfoss spot”') fail(`after saving my location: ${JSON.stringify(savedHere)}`);
+  await page.click('#here-undo');
+  await page.waitForFunction((n) => window.__app.saved.count === n, { timeout: 5_000 }, n0).catch(() => fail('Undo did not remove the pin'));
+  console.log('save my location ok:', here.name, '·', here.sub);
   console.log('turn-by-turn ok');
   await openOptions();
   await page.click('#route-froads');

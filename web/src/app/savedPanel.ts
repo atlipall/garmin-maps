@@ -170,6 +170,12 @@ export class SavedPanel {
     this.onChanged?.();
   }
 
+  /** Deletes an item by id (Undo after saving one elsewhere). */
+  async delete(id: string): Promise<void> {
+    const s = this.items.find((x) => x.id === id);
+    if (s) await this.remove(s);
+  }
+
   private refresh(): void {
     const pins = this.items.filter((s): s is SavedPin => s.kind === 'pin');
     (this.map.getSource('saved') as maplibregl.GeoJSONSource).setData({

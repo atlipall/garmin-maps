@@ -61,6 +61,30 @@
       #menu [role="switch"]::after { content: ""; flex: none; width: 40px; height: 24px; border-radius: 12px; background: #c9ccd1 radial-gradient(circle at 12px 12px, #fff 9px, transparent 10px); transition: background-position 0.15s; }
       #menu [role="switch"][aria-checked="true"]::after { background: #1f7ae0 radial-gradient(circle at 28px 12px, #fff 9px, transparent 10px); }
       #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 64px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: 13px; color: #8a3b00; }
+      /* Save my location: the button left of the locate button, its card (in the route card's place,
+         which waits meanwhile) and "Saved … · Undo" (placed above whatever is at the bottom, see
+         saveHere.ts). */
+      #map .save-here-button { display: grid; place-items: center; color: var(--ink); border-radius: inherit; }
+      #map .maplibregl-ctrl-group[hidden], body.navigating #map .save-here { display: none; }
+      body.saving-here #route-card { display: none !important; }
+      #here-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; padding: 4px 16px 16px; background: #fff; border-radius: 18px; box-shadow: 0 8px 28px #1e283c38; display: grid; gap: 10px; }
+      #here-card[hidden] { display: none; }
+      #here-head { display: flex; align-items: center; gap: 6px; padding-top: 6px; }
+      #here-head-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+      #here-title { font-size: 17px; font-weight: 700; }
+      #here-sub { font-size: 13px; color: #555f6d; font-variant-numeric: tabular-nums; }
+      #here-close { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: #eef0f3; color: var(--ink); cursor: pointer; }
+      #here-form { display: flex; gap: 8px; }
+      #here-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid #d4d9e1; border-radius: 10px; font-size: 16px; }
+      #here-form button { min-height: 44px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+      #here-form button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+      #here-error { color: #b3261e; font-size: 14px; }
+      #here-error:empty { display: none; }
+      #here-toast { position: absolute; z-index: 6; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; min-height: 52px; border-radius: 14px; background: #1d2a38; color: #fff; font-size: 15px; box-shadow: 0 6px 20px #0a142859; }
+      #here-toast[hidden] { display: none; }
+      #here-toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+      #here-undo { min-height: 40px; padding: 0 14px; border: 0; border-radius: 10px; background: #ffffff1f; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+      #here-undo[hidden] { display: none; }
       /* "A new version is ready": under the top row, below its search results, the menu and panels; hidden while navigating
          (see updateNotice.ts) and under the import screen, where a reload would lose an import. */
       #update { position: absolute; z-index: 2; top: calc(var(--top) + var(--btn) + var(--gap)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; max-width: calc(100% - 2 * var(--gap)); box-sizing: border-box; padding: 4px 4px 4px 14px; font-size: 14px; white-space: nowrap; }
@@ -75,6 +99,9 @@
       /* The home-indicator inset (34 pt) is generous; controls already have a 10 px margin, so
          sit ~30 pt above the screen edge, still clear of the indicator. */
       #map .maplibregl-ctrl-bottom-right { bottom: max(0px, calc(env(safe-area-inset-bottom) - 14px)); right: env(safe-area-inset-right); }
+      /* Save my location sits left of the locate button (MapLibre puts the later control first), so
+         both stay below the route card. */
+      #map .maplibregl-ctrl-bottom-right { display: flex; align-items: flex-end; }
       #map .maplibregl-ctrl-bottom-left { bottom: max(0px, calc(env(safe-area-inset-bottom) - 14px)); left: env(safe-area-inset-left); }
       /* The height pill sits to the right of the scale (MapLibre puts the later control first). */
       #map .maplibregl-ctrl-bottom-left { display: flex; flex-direction: row-reverse; align-items: center; }
@@ -147,18 +174,19 @@
       #nav-prompt { background: #fff; color: var(--ink); border-radius: 20px; padding: 16px; display: grid; gap: 10px; box-shadow: 0 8px 28px #0000004d; }
       .nav-q { font-size: 18px; font-weight: 800; }
       #nav-prompt p { margin: 0; font-size: 14px; color: #4b5466; }
-      .nav-row { display: flex; align-items: center; gap: 10px; }
+      .nav-row { display: flex; align-items: center; gap: 8px; }
       #nav-prompt button { flex: 1; min-height: 50px; border: 1.5px solid #d4d9e1; border-radius: 14px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 700; cursor: pointer; }
       #nav-prompt button.primary { border-color: #1d3f8f; background: #1d3f8f; color: #fff; }
       #nav-panel { background: #161c28f0; color: #fff; border-radius: 20px; padding: 12px 12px 14px 18px; display: grid; gap: 6px; box-shadow: 0 8px 28px #0000004d; }
       #nav-to { font-size: 14px; font-weight: 600; color: #aab4c6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .nav-arrive { display: grid; padding-right: 16px; border-right: 1px solid #ffffff24; }
+      .nav-arrive { display: grid; padding-right: 12px; border-right: 1px solid #ffffff24; }
       .nav-arrive .label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8fa0bd; }
       #nav-arrive { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
       .nav-left { flex: 1; display: grid; gap: 2px; }
-      #nav-time { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      #nav-time { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
       #nav-km { font-size: 15px; color: #c9d2e3; font-variant-numeric: tabular-nums; }
-      #nav-end { min-width: 64px; min-height: 48px; padding: 0 14px; border: 0; border-radius: 24px; background: #ff8a8029; color: #ff8a80; font-size: 15px; font-weight: 700; cursor: pointer; }
+      #nav-save { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: #ffffff1f; color: #fff; cursor: pointer; }
+      #nav-end { min-width: 60px; min-height: 48px; padding: 0 12px; border: 0; border-radius: 24px; background: #ff8a8029; color: #ff8a80; font-size: 15px; font-weight: 700; cursor: pointer; }
       /* While navigating the banner takes the top of a phone screen; the route card waits (it comes
          back for a question, such as adding a waypoint). */
       body.navigating #topbar, body.navigating #menu-button, body.navigating #map .maplibregl-ctrl-top-right { display: none !important; }
@@ -355,10 +383,20 @@
         <div class="nav-row">
           <div class="nav-arrive"><span class="label">Arrive</span><span id="nav-arrive"></span></div>
           <div class="nav-left"><div id="nav-time"></div><div id="nav-km"></div></div>
+          <button id="nav-save" type="button" aria-label="Save this spot" title="Save this spot"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
           <button id="nav-end" type="button">End</button>
         </div>
       </section>
     </div>
+    <section id="here-card" aria-labelledby="here-title" hidden>
+      <div id="here-head">
+        <div id="here-head-text"><div id="here-title">Your location</div><div id="here-sub"></div></div>
+        <button id="here-close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      </div>
+      <form id="here-form"><input id="here-name" type="text" maxlength="80" aria-label="Name" autocomplete="off" /><button type="submit" class="primary">Save</button><button id="here-cancel" type="button">Cancel</button></form>
+      <div id="here-error" role="alert"></div>
+    </section>
+    <div id="here-toast" role="status" hidden><span id="here-toast-text"></span><button id="here-undo" type="button">Undo</button></div>
     <section id="route-card" aria-label="Route" hidden>
       <div id="route-head">
         <div id="route-head-text">

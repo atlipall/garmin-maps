@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { collapseNearby, compass, describePlace, placeCategory, titleCase, townsOf } from '../src/search/describe';
+import { collapseNearby, compass, describePlace, nearName, placeCategory, titleCase, townsOf } from '../src/search/describe';
 import type { Place } from '../src/search/places';
 
 const place = (name: string, kind: Place['kind'], type: number, lon = -20, lat = 64): Place => ({ name, kind, type, lon, lat });
@@ -70,5 +70,19 @@ describe('collapseNearby', () => {
   test('points of the same name are all kept: two farms "Stekkur" 10 km apart are two places', () => {
     const farms = [place('Stekkur', 'point', 0x6402, -19.30, 65.30), place('Stekkur', 'point', 0x6402, -19.10, 65.30)];
     expect(collapseNearby(farms)).toHaveLength(2);
+  });
+});
+
+describe('nearName', () => {
+  test('the nearest named point within reach, without its height; lines, areas and numbers don\'t count', () => {
+    const places = [
+      place('RJÚPNAVELLIR', 'point', 0x2b02, -19.88, 64.03),
+      place('HEKLA 1491m', 'point', 0x6616, -19.67, 63.99),
+      place('Þjórsá', 'line', 0x1f00, -19.86, 64.035),
+      place('420', 'point', 0x6616, -19.86, 64.035),
+    ];
+    expect(nearName(places, [-19.86, 64.034])).toBe('Near Rjúpnavellir');
+    expect(nearName(places, [-19.67, 63.995])).toBe('Near Hekla');
+    expect(nearName(places, [-21, 64.5])).toBeUndefined();
   });
 });

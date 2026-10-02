@@ -76,6 +76,19 @@ function distanceKm(a: [number, number], b: [number, number]): number {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+/** "Near X" for the nearest named point (a hut, a farm, a peak, a town) within `km` of `at`, for
+ *  naming a pin where no map feature is at hand. */
+export function nearName(places: Place[], at: [number, number], km = 3): string | undefined {
+  let best: Place | null = null;
+  let bestKm = km;
+  for (const p of places) {
+    if (p.kind !== 'point' || /^[\d\s.,-]+$/.test(p.name)) continue;
+    const d = distanceKm(at, [p.lon, p.lat]);
+    if (d <= bestKm) [best, bestKm] = [p, d];
+  }
+  return best ? `Near ${titleCase(best.name.replace(/\s+\d+\s?m$/, ''))}` : undefined;
+}
+
 /** Initial bearing from a to b, degrees clockwise from north. */
 function bearing(a: [number, number], b: [number, number]): number {
   const dLon = rad(b[0] - a[0]);

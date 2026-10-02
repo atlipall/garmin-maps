@@ -3,7 +3,7 @@ import type { RouteReply } from '../worker/pool';
 import { readSetting, writeSetting } from '../ui/settings';
 import { offRoadText, routeMessage, type StartKind } from './routeMessage';
 import type { Place, SessionRoute } from './session';
-import { titleCase } from '../search/describe';
+import { featureNameAt } from '../map/featureName';
 import { FONT_REGULAR } from '../style/buildStyle';
 import type { LonLat } from '../routing/plan';
 import { bestInsert, joinLegs, type JoinedRoute } from '../routing/waypoints';
@@ -175,7 +175,7 @@ export class RoutePlanner {
     let pressed = false;
     map.on('contextmenu', (e) => {
       pressed = true;
-      this.pick({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat, near: this.nameAt(e.point) });
+      this.pick({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat, near: featureNameAt(this.map, e.point) });
     });
     map.on('click', (e) => {
       // A tap on a waypoint offers to remove it.
@@ -199,7 +199,7 @@ export class RoutePlanner {
       const p = new maplibregl.Point(xy[0] - r.left, xy[1] - r.top);
       const ll = map.unproject(p);
       pressed = true;
-      this.pick({ name: null, lon: ll.lng, lat: ll.lat, near: this.nameAt(p) });
+      this.pick({ name: null, lon: ll.lng, lat: ll.lat, near: featureNameAt(this.map, p) });
     };
     const canvas = map.getCanvasContainer();
     // A new mouse press starts afresh (a right-click is followed by no click to clear the guard).
@@ -336,38 +336,6 @@ export class RoutePlanner {
     $('route-card').classList.add('asking');
     $('route-card').hidden = false;
     this.setMinimized(false);
-  }
-
-  /** The named map feature at screen point `p`, for naming a dropped pin: the nearest named point
-   *  (peak, hut…) within 30 px, else a named line (river, road) within 12 px, else the named area
-   *  (lake, glacier…) it's in. Numbers (contour heights, house numbers) don't count. */
-  private nameAt(p: maplibregl.Point): string | undefined {
-    const named = (f: maplibregl.MapGeoJSONFeature, key: string) => {
-      const v = f.properties?.[key];
-      if (f.source !== 'garmin' || typeof v !== 'string' || /^[\d\s.,-]+$/.test(v)) return null;
-      // Map labels are often in capitals with a height: "HEKLA 1491m" → "Hekla 1491m".
-      const m = /^(.*?)(\s+\d+\s?m)?$/.exec(v)!;
-      return titleCase(m[1]) + (m[2] ?? '');
-    };
-    const box = (r: number): [maplibregl.PointLike, maplibregl.PointLike] => [[p.x - r, p.y - r], [p.x + r, p.y + r]];
-    let best: { name: string; d: number } | null = null;
-    for (const f of this.map.queryRenderedFeatures(box(30))) {
-      const name = named(f, 'name');
-      if (!name || f.sourceLayer !== 'points' || f.geometry.type !== 'Point') continue;
-      const q = this.map.project(f.geometry.coordinates as [number, number]);
-      const d = Math.hypot(q.x - p.x, q.y - p.y);
-      if (d <= 30 && (!best || d < best.d)) best = { name, d };
-    }
-    if (best) return best.name;
-    for (const f of this.map.queryRenderedFeatures(box(12))) {
-      const name = f.sourceLayer === 'lines' ? named(f, 'name') : null;
-      if (name) return name;
-    }
-    for (const f of this.map.queryRenderedFeatures(p)) {
-      const name = f.sourceLayer === 'polygons' ? named(f, 'n') : null;
-      if (name) return name;
-    }
-    return undefined;
   }
 
   private setVias(vias: Place[]): void {

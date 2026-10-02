@@ -1,7 +1,7 @@
 import * as maplibregl from 'maplibre-gl';
 import { emptyTyp, parseTyp, type Typ } from '../img/typ';
 import type { RoadClasses } from '../routing/roadClass';
-import { collapseNearby, describePlace, titleCase, townsOf } from '../search/describe';
+import { collapseNearby, describePlace, nearName, titleCase, townsOf } from '../search/describe';
 import { PlaceIndex } from '../search/placeIndex';
 import type { Place } from '../search/places';
 import { decodePlacesCache, encodePlacesCache } from '../search/placesCache';
@@ -9,6 +9,8 @@ import { cacheKey, readText, writeText, type Stored } from '../storage/store';
 import { buildStyle, FONT_REGULAR } from '../style/buildStyle';
 import { preloadImages } from '../ui/images';
 import { versionLabel } from '../buildInfo';
+import { featureNameAt } from '../map/featureName';
+import { SaveHere } from './saveHere';
 import { PerfStats } from '../ui/perf';
 import { browserScreenAwake } from '../location/wakeLock';
 import { readSetting, writeSetting } from '../ui/settings';
@@ -169,9 +171,14 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     writeSetting('keepAwake', keepAwake);
     syncAwake();
   };
+  /** Saving a pin where you are (made once the map has loaded, with the saved items). */
+  let saveHere: SaveHere | null = null;
+  /** The map's named places once the place index is loaded (for naming a pin where you are). */
+  let places: Place[] = [];
   locate.onActiveChange = (active) => {
     locating = active;
     syncAwake();
+    saveHere?.setAvailable(active);
   };
   syncAwake();
   // Location as it was last time: after the line above, so keeping the screen on hears of it.
@@ -335,6 +342,23 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     saved.onChanged = tracks.onChanged = () => sync.changed();
     app.sync = sync;
     routePlanner.onSave = (item) => saved.add(item);
+    // A pin where you are: the button left of the locate button (added after it, so placed first), and
+    // the ☆ while navigating. Named after the map feature there when it's on screen, else the
+    // nearest named place.
+    saveHere = new SaveHere({
+      fix: fresh,
+      height: (lon, lat) => pool.elevation(lon, lat),
+      suggest: (at) => {
+        const p = map.project(at);
+        const { clientWidth: w, clientHeight: h } = map.getCanvas();
+        const onMap = p.x >= 0 && p.y >= 0 && p.x <= w && p.y <= h ? featureNameAt(map, p) : undefined;
+        return onMap ?? nearName(places, at);
+      },
+      save: (pin) => saved.add(pin),
+      remove: (id) => saved.delete(id),
+    });
+    map.addControl(saveHere, 'bottom-right');
+    saveHere.setAvailable(locating);
     $('sync-open').onclick = () => {
       setMenu(false);
       $('sync-panel').hidden = false;
@@ -352,6 +376,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     .then(({ index, roads }) => {
       if (closed) return;
       resolveRoads(roads);
+      places = index.places;
       app.search = (q) => index.search(q);
       app.placesReady = true;
       wireSearch(map, index, searchFrom, (d) => app.routePlanner?.pick(d), () => app.routePlanner?.clearPlace());
