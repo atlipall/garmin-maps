@@ -784,7 +784,7 @@ try {
   const onRequest = (req) => {
     const url = new URL(req.url());
     if (url.hostname === 'accounts.google.com') return req.respond({ status: 200, contentType: 'text/javascript', body: '' });
-    if (url.hostname === 'garmin-maps-auth.katifillinn.workers.dev') {
+    if (url.hostname === 'garmin-maps-auth.atlipall.workers.dev') {
       const h = { ...cors, 'Access-Control-Allow-Origin': `http://localhost:${PORT}` };
       if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: h });
       fakeHelper.calls.push({ path: url.pathname, body: req.postData() ? JSON.parse(req.postData()) : null });

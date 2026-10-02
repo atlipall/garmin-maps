@@ -9,7 +9,7 @@
  */
 
 /** The helper's address, or VITE_AUTH_HELPER at build time ('' turns it off). */
-export const AUTH_HELPER: string = import.meta.env.VITE_AUTH_HELPER ?? 'https://garmin-maps-auth.katifillinn.workers.dev';
+export const AUTH_HELPER: string = import.meta.env.VITE_AUTH_HELPER ?? 'https://garmin-maps-auth.atlipall.workers.dev';
 const GOOGLE_AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
 /** How long to wait for the helper before treating it as unreachable. */
 const TIMEOUT_MS = 8000;
