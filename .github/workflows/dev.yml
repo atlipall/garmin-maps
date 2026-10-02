@@ -1,0 +1,15 @@
+# A push to the dev branch redeploys the site from main (only main may deploy to Pages), which
+# builds the dev branch into /garmin-maps/app-dev/ alongside the app (see pages.yml).
+name: Deploy the development version
+on:
+  push:
+    branches: [dev]
+permissions:
+  actions: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}

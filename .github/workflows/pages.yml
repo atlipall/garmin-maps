@@ -1,9 +1,10 @@
 name: Deploy web app to GitHub Pages
 # Deploys the app (main, at /garmin-maps/app/) and the development version (the dev branch, at
-# /garmin-maps/app-dev/) together: Pages publishes one site, so every deploy builds both.
+# /garmin-maps/app-dev/) together: Pages publishes one site, so every deploy builds both. Always
+# runs from main (only main may deploy to Pages); a push to dev starts it through dev.yml.
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
