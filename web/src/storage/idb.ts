@@ -1,29 +1,42 @@
 import { storageName } from '../channel';
 
 /** The app's IndexedDB database (GPX tracks and saved pins and routes), kept on this device and
- *  independent of the loaded map. Every store is created here, so each module opens the same
- *  version. */
+ *  independent of the loaded map. Every store is created here. */
 const DB = storageName('garmin-map');
-const VERSION = 2;
 export type StoreName = 'tracks' | 'saved';
 const STORES: StoreName[] = ['tracks', 'saved'];
 
-function open(): Promise<IDBDatabase> {
+/** Opens the database at `version` (none: as it is), creating the stores it lacks on an upgrade. */
+function openAt(version?: number): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') return reject(new Error('This browser cannot store data.'));
-    const req = indexedDB.open(DB, VERSION);
+    const req = version === undefined ? indexedDB.open(DB) : indexedDB.open(DB, version);
     req.onupgradeneeded = () => {
       for (const name of STORES) if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath: 'id' });
     };
-    // Another tab holding an older version open blocks an upgrade: say so rather than wait forever.
+    // Another tab holding the database open blocks an upgrade: say so rather than wait forever.
     req.onblocked = () => reject(new Error('The app is open in another tab or window; close it and try again.'));
     req.onsuccess = () => {
-      // A newer version opened elsewhere: let it upgrade.
+      // An upgrade wanted elsewhere: let it happen.
       req.result.onversionchange = () => req.result.close();
       resolve(req.result);
     };
     req.onerror = () => reject(req.error ?? new Error('Could not open storage.'));
   });
+}
+
+/**
+ * The database, at whatever version it has: a version number only ever goes up, and another version
+ * of the app (an older one still open on a phone, or the development version on another branch)
+ * may have raised it and added stores of its own. Upgraded (one version up) only when a store this
+ * version needs is missing.
+ */
+async function open(): Promise<IDBDatabase> {
+  if (typeof indexedDB === 'undefined') throw new Error('This browser cannot store data.');
+  const db = await openAt();
+  if (STORES.every((s) => db.objectStoreNames.contains(s))) return db;
+  const next = db.version + 1;
+  db.close();
+  return openAt(next);
 }
 
 /** Runs one request on `store` in its own transaction and resolves when the transaction completes. */
