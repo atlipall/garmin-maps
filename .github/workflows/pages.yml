@@ -48,7 +48,8 @@ jobs:
           npm ci
           npm run typecheck
           npm test
-          VITE_CHANNEL=dev npm run build
+          # Stamped with the dev branch's own commit (GITHUB_SHA is main's here).
+          GITHUB_SHA=$(git rev-parse HEAD) VITE_CHANNEL=dev npm run build
           test -d dist/app-dev || { echo "The dev branch has no development-version build (merge main into it)."; exit 1; }
           cp -r dist/app-dev "$GITHUB_WORKSPACE/web/dist/app-dev"
       - uses: actions/upload-pages-artifact@v3
