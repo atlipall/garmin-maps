@@ -770,8 +770,9 @@ try {
   if (restored !== 'Restored 2 saved items and 0 tracks.') fail(`restore status: ${restored}`);
   console.log('backup and restore ok:', restored);
 
-  // 4b. Google Drive sync, against a fake Drive (requests to googleapis.com answered here; the
-  // sign-in token is put in place directly). Needs a build with VITE_GOOGLE_CLIENT_ID set.
+  // 4b. Google Drive sync, against a fake Drive and a fake sign-in helper (requests to googleapis.com
+  // and the helper answered here; signing in starts as the return from Google's page, with a code).
+  // Needs a build with VITE_GOOGLE_CLIENT_ID set.
   if (await page.$eval('#sync', (e) => e.hidden)) fail('no Google Drive sync section (build with VITE_GOOGLE_CLIENT_ID=e2e)');
   const fakeDrive = { file: null, status: 200 };
   const remotePin = { id: 'remote-1', kind: 'pin', name: 'Remote hut', added: 1, lon: -19.3, lat: 64.2 };
@@ -779,9 +780,19 @@ try {
   fakeDrive.file = JSON.stringify({ app: 'garmin-map', kind: 'backup', version: 1, exported: new Date().toISOString(), saved: [remotePin], tracks: [remoteTrack], deleted: {} });
   const tracksBefore = await page.evaluate(() => window.__app.tracks.count);
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS' };
+  const fakeHelper = { calls: [], refresh: 200 };
   const onRequest = (req) => {
     const url = new URL(req.url());
     if (url.hostname === 'accounts.google.com') return req.respond({ status: 200, contentType: 'text/javascript', body: '' });
+    if (url.hostname === 'garmin-maps-auth.katifillinn.workers.dev') {
+      const h = { ...cors, 'Access-Control-Allow-Origin': `http://localhost:${PORT}` };
+      if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: h });
+      fakeHelper.calls.push({ path: url.pathname, body: req.postData() ? JSON.parse(req.postData()) : null });
+      const json = (status, o) => req.respond({ status, headers: h, contentType: 'application/json', body: JSON.stringify(o) });
+      if (url.pathname === '/token') return json(200, { access_token: 'e2e-token', expires_in: 3600, sealed: 'v1.e2e' });
+      if (url.pathname === '/refresh') return fakeHelper.refresh === 200 ? json(200, { access_token: 'e2e-token-2', expires_in: 3600 }) : json(fakeHelper.refresh, { error: 'signed_out' });
+      return req.respond({ status: 204, headers: h });
+    }
     if (url.hostname !== 'www.googleapis.com') return req.continue();
     if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: cors });
     if (fakeDrive.status !== 200) return req.respond({ status: fakeDrive.status, headers: cors, body: '' });
@@ -799,15 +810,24 @@ try {
   await page.setRequestInterception(true);
   page.on('request', onRequest);
   const remote = () => JSON.parse(fakeDrive.file);
-  await page.evaluate(() => localStorage.setItem('google-sync', JSON.stringify({ on: true, token: 'e2e-token', expires: Date.now() + 3_600_000 })));
-  await page.evaluate(() => window.__app.sync.syncNow());
+  // Back from Google's sign-in page with a code: the helper trades it, the address is tidied, it syncs.
+  await page.evaluate(() => localStorage.setItem('google-sync-signin', 'e2e-state'));
+  await page.goto(`http://localhost:${PORT}/?code=e2e-code&state=e2e-state&scope=x`);
+  await waitReady();
+  await page.waitForFunction(() => /^Synced with Google Drive at \d\d:\d\d\. You stay signed in on this device\.$/.test(document.querySelector('#sync-text').textContent), { timeout: 30_000 })
+    .catch(async () => fail(`sign-in through the helper: ${await page.$eval('#sync-text', (e) => e.textContent)}`));
+  const token = fakeHelper.calls.find((c) => c.path === '/token');
+  if (page.url() !== `http://localhost:${PORT}/` || token?.body.code !== 'e2e-code' || token.body.redirect_uri !== `http://localhost:${PORT}/`) fail(`sign-in return: ${page.url()} ${JSON.stringify(fakeHelper.calls)}`);
+  // (The reload closed the Saved panel the steps below use.)
+  await page.click('#menu-button');
+  await page.click('#saved-open');
   let sync = await page.evaluate(() => ({ count: window.__app.saved.count, text: document.querySelector('#sync-text').textContent, names: [...document.querySelectorAll('#saved-list .name')].map((e) => e.textContent) }));
   const menuStatus = await page.$eval('#sync-menu-status', (e) => e.textContent);
   if (!/^Synced \d\d:\d\d$/.test(menuStatus)) fail(`menu sync state: ${menuStatus}`);
   // Tracks come down from another device too, and show on the map.
   const trackSync = await page.evaluate(() => ({ count: window.__app.tracks.count, names: [...document.querySelectorAll('#track-list .name')].map((e) => e.textContent), drawn: window.__app.map.getStyle().sources.gpx.data.features.length }));
   if (trackSync.count !== tracksBefore + 1 || !trackSync.names.includes('Remote track') || !trackSync.drawn) fail(`track from another device: ${JSON.stringify(trackSync)} (had ${tracksBefore})`);
-  if (sync.count !== 3 || !sync.names.includes('Remote hut') || !/^Synced with Google Drive at \d\d:\d\d\.$/.test(sync.text) || remote().saved.length !== 3 || remote().tracks.length !== tracksBefore + 1) fail(`first sync: ${JSON.stringify(sync)} drive has ${remote().saved.length} saved, ${remote().tracks.length} tracks`);
+  if (sync.count !== 3 || !sync.names.includes('Remote hut') || !/^Synced with Google Drive at \d\d:\d\d\. You stay signed in on this device\.$/.test(sync.text) || remote().saved.length !== 3 || remote().tracks.length !== tracksBefore + 1) fail(`first sync: ${JSON.stringify(sync)} drive has ${remote().saved.length} saved, ${remote().tracks.length} tracks`);
   // A deletion here reaches Drive (a few seconds after the change).
   const hutRow = await page.$$eval('#saved-list li', (lis) => lis.findIndex((li) => li.querySelector('.name').textContent === 'Remote hut') + 1);
   await page.click(`#saved-list li:nth-child(${hutRow}) .track-delete`);
@@ -835,15 +855,36 @@ try {
   await page.setOfflineMode(false);
   await page.evaluate(() => window.__app.sync.syncNow());
   if (!remote().saved.some((x) => x.name === 'Offline pin')) fail('what was saved offline did not sync once back online');
-  // An expired sign-in asks to sign in again; Stop syncing turns it off.
+  // An hour on: a new token from the helper with the sealed key, no sign-in.
+  const expire = () => page.evaluate(() => localStorage.setItem('google-sync', JSON.stringify({ ...JSON.parse(localStorage.getItem('google-sync')), expires: Date.now() - 1000 })));
+  await expire();
+  await page.evaluate(() => window.__app.sync.syncNow());
+  // (A sync already under way runs again after it: wait for the one that renews.)
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('google-sync')).token === 'e2e-token-2' && /^Synced/.test(document.querySelector('#sync-text').textContent), { timeout: 10_000 }).catch(() => {});
+  sync = await page.evaluate(() => ({ text: document.querySelector('#sync-text').textContent, state: JSON.parse(localStorage.getItem('google-sync')) }));
+  if (!fakeHelper.calls.some((c) => c.path === '/refresh' && c.body.sealed === 'v1.e2e') || sync.state.token !== 'e2e-token-2' || !/^Synced/.test(sync.text)) fail(`renewal through the helper: ${JSON.stringify(sync)}`);
+  // The key withdrawn (Stop syncing on another device, or in the Google account): sign in again.
+  fakeHelper.refresh = 401;
+  await expire();
+  await page.evaluate(() => window.__app.sync.syncNow());
+  await page.waitForFunction(() => document.querySelector('#sync-text').textContent === 'Sign in again to keep syncing.', { timeout: 10_000 }).catch(() => {});
+  sync = await page.evaluate(() => ({ text: document.querySelector('#sync-text').textContent, shown: !document.querySelector('#sync-connect').hidden, sealed: JSON.parse(localStorage.getItem('google-sync')).sealed }));
+  if (sync.text !== 'Sign in again to keep syncing.' || !sync.shown || sync.sealed) fail(`withdrawn key: ${JSON.stringify(sync)}`);
+  // A token refused by Drive (no sealed key to renew it) asks to sign in again; Stop syncing turns
+  // sync off and withdraws the key at Google.
+  await page.evaluate(() => localStorage.setItem('google-sync', JSON.stringify({ ...JSON.parse(localStorage.getItem('google-sync')), token: 'e2e-token', expires: Date.now() + 3_600_000 })));
   fakeDrive.status = 401;
   await page.evaluate(() => window.__app.sync.syncNow());
   sync = await page.evaluate(() => ({ text: document.querySelector('#sync-text').textContent, button: document.querySelector('#sync-connect').textContent, shown: !document.querySelector('#sync-connect').hidden }));
   if (sync.text !== 'Sign in again to keep syncing.' || sync.button !== 'Sign in to Google' || !sync.shown) fail(`expired sign-in: ${JSON.stringify(sync)}`);
   await syncPanel(true);
   await page.screenshot({ path: `${OUT}sync-panel.png` });
+  await page.evaluate(() => localStorage.setItem('google-sync', JSON.stringify({ ...JSON.parse(localStorage.getItem('google-sync')), sealed: 'v1.e2e' })));
   await page.click('#sync-stop');
   if (await page.$eval('#sync-menu-status', (e) => e.textContent) !== '') fail('menu still shows a sync state after Stop syncing');
+  for (let t = 0; t < 20 && !fakeHelper.calls.some((c) => c.path === '/revoke'); t++) await new Promise((r) => setTimeout(r, 100));
+  if (!fakeHelper.calls.some((c) => c.path === '/revoke' && c.body.sealed === 'v1.e2e')) fail('Stop syncing did not withdraw the key');
+  console.log('sign-in helper ok:', fakeHelper.calls.map((c) => c.path).join(' '));
   await syncPanel(false);
   if (await page.$eval('#sync-connect', (e) => e.textContent) !== 'Sync with Google Drive') fail('Stop syncing did not turn sync off');
   page.off('request', onRequest);

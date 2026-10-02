@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
-import type { Build } from '../src/buildInfo';
+import type { Build } from '../src/buildInfo.ts';
 
 /** Build-time step that stamps `dist/sw.js` (see `public/sw.js` and the Vite plugin in
  *  vite.config.ts): the service worker's precache list becomes every file of the build, its cache

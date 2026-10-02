@@ -1,0 +1,13 @@
+# The sign-in helper for Drive sync (see worker.ts). Deployed on its own, next to the app's static
+# site: `wrangler deploy` from this folder. Secrets are set with `wrangler secret put`, never here:
+#   GOOGLE_CLIENT_SECRET  the OAuth client's secret (Google Cloud Console → Credentials)
+#   SEAL_KEY              32 random bytes, base64: locks the refresh keys handed to devices
+name = "garmin-maps-auth"
+main = "worker.ts"
+compatibility_date = "2026-08-01"
+workers_dev = true
+
+[vars]
+GOOGLE_CLIENT_ID = "461823178284-761cjr28lki3ocobgt9n8kag1op4f5rp.apps.googleusercontent.com"
+# Pages that may use the helper (the app, and the dev server).
+ALLOWED_ORIGINS = "https://atlipall.github.io,http://localhost:5173"

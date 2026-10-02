@@ -2,7 +2,8 @@ import { deleteTrack, listTracks, putTrack } from '../gpx/store';
 import { deletions, setDeletions } from '../saved/deleted';
 import { deleteSaved, listSaved, putSaved } from '../saved/saved';
 import { deleteSyncFile, DriveError, readSyncFile, writeSyncFile } from '../sync/drive';
-import { GOOGLE_CLIENT_ID, prepareSignIn, setSyncState, signIn, signOut, syncState, validToken } from '../sync/google';
+import { finishSignIn, freshToken, GOOGLE_CLIENT_ID, prepareSignIn, setSyncState, signedIn, signIn, signOut, startSignIn, syncState, validToken } from '../sync/google';
+import { AUTH_HELPER, HelperError, helperReachable } from '../sync/helper';
 import { planSync } from '../sync/merge';
 import { changedAt } from '../saved/backup';
 
@@ -19,11 +20,17 @@ const timeText = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour
  * copy changed last wins, and deletions carry over. Offered only when the app has a Google client ID.
  * Entirely optional: off until turned on, never loads anything from Google before that, and never
  * holds up the app — everything is read from and saved to the device first, offline or not.
+ * Signing in goes through the sign-in helper, so a device stays signed in (../sync/helper.ts); when
+ * the helper can't be reached it falls back to Google's one-hour sign-in.
  */
 export class DriveSync {
   private running: Promise<void> | null = null;
   private again = false;
   private timer = 0;
+  /** The sign-in helper didn't answer: "Sign in" uses Google's one-hour sign-in meanwhile. */
+  private helperDown = !AUTH_HELPER;
+  /** A Drive refusal already led to a new token once in a row (don't loop on it). */
+  private retried = false;
 
   /** `reload` reads the saved items and tracks again after a sync changed them here. */
   constructor(private readonly reload: () => Promise<void>) {
@@ -36,12 +43,26 @@ export class DriveSync {
       this.render();
     };
     this.render();
-    if (syncState().on) {
-      if (navigator.onLine) prepareSignIn().catch(() => {});
-      void this.syncNow();
-    }
+    void this.start();
     window.addEventListener('online', () => this.schedule(0));
     document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && this.schedule(0));
+  }
+
+  /** Back from Google's sign-in page, finish signing in; then sync if it's on. */
+  private async start(): Promise<void> {
+    const back = await finishSignIn();
+    if (back instanceof Error) {
+      if (back instanceof HelperError && back.kind === 'unreachable') this.fallBack();
+      this.render(back.message);
+    }
+    if (this.helperDown && syncState().on && navigator.onLine) prepareSignIn().catch(() => {});
+    if (syncState().on) await this.syncNow();
+  }
+
+  /** The helper is unreachable: get Google's one-hour sign-in ready for the next tap. */
+  private fallBack(): void {
+    this.helperDown = true;
+    if (navigator.onLine) prepareSignIn().catch(() => {});
   }
 
   /** Something changed here (saved, deleted, restored, a track shown or hidden): sync soon. */
@@ -58,8 +79,15 @@ export class DriveSync {
     this.timer = window.setTimeout(() => void this.syncNow(), delay);
   }
 
-  /** Signs in (from a tap) and syncs. */
+  /** Signs in (from a tap) and syncs: through Google's page and the helper, or for an hour. */
   private async connect(): Promise<void> {
+    if (!navigator.onLine) return this.render("You're offline: connect to sign in.");
+    if (!this.helperDown) {
+      this.render('Opening Google sign-in…');
+      if (await helperReachable()) return startSignIn();
+      this.fallBack();
+      return this.render("Couldn't reach the sign-in helper. Tap Sign in again to sign in for an hour.");
+    }
     try {
       await prepareSignIn();
       await signIn();
@@ -86,10 +114,15 @@ export class DriveSync {
   }
 
   private async run(): Promise<void> {
-    const token = validToken();
     if (!syncState().on) return this.render();
-    if (!token) return this.render('Sign in again to keep syncing.');
     if (!navigator.onLine) return this.render("Offline: syncs when you're back online.");
+    const got = await freshToken();
+    if ('problem' in got) {
+      if (got.problem === 'signed-out') return this.render('Sign in again to keep syncing.');
+      this.fallBack();
+      return this.render("Couldn't reach the sign-in helper. Sign in to sync for an hour, or wait for it to come back.");
+    }
+    const token = got.token;
     this.render('Syncing…');
     try {
       // Nothing changed here and the file is as this device left it: nothing to download or send.
@@ -126,10 +159,19 @@ export class DriveSync {
       setSyncState({ ...syncState(), lastSync: Date.now(), fileId: id ?? undefined, version: version ?? undefined, syncedAt: skipped ? undefined : localChange });
       if (skipped || syncState().changedAt !== localChange) this.schedule();
       if (putSaved_.length || putTracks_.length || plan.removeSaved.length || plan.removeTracks.length) await this.reload();
+      this.retried = false;
       this.render();
     } catch (err) {
       if (err instanceof DriveError && err.status === 401) {
+        // The token was refused before its time: with the sealed key, get a new one (once).
         setSyncState({ ...syncState(), token: undefined, expires: undefined });
+        if (syncState().sealed && !this.retried) {
+          this.retried = true;
+          return this.schedule(0);
+        }
+        // Refused again: signing in afresh is the way out.
+        setSyncState({ ...syncState(), sealed: undefined });
+        this.retried = false;
         return this.render('Sign in again to keep syncing.');
       }
       // A request that never got an answer (no connection, or one that only looks connected): try
@@ -141,16 +183,17 @@ export class DriveSync {
 
   private render(message?: string): void {
     const s = syncState();
-    const signedIn = s.on && !!validToken(s);
-    $('sync-connect').hidden = signedIn;
+    // Signed in: a token now, or the sealed key while the helper answers.
+    const ready = s.on && (!!validToken(s) || (signedIn(s) && !this.helperDown));
+    $('sync-connect').hidden = ready;
     $('sync-connect').textContent = s.on ? 'Sign in to Google' : 'Sync with Google Drive';
-    $('sync-now').hidden = !signedIn;
+    $('sync-now').hidden = !ready;
     $('sync-stop').hidden = !s.on;
     // A short state under the menu item.
-    $('sync-menu-status').textContent = !s.on ? '' : message === 'Syncing…' ? 'Syncing…' : !signedIn ? 'Sign-in needed' : message?.startsWith('Offline') ? 'Offline' : message ? 'Not synced' : s.lastSync ? `Synced ${timeText(s.lastSync)}` : '';
+    $('sync-menu-status').textContent = !s.on ? '' : message === 'Syncing…' ? 'Syncing…' : !ready ? 'Sign-in needed' : message?.startsWith('Offline') ? 'Offline' : message ? 'Not synced' : s.lastSync ? `Synced ${timeText(s.lastSync)}` : '';
     $('sync-text').textContent = message
       ?? (!s.on
         ? 'Keep your saved places and routes and your GPX tracks the same on all your devices, through your Google Drive (in a hidden folder only this app can see).'
-        : s.lastSync ? `Synced with Google Drive at ${timeText(s.lastSync)}.` : 'Syncing with Google Drive.');
+        : (s.lastSync ? `Synced with Google Drive at ${timeText(s.lastSync)}.` : 'Syncing with Google Drive.') + (s.sealed ? ' You stay signed in on this device.' : ''));
   }
 }

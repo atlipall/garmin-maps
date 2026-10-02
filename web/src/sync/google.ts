@@ -1,8 +1,11 @@
+import { authUrl, exchangeCode, HelperError, refreshToken, revokeSealed, signInReturn, withoutSignInReturn } from './helper';
+
 /**
- * Signing in to Google for Drive sync, with Google Identity Services (a script from Google, loaded
- * only when sync is used). Asks for the drive.appdata scope alone: the app's hidden folder, none of
- * the user's own files. An access token lasts about an hour; it is kept in localStorage so sync runs
- * without a new sign-in until then, and a tap on "Sign in" gets a fresh one.
+ * Signing in to Google for Drive sync. Asks for the drive.appdata scope alone: the app's hidden
+ * folder, none of the user's own files. Normally through the sign-in helper (./helper.ts), which
+ * keeps the device signed in; without it, with Google Identity Services (a script from Google, loaded
+ * only then), whose access token lasts about an hour. The token is kept in localStorage so sync runs
+ * without a new sign-in until it runs out.
  */
 
 /** The app's OAuth client ID (public; made in Google Cloud Console), or VITE_GOOGLE_CLIENT_ID at
@@ -28,12 +31,14 @@ export interface SyncState {
   /** When something last changed here, and the last such change a sync has taken in. */
   changedAt?: number;
   syncedAt?: number;
+  /** The refresh key, sealed by the sign-in helper: new tokens without signing in again. */
+  sealed?: string;
 }
 
 export function syncState(): SyncState {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    return s && typeof s === 'object' ? { on: s.on === true, token: s.token, expires: s.expires, lastSync: s.lastSync, fileId: s.fileId, version: s.version, changedAt: s.changedAt, syncedAt: s.syncedAt } : { on: false };
+    return s && typeof s === 'object' ? { on: s.on === true, token: s.token, expires: s.expires, lastSync: s.lastSync, fileId: s.fileId, version: s.version, changedAt: s.changedAt, syncedAt: s.syncedAt, sealed: typeof s.sealed === 'string' ? s.sealed : undefined } : { on: false };
   } catch {
     return { on: false };
   }
@@ -50,6 +55,70 @@ export function setSyncState(s: SyncState): void {
 /** A token that still has a minute or more left. */
 export function validToken(s: SyncState = syncState()): string | null {
   return s.token && s.expires && s.expires - Date.now() > 60_000 ? s.token : null;
+}
+
+/** Signed in on this device: a token now, or the sealed key to get one. */
+export const signedIn = (s: SyncState = syncState()) => s.on && (!!validToken(s) || !!s.sealed);
+
+export type TokenResult = { token: string } | { problem: 'signed-out' | 'unreachable' };
+
+/** A token for Drive: the current one, else a new one from the sign-in helper. */
+export async function freshToken(): Promise<TokenResult> {
+  const s = syncState();
+  const token = validToken(s);
+  if (token) return { token };
+  if (!s.sealed) return { problem: 'signed-out' };
+  try {
+    const t = await refreshToken(s.sealed);
+    setSyncState({ ...syncState(), token: t.token, expires: t.expires });
+    return { token: t.token };
+  } catch (err) {
+    if (err instanceof HelperError && err.kind === 'signed-out') {
+      setSyncState({ ...syncState(), token: undefined, expires: undefined, sealed: undefined });
+      return { problem: 'signed-out' };
+    }
+    return { problem: 'unreachable' };
+  }
+}
+
+/** Where Google's page sends the user back to: the app itself (registered with the OAuth client). */
+const redirectUri = () => new URL('./', document.baseURI).toString();
+/** The sign-in under way, against a forged return. */
+const STATE_KEY = 'google-sync-signin';
+
+/** Leaves for Google's sign-in page; it comes back to the app, where finishSignIn takes over. */
+export function startSignIn(): void {
+  const state = crypto.randomUUID();
+  try {
+    localStorage.setItem(STATE_KEY, state);
+  } catch {
+    // finishSignIn will refuse the return: nothing is signed in
+  }
+  location.assign(authUrl({ clientId: GOOGLE_CLIENT_ID, scope: SCOPE, redirect: redirectUri(), state }));
+}
+
+/** Back from Google's page: trades its code for a token and the sealed refresh key, and tidies the
+ *  address. Null on a normal start; an Error to show when the sign-in didn't work. */
+export async function finishSignIn(href = location.href): Promise<'signed-in' | Error | null> {
+  const back = signInReturn(href);
+  if (!back) return null;
+  history.replaceState(history.state, '', withoutSignInReturn(href));
+  let expected: string | null = null;
+  try {
+    expected = localStorage.getItem(STATE_KEY);
+    localStorage.removeItem(STATE_KEY);
+  } catch {
+    // no stored state: refused below
+  }
+  if (!expected || back.state !== expected) return new Error('That sign-in was not started here; try again.');
+  if ('error' in back) return new Error(back.error === 'access_denied' ? 'Google Drive access was not allowed.' : 'Google sign-in failed.');
+  try {
+    const t = await exchangeCode(back.code, redirectUri());
+    setSyncState({ ...syncState(), on: true, token: t.token, expires: t.expires, sealed: t.sealed });
+    return 'signed-in';
+  } catch (err) {
+    return err instanceof Error ? err : new Error(String(err));
+  }
 }
 
 let gis: Promise<Gis> | null = null;
@@ -94,7 +163,7 @@ export function prepareSignIn(): Promise<void> {
   });
 }
 
-/** Opens Google sign-in (call from a tap, after prepareSignIn). */
+/** Opens Google sign-in for an hour (call from a tap, after prepareSignIn): without the helper. */
 export function signIn(): Promise<string> {
   if (!client) return Promise.reject(new Error('Google sign-in is still loading; try again in a moment.'));
   return new Promise((resolve, reject) => {
@@ -106,6 +175,7 @@ export function signIn(): Promise<string> {
 /** Stops syncing on this device (the file in Drive stays, for other devices). */
 export function signOut(): void {
   const s = syncState();
+  if (s.sealed) revokeSealed(s.sealed);
   const g = (window as unknown as { google?: Gis }).google;
   // Withdraw the access at Google too: through its script when loaded, else straight to its revoke
   // endpoint (best effort; an access token lapses within the hour anyway).
