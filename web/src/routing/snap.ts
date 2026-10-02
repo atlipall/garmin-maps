@@ -52,7 +52,7 @@ const MAX_JOINS = 100;
 const M_PER_UNIT = metresBetween(0, 0, 0, 1);
 
 /** Nearest point of `line` to q, in a local flat projection (fine at these distances). */
-function nearestOnLine(line: Array<[number, number]>, qx: number, qy: number, kx: number): { i: number; t: number; x: number; y: number; d2: number } {
+export function nearestOnLine(line: Array<[number, number]>, qx: number, qy: number, kx: number): { i: number; t: number; x: number; y: number; d2: number } {
   let best = { i: 0, t: 0, x: line[0][0], y: line[0][1], d2: Infinity };
   for (let i = 0; i + 1 < line.length; i++) {
     const [ax, ay] = line[i];

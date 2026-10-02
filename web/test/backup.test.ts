@@ -50,5 +50,11 @@ describe('isTrack', () => {
     expect(isTrack({ ...good, gpx: { ...good.gpx, lines: [{ kind: 'track', name: null }] } })).toBe(false);
     expect(isTrack({ ...good, gpx: { ...good.gpx, lines: [{ kind: 'track', name: null, points: [{ lon: 'x', lat: 64 }] }] } })).toBe(false);
     expect(isTrack({ ...good, stats: { distance: 'far' } })).toBe(false);
+    // A route saved as a track: its road stretches must point into its line.
+    const seg = { start: 0, name: 'F208', type: 2, junction: false, seconds: 60 };
+    expect(isTrack({ ...good, route: { segs: [seg], seconds: 60 } })).toBe(true);
+    expect(isTrack({ ...good, route: { segs: [{ ...seg, start: 5 }], seconds: 60 } })).toBe(false);
+    expect(isTrack({ ...good, route: { segs: [], seconds: 60 } })).toBe(false);
+    expect(isTrack({ ...good, route: { segs: [{ ...seg, name: 3 }], seconds: 60 } })).toBe(false);
   });
 });

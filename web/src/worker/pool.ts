@@ -1,4 +1,4 @@
-import type { RouteReply } from '../routing/plan';
+import type { RoadSeg, RouteReply } from '../routing/plan';
 import type { RoadClasses } from '../routing/roadClass';
 import type { Place } from '../search/places';
 
@@ -210,6 +210,14 @@ export class TilePool {
     const live = this.live();
     if (!live.length) return Promise.reject(new Error('no workers available'));
     return this.call(live[live.length - 1], { type: 'route', from, to, allowFRoads, preferFRoads, roads }).then((msg) => msg.result as RouteReply);
+  }
+
+  /** Road stretches along a track, matched to the map's roads (for its turn instructions). */
+  matchTrack(coords: Array<[number, number]>, times: Array<number | null> | undefined, roads: RoadClasses): Promise<RoadSeg[]> {
+    if (this.disposed) return Promise.reject(new Error('pool disposed'));
+    const live = this.live();
+    if (!live.length) return Promise.reject(new Error('no workers available'));
+    return this.call(live[live.length - 1], { type: 'match', coords, times, roads }).then((msg) => msg.segs as RoadSeg[]);
   }
 
   /** Terminates every worker and rejects every pending call with Error('pool disposed'); any

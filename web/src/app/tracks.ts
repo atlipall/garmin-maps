@@ -35,6 +35,8 @@ export class TracksPanel {
   private tracks: StoredTrack[] = [];
   /** Called after a change made here (import, show or hide, delete), for syncing. */
   onChanged: (() => void) | null = null;
+  /** A track tapped in the list: its card (Navigate, Reverse, Export). */
+  onOpen: ((t: StoredTrack) => void) | null = null;
   private readonly panel = $('tracks');
   private readonly list = $<HTMLUListElement>('track-list');
   private readonly error = $('tracks-error');
@@ -80,6 +82,26 @@ export class TracksPanel {
   /** Number of stored tracks (for tests). */
   get count(): number {
     return this.tracks.length;
+  }
+
+  /** Keeps a track made here (a route saved as a track), with the next free colour. */
+  async addTrack(t: { name: string; gpx: StoredTrack['gpx']; route?: StoredTrack['route'] }): Promise<StoredTrack> {
+    const track: StoredTrack = {
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      name: t.name,
+      color: nextColor(this.tracks),
+      visible: true,
+      added: Date.now(),
+      stats: summarize(t.gpx),
+      gpx: t.gpx,
+      ...(t.route ? { route: t.route } : {}),
+    };
+    await putTrack(track);
+    this.tracks.push(track);
+    this.refresh();
+    this.onChanged?.();
+    if (track.stats.climb === null) void this.fillClimb(track);
+    return track;
   }
 
   async importFiles(files: File[]): Promise<void> {
@@ -167,6 +189,7 @@ export class TracksPanel {
       if (!t.visible) void this.setVisible(t, true);
       this.zoomTo(t);
       if (matchMedia('(pointer: coarse)').matches) this.show(false);
+      this.onOpen?.(t);
     };
     const eye = document.createElement('button');
     eye.type = 'button';

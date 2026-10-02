@@ -66,14 +66,23 @@
          saveHere.ts). */
       #map .save-here-button { display: grid; place-items: center; color: var(--ink); border-radius: inherit; }
       #map .maplibregl-ctrl-group[hidden], body.navigating #map .save-here { display: none; }
-      body.saving-here #route-card { display: none !important; }
-      #here-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; padding: 4px 16px 16px; background: #fff; border-radius: 18px; box-shadow: 0 8px 28px #1e283c38; display: grid; gap: 10px; }
-      #here-card[hidden] { display: none; }
-      #here-head { display: flex; align-items: center; gap: 6px; padding-top: 6px; }
-      #here-head-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
-      #here-title { font-size: 17px; font-weight: 700; }
-      #here-sub { font-size: 13px; color: #555f6d; font-variant-numeric: tabular-nums; }
-      #here-close { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: #eef0f3; color: var(--ink); cursor: pointer; }
+      body.saving-here #route-card, body.track-card-open #route-card { display: none !important; }
+      #here-card, #track-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; padding: 4px 16px 16px; background: #fff; border-radius: 18px; box-shadow: 0 8px 28px #1e283c38; display: grid; gap: 10px; }
+      #here-card[hidden], #track-card[hidden] { display: none; }
+      body.navigating #track-card { display: none; }
+      #here-head, #track-card-head { display: flex; align-items: center; gap: 6px; padding-top: 6px; }
+      #here-head-text, #track-card-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+      #here-title, #track-card-title { font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+      #here-sub, #track-card-stats { font-size: 13px; color: #555f6d; font-variant-numeric: tabular-nums; }
+      #track-card-swatch { width: 14px; height: 14px; flex: none; border-radius: 50%; margin-right: 4px; }
+      #track-card-note { margin: 0; padding: 10px 12px; border-radius: 12px; background: #f3f5f8; font-size: 14px; color: #3d4754; }
+      #track-card-note:empty { display: none; }
+      #track-navigate { min-height: 52px; border: 0; border-radius: 14px; background: #1d3f8f; color: #fff; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+      #track-navigate:disabled { opacity: 0.6; }
+      .track-card-row { display: flex; gap: 10px; }
+      .track-card-row button { flex: 1; min-height: 46px; border: 1.5px solid #d4d9e1; border-radius: 12px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+      #track-reverse[aria-pressed="true"] { border-color: #1d3f8f; background: #eef3fb; color: #1d3f8f; }
+      #here-close, #track-card-close { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: #eef0f3; color: var(--ink); cursor: pointer; }
       #here-form { display: flex; gap: 8px; }
       #here-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid #d4d9e1; border-radius: 10px; font-size: 16px; }
       #here-form button { min-height: 44px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
@@ -319,8 +328,8 @@
     <button id="menu-button" class="panel" aria-label="Menu" aria-controls="menu" aria-expanded="false" hidden>⋯</button>
     <div id="menu" class="panel" hidden>
       <div id="map-name"><span class="label">Map</span><span id="map-file"></span><span id="map-dem"></span></div>
-      <button id="tracks-open">Tracks (GPX)</button>
-      <button id="saved-open">Saved pins and routes</button>
+      <button id="tracks-open">Tracks</button>
+      <button id="saved-open">Saved places</button>
       <button id="sync-open">Sync and backup<span id="sync-menu-status"></span></button>
       <button id="keep-awake" role="switch" aria-checked="true">Keep screen on while locating</button>
       <button id="ask-highlands" role="switch" aria-checked="false">Ask before rerouting in the highlands</button>
@@ -334,7 +343,7 @@
         <h2 id="tracks-title" tabindex="-1">Tracks</h2>
         <button id="tracks-close" type="button" aria-label="Close tracks">×</button>
       </div>
-      <p id="tracks-empty">No tracks yet. Import GPX files, for example ones recorded with another app, to see them on the map.</p>
+      <p id="tracks-empty">No tracks yet. Save a route as a track from its card, or import GPX files, for example ones recorded with another app.</p>
       <ul id="track-list"></ul>
       <div id="tracks-error" role="alert"></div>
       <button id="import-gpx" type="button">Import GPX…</button>
@@ -395,6 +404,16 @@
       </div>
       <form id="here-form"><input id="here-name" type="text" maxlength="80" aria-label="Name" autocomplete="off" /><button type="submit" class="primary">Save</button><button id="here-cancel" type="button">Cancel</button></form>
       <div id="here-error" role="alert"></div>
+    </section>
+    <section id="track-card" aria-labelledby="track-card-title" hidden>
+      <div id="track-card-head">
+        <span id="track-card-swatch" aria-hidden="true"></span>
+        <div id="track-card-text"><div id="track-card-title"></div><div id="track-card-stats"></div></div>
+        <button id="track-card-close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      </div>
+      <p id="track-card-note" role="status"></p>
+      <button id="track-navigate" type="button"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8 19-8-4.5L4 21z" fill="currentColor"/></svg>Navigate</button>
+      <div class="track-card-row"><button id="track-reverse" type="button" aria-pressed="false">Reverse</button><button id="track-export" type="button">Export GPX</button></div>
     </section>
     <div id="here-toast" role="status" hidden><span id="here-toast-text"></span><button id="here-undo" type="button">Undo</button></div>
     <section id="route-card" aria-label="Route" hidden>

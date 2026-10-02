@@ -1,5 +1,6 @@
 import type { LonLat } from '../routing/plan';
 import type { JoinedRoute } from '../routing/waypoints';
+import type { Gpx } from './parse';
 
 /** What a route export needs: the route as drawn and its named stops. */
 export interface RouteExport {
@@ -39,6 +40,25 @@ export function routeGpx(r: RouteExport, now = new Date()): string {
     `  <trk><name>${esc(r.name)}</name><desc>${esc(r.summary)}</desc><trkseg>`,
     ...line.map((p) => `    <trkpt ${pt(p)}/>`),
     '  </trkseg></trk>',
+    '</gpx>',
+    '',
+  ].join('\n');
+}
+
+/** A track as a GPX 1.1 file: its lines (with heights and times where it has them) and waypoints. */
+export function trackGpx(g: Gpx, name: string, now = new Date()): string {
+  const ele = (e: number | null) => (e === null ? '' : `<ele>${e.toFixed(1)}</ele>`);
+  const time = (t: number | null) => (t === null ? '' : `<time>${new Date(t).toISOString()}</time>`);
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<gpx version="1.1" creator="Garmin Map" xmlns="http://www.topografix.com/GPX/1/1">',
+    `  <metadata><name>${esc(name)}</name><time>${now.toISOString()}</time></metadata>`,
+    ...g.waypoints.map((w) => `  <wpt ${pt([w.lon, w.lat])}>${ele(w.ele)}${w.name ? `<name>${esc(w.name)}</name>` : ''}</wpt>`),
+    ...g.lines.flatMap((l) => [
+      `  <trk><name>${esc(l.name ?? name)}</name><trkseg>`,
+      ...l.points.map((p) => `    <trkpt ${pt([p.lon, p.lat])}>${ele(p.ele)}${time(p.time)}</trkpt>`),
+      '  </trkseg></trk>',
+    ]),
     '</gpx>',
     '',
   ].join('\n');

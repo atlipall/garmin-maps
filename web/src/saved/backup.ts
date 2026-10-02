@@ -38,6 +38,16 @@ export function isTrack(v: unknown): v is StoredTrack {
   if (t.updated !== undefined && !isNum(t.updated)) return false;
   const s = t.stats;
   if (!s || !isNum(s.distance) || !(s.climb === null || isNum(s.climb)) || !(s.duration === null || isNum(s.duration))) return false;
+  // A route saved as a track: its road stretches must index its line's points.
+  if (t.route !== undefined) {
+    const r = t.route as { segs?: unknown; seconds?: unknown };
+    const n = t.gpx?.lines?.[0]?.points?.length ?? 0;
+    const okSeg = (x: unknown) => {
+      const sg = x as { start: unknown; name: unknown; type: unknown; seconds: unknown };
+      return !!sg && isNum(sg.start) && sg.start >= 0 && sg.start < n && isStrOrNull(sg.name) && isNum(sg.type) && isNum(sg.seconds);
+    };
+    if (!r || !isNum(r.seconds) || !Array.isArray(r.segs) || !r.segs.length || !r.segs.every(okSeg)) return false;
+  }
   const g = t.gpx;
   return !!g && isStrOrNull(g.name) && Array.isArray(g.lines) && Array.isArray(g.waypoints)
     && g.lines.every((l) => !!l && (l.kind === 'track' || l.kind === 'route') && isStrOrNull(l.name) && Array.isArray(l.points) && l.points.every(isPoint))
