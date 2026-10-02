@@ -57,6 +57,17 @@ try {
 
   // 1. first run: import screen
   await page.goto(`http://localhost:${PORT}/`);
+  // A database left at a higher version by another version of the app (one with a store of its own,
+  // and without one this version needs): it's used as it is, with the missing store added.
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const req = indexedDB.open('garmin-map', 7);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore('tracks', { keyPath: 'id' });
+      req.result.createObjectStore('from-another-version', { keyPath: 'id' });
+    };
+    req.onsuccess = () => { req.result.close(); resolve(); };
+    req.onerror = () => reject(req.error);
+  }));
   await page.waitForSelector('#import:not([hidden])', { timeout: 30_000 });
   await (await page.$('#img-file')).uploadFile(IMG);
   await (await page.$('#hgt-files')).uploadFile(...hgts);
