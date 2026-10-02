@@ -1,4 +1,5 @@
 import type { LocationState } from '../location/modes';
+import { storageName } from '../channel';
 
 /** A place a route goes to (a search result, a dropped pin or a saved pin: `saved`). */
 export interface Place {
@@ -31,7 +32,7 @@ export interface Session {
   route: SessionRoute | null;
 }
 
-const KEY = 'session';
+const KEY = storageName('session');
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isLonLat = (v: unknown): v is [number, number] => Array.isArray(v) && v.length === 2 && isNum(v[0]) && isNum(v[1]);

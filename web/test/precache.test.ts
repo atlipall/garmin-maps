@@ -16,7 +16,7 @@ const BUILD = { version: 'abc1234', builtAt: '2026-10-01T12:00:00.000Z' };
 /** Evaluates the service worker's top-level constants with a stubbed `self`. */
 function constants(src: string): { CACHE: string; PRECACHE: string[]; BUILD: unknown } {
   const body = src.slice(0, src.indexOf("self.addEventListener('install'"));
-  return new Function('self', `${body}; return { CACHE, PRECACHE, BUILD };`)({ location: { origin: 'x' } });
+  return new Function('self', `${body}; return { CACHE, PRECACHE, BUILD };`)({ location: { origin: 'x', pathname: '/garmin-maps/app/sw.js' } });
 }
 
 describe('injectPrecache', () => {
@@ -66,29 +66,50 @@ describe('injectPrecache', () => {
 });
 
 describe('activate', () => {
-  test("keeps this version's cache and the one before; deletes older ones of this app only", async () => {
+  /** Runs the worker's activation at `path` over a fake cache storage holding `keys`; returns what
+   *  it deleted and the order it remembered. */
+  async function activate(path: string, keys: string[], order: string[]) {
     const deleted: string[] = [];
     let onActivate: ((e: { waitUntil(p: Promise<unknown>): void }) => void) | undefined;
     const self = {
-      location: { origin: 'x' },
+      location: { origin: 'x', pathname: path },
       addEventListener: (type: string, fn: never) => { if (type === 'activate') onActivate = fn; },
       clients: { claim: async () => {} },
     };
-    const stored = new Map<string, string>([['order', JSON.stringify(['garmin-app-older', 'garmin-app-prev'])]]);
+    const stored = new Map<string, Map<string, string>>();
     const caches = {
-      keys: async () => ['garmin-app-dev', 'garmin-app-prev', 'garmin-app-older', 'garmin-app-order-v1', 'garmin-map-0123456789ab', 'other-project-v1'],
+      keys: async () => keys,
       delete: async (k: string) => { deleted.push(k); return true; },
-      open: async () => ({
-        match: async (k: string) => (stored.has(k) ? new Response(stored.get(k)) : undefined),
-        put: async (k: string, r: Response) => { stored.set(k, await r.text()); },
-      }),
+      open: async (name: string) => {
+        const c = stored.get(name) ?? stored.set(name, new Map()).get(name)!;
+        return {
+          match: async (k: string) => (c.has(k) ? new Response(c.get(k)) : undefined),
+          put: async (k: string, r: Response) => { c.set(k, await r.text()); },
+        };
+      },
     };
+    stored.set(path.includes('/app-dev/') ? 'garmin-appdev-order-v1' : 'garmin-app-order-v1', new Map([['order', JSON.stringify(order)]]));
     new Function('self', 'caches', TEMPLATE)(self, caches);
     let done: Promise<unknown> = Promise.resolve();
     onActivate!({ waitUntil: (p) => { done = p; } });
     await done;
-    // 'garmin-app-dev' is this (unbuilt) version's cache.
-    expect(deleted).toEqual(['garmin-app-older']);
-    expect(JSON.parse(stored.get('order')!)).toEqual(['garmin-app-prev', 'garmin-app-dev']);
+    const orderCache = [...stored].find(([n]) => n.endsWith('order-v1'))!;
+    return { deleted, order: JSON.parse(orderCache[1].get('order')!), orderName: orderCache[0] };
+  }
+
+  const ALL = ['garmin-app-dev', 'garmin-app-prev', 'garmin-app-older', 'garmin-app-order-v1', 'garmin-appdev-dev', 'garmin-appdev-prev', 'garmin-appdev-older', 'garmin-appdev-order-v1', 'garmin-map-0123456789ab', 'other-project-v1'];
+
+  test("keeps this version's cache and the one before; deletes older ones of this app only", async () => {
+    const r = await activate('/garmin-maps/app/sw.js', ALL, ['garmin-app-older', 'garmin-app-prev']);
+    // 'garmin-app-dev' is this (unbuilt) version's cache; the development version's are left alone.
+    expect(r.deleted).toEqual(['garmin-app-older']);
+    expect(r.order).toEqual(['garmin-app-prev', 'garmin-app-dev']);
+  });
+
+  test('the development version (/app-dev/) has caches of its own and leaves the app\'s alone', async () => {
+    const r = await activate('/garmin-maps/app-dev/sw.js', ALL, ['garmin-appdev-older', 'garmin-appdev-prev']);
+    expect(r.deleted).toEqual(['garmin-appdev-older']);
+    expect(r.orderName).toBe('garmin-appdev-order-v1');
+    expect(r.order).toEqual(['garmin-appdev-prev', 'garmin-appdev-dev']);
   });
 });

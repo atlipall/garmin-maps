@@ -3,6 +3,7 @@ import { decodeHgt, HGT_BYTES, parseHgtName } from '../dem/hgt';
 import { encodeOverview, OverviewBuilder } from '../dem/overview';
 import { ImgError } from '../img/bytes';
 import { BlobSource } from '../img/source';
+import { storageRoot } from '../channel';
 import { GarminMap } from '../map/garminMap';
 import { currentDirName, DIR_PREFIX, isCompleteDir, isDataDir, isMissing, listEntries, opfsAdapter, parsePointer, POINTER } from './layout';
 
@@ -78,7 +79,7 @@ async function doImport(img: File, hgt: File[]): Promise<void> {
 
   await checkSpace(img.size + parsed.reduce((n, p) => n + p.file.size, 0));
 
-  const root = await navigator.storage.getDirectory();
+  const root = await storageRoot();
   let name = `${DIR_PREFIX}${Date.now()}`;
   const existing = new Set((await listEntries(root)).map((e) => e.name));
   for (let i = 1; existing.has(name); i++) name = `${DIR_PREFIX}${Date.now()}-${i}`;
@@ -147,7 +148,7 @@ async function safeToDiscard(root: FileSystemDirectoryHandle, name: string): Pro
 
 async function doWriteText(dirName: string, name: string, text: string): Promise<void> {
   // No `create`: if the map directory vanished meanwhile, fail rather than resurrect it.
-  const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(dirName);
+  const dir = await (await storageRoot()).getDirectoryHandle(dirName);
   await writeBytes(dir, name, async (h) => void (await h.write(new TextEncoder().encode(text), { at: 0 })));
 }
 

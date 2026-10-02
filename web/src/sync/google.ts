@@ -1,4 +1,5 @@
 import { authUrl, exchangeCode, HelperError, refreshToken, revokeSealed, signInReturn, withoutSignInReturn } from './helper';
+import { storageName } from '../channel';
 
 /**
  * Signing in to Google for Drive sync. Asks for the drive.appdata scope alone: the app's hidden
@@ -13,7 +14,7 @@ import { authUrl, exchangeCode, HelperError, refreshToken, revokeSealed, signInR
 export const GOOGLE_CLIENT_ID: string = import.meta.env.VITE_GOOGLE_CLIENT_ID || '461823178284-761cjr28lki3ocobgt9n8kag1op4f5rp.apps.googleusercontent.com';
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const GIS = 'https://accounts.google.com/gsi/client';
-const KEY = 'google-sync';
+const KEY = storageName('google-sync');
 
 interface TokenResponse { access_token?: string; expires_in?: number; error?: string }
 interface TokenClient { requestAccessToken(o?: { prompt?: string }): void }
@@ -84,7 +85,7 @@ export async function freshToken(): Promise<TokenResult> {
 /** Where Google's page sends the user back to: the app itself (registered with the OAuth client). */
 const redirectUri = () => new URL('./', document.baseURI).toString();
 /** The sign-in under way, against a forged return. */
-const STATE_KEY = 'google-sync-signin';
+const STATE_KEY = storageName('google-sync-signin');
 
 /** Leaves for Google's sign-in page; it comes back to the app, where finishSignIn takes over. */
 export function startSignIn(): void {

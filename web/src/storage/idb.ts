@@ -1,7 +1,9 @@
+import { storageName } from '../channel';
+
 /** The app's IndexedDB database (GPX tracks and saved pins and routes), kept on this device and
  *  independent of the loaded map. Every store is created here, so each module opens the same
  *  version. */
-const DB = 'garmin-map';
+const DB = storageName('garmin-map');
 const VERSION = 2;
 export type StoreName = 'tracks' | 'saved';
 const STORES: StoreName[] = ['tracks', 'saved'];

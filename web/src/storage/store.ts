@@ -1,3 +1,4 @@
+import { storageRoot } from '../channel';
 import { currentDirName, hasDataDirs, isDataDir, isMissing, listEntries, parseMeta, POINTER, type StoredMeta } from './layout';
 
 export type { StoredMeta };
@@ -13,7 +14,7 @@ export const cacheKey = (m: StoredMeta) => `${m.imgName}|${m.imgSize}|${m.imgLas
 
 /** The current map's directory (see layout.ts), or null when no map is stored. */
 async function currentDir(): Promise<FileSystemDirectoryHandle | null> {
-  const root = await navigator.storage.getDirectory();
+  const root = await storageRoot();
   const name = await currentDirName(root);
   return name ? root.getDirectoryHandle(name) : null;
 }
@@ -64,7 +65,7 @@ export const importFiles = (img: File, hgt: File[], onProgress: (m: string) => v
 
 /** Writes a small text file into the current map's directory; rejects when no map is stored. */
 export async function writeText(name: string, text: string): Promise<void> {
-  const dir = await currentDirName(await navigator.storage.getDirectory());
+  const dir = await currentDirName(await storageRoot());
   if (!dir) throw new Error('no stored map to write into');
   await runWorker({ type: 'writeText', dir, name, text });
 }
@@ -72,7 +73,7 @@ export async function writeText(name: string, text: string): Promise<void> {
 /** Removes the stored map: the commit pointer first (so a partial removal reads as "no map"),
  *  then every map directory. Throws if anything could not be removed. */
 export async function clearStored(): Promise<void> {
-  const root = await navigator.storage.getDirectory();
+  const root = await storageRoot();
   const errors: string[] = [];
   const remove = async (name: string, recursive: boolean) => {
     try {
@@ -89,7 +90,7 @@ export async function clearStored(): Promise<void> {
 /** Whether any map data exists in storage, even if it isn't a loadable map (so the user can
  *  still be offered "Remove stored map"). */
 export async function hasStoredData(): Promise<boolean> {
-  return hasDataDirs(await navigator.storage.getDirectory());
+  return hasDataDirs(await storageRoot());
 }
 
 export async function requestPersistence(): Promise<boolean> {

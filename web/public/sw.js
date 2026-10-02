@@ -5,11 +5,13 @@
  * built file, so each deploy installs a fresh complete copy and `activate` drops the old one, and
  * BUILD is the build's {version, builtAt}, which a page asks for to tell whether it is out of date
  * (src/app/updates.ts). The defaults keep an unbuilt copy (dev) working. */
-const CACHE = self.__CACHE__ || 'garmin-app-dev';
+/** Caches this app owns: `garmin-app-*`, or `garmin-appdev-*` for the development version at
+ *  /app-dev/ (on the same site, so its caches must not be taken for the app's). Others on the
+ *  origin (other sites under atlipall.github.io, and the pre-/app/ root app's `garmin-map-*` caches,
+ *  which the root sw.js retires) are left alone. */
+const OWN = /\/app-dev\//.test(self.location.pathname) ? 'garmin-appdev-' : 'garmin-app-';
+const CACHE = (self.__CACHE__ || 'garmin-app-dev').replace(/^garmin-app-/, OWN);
 const BUILD = self.__BUILD__ || null;
-/** Caches this app owns. Others on the origin (other sites under atlipall.github.io, and the
- *  pre-/app/ root app's `garmin-map-*` caches, which the root sw.js retires) are left alone. */
-const OWN = 'garmin-app-';
 const FONTS = ['Noto Sans Regular', 'Noto Sans Italic'].flatMap((f) =>
   ['0-255', '256-511', '8192-8447'].map((r) => `./fonts/${encodeURIComponent(f)}/${r}.pbf`));
 const PRECACHE = [...new Set([
@@ -19,8 +21,8 @@ const PRECACHE = [...new Set([
 /** How long a navigation waits for the network before serving the cached shell. */
 const NAV_TIMEOUT_MS = 3000;
 
-/** Remembers the app's last two caches, newest last (a cache outside OWN, so it survives). */
-const ORDER = 'garmin-app-order-v1';
+/** Remembers the app's last two caches, newest last (kept out of the clean-up below by name). */
+const ORDER = `${OWN}order-v1`;
 
 const cacheable = (res) => res && res.ok && res.type === 'basic';
 /** A cached response, from this version's cache first, else an older one still kept. */

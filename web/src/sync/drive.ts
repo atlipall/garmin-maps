@@ -1,9 +1,11 @@
 import { parseBackup, type Backup } from '../saved/backup';
 import { mergeFiles } from './merge';
+import { DEV } from '../channel';
 
 /** The one file the app keeps in the user's Google Drive, in the hidden app-data folder (only this
  *  app can see it; the user's own files stay out of reach: scope drive.appdata). */
-export const SYNC_FILE = 'garmin-map-sync.json';
+/** The sync file in Drive's hidden app folder (the development version keeps its own). */
+export const SYNC_FILE = DEV ? 'garmin-map-sync-dev.json' : 'garmin-map-sync.json';
 const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 

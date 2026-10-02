@@ -1,6 +1,8 @@
+import { storageName } from '../channel';
+
 /** Saved items and tracks deleted on this device (id → when, ms), kept so a deletion reaches other
  *  devices when syncing. localStorage: small, and storage can be unavailable (fail soft). */
-const KEY = 'deleted';
+const KEY = storageName('deleted');
 
 export function deletions(): Record<string, number> {
   try {

@@ -1,7 +1,9 @@
 name: Deploy web app to GitHub Pages
+# Deploys the app (main, at /garmin-maps/app/) and the development version (the dev branch, at
+# /garmin-maps/app-dev/) together: Pages publishes one site, so every deploy builds both.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -27,6 +31,25 @@ jobs:
         working-directory: web
       - run: npm run build
         working-directory: web
+      # The development version: the dev branch, when there is one, tested the same way and built
+      # with VITE_CHANNEL=dev (its own storage and caches; see web/src/channel.ts).
+      - id: dev
+        run: |
+          if git ls-remote --exit-code --heads origin dev > /dev/null; then echo "exists=true" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.dev.outputs.exists == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: dev-src
+      - if: steps.dev.outputs.exists == 'true'
+        working-directory: dev-src/web
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          VITE_CHANNEL=dev npm run build
+          test -d dist/app-dev || { echo "The dev branch has no development-version build (merge main into it)."; exit 1; }
+          cp -r dist/app-dev "$GITHUB_WORKSPACE/web/dist/app-dev"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web/dist
