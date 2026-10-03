@@ -63,7 +63,7 @@
       <img src="app/icons/icon-192.png" alt="" />
       <h1>Garmin Map</h1>
     </div>
-    <p class="lead">Your Garmin <code>.img</code> maps on iPhone and Mac, drawn straight from the map file and fully offline, with hillshading, search, GPS follow, route planning and saved places.</p>
+    <p class="lead">Your Garmin <code>.img</code> maps on iPhone, Mac and Android car head units, drawn straight from the map file and fully offline, with hillshading, search, GPS follow, route planning, turn-by-turn navigation and saved places.</p>
     <a class="open" href="app/">Open the map →</a>
   </header>
 
@@ -72,7 +72,7 @@
     <ul>
       <li><b>A Garmin map in <code>.img</code> format</b>, unlocked (not encrypted). For example <a href="https://www.gpsmap.is/">GPSmap.is</a> Iceland: in its Android package the map is in the <span class="key">MAPS</span> folder.</li>
       <li><b>Elevation files (optional)</b>: SRTM <code>.hgt</code> files, such as those in the package's <span class="key">HILLSHADE</span> folder. They add hill shading and the height where you stand.</li>
-      <li>Put the files where your device can open them: on iPhone, the Files app (AirDrop or iCloud Drive work); on Mac, any folder.</li>
+      <li>Put the files where your device can open them: on iPhone, the Files app (AirDrop or iCloud Drive work); on Mac, any folder; on an Android head unit, its storage or a USB stick.</li>
     </ul>
   </section>
 
@@ -84,6 +84,19 @@
       <li><span>Open the map from its Home Screen icon from now on. The app then runs full screen, and iOS keeps its stored map more reliably than in a browser tab.</span></li>
     </ol>
     <p class="muted">On a Mac, open the same address in Safari or Chrome. In Safari you can use <b>File → Add to Dock</b>.</p>
+  </section>
+
+  <section id="android">
+    <h2>Install on an Android head unit</h2>
+    <p>For a car's Android head unit (or any Android device) there's an app to install. It opens the map in the unit's Chrome, full screen with no address bar; the map inside it updates with the site, so the APK itself rarely needs updating.</p>
+    <a class="open" href="https://github.com/atlipall/garmin-maps/releases/latest/download/GarminMap.apk">Download the Android app (APK) →</a>
+    <ol class="steps">
+      <li><span>On the head unit, open <a href="https://github.com/atlipall/garmin-maps/releases/latest/download/GarminMap.apk">the download link</a> in Chrome, or copy <code>GarminMap.apk</code> to it on a USB stick.</span></li>
+      <li><span>Open the downloaded file. Android asks whether to allow installing apps from Chrome (or the file manager): allow it, then tap <b>Install</b>.</span></li>
+      <li><span>Start <b>Garmin Map</b> from the app list and allow location when asked.</span></li>
+      <li><span>Load your map (below). If you've already loaded it in the unit's Chrome browser, it's there: the app shares Chrome's storage for this site.</span></li>
+    </ol>
+    <p class="muted">A new version of the app installs over the old one and keeps your map and data. The app needs Chrome on the unit; without it, it opens the map in its own built-in browser, where Google Drive sync, <b>Export GPX</b> and <b>Back up…</b> don't work. On a phone or tablet with Chrome's <b>⋮ → Install app</b> you don't need the APK: install the site from Chrome instead.</p>
   </section>
 
   <section>
@@ -200,6 +213,14 @@
   <section>
     <h2>If something goes wrong</h2>
     <div class="note">
+      <h3>The Android app shows an address bar</h3>
+      <p>Chrome checks once that the app belongs to this site, which needs a connection. Close the app fully (swipe it away in the recent apps) and open it again while online.</p>
+    </div>
+    <div class="note">
+      <h3>The map stays blank on the Android head unit</h3>
+      <p>The unit's Chrome (or its Android System WebView) is too old for the map, which needs WebGL 2. Update Chrome and Android System WebView, from the unit's app store or the APKs its maker provides.</p>
+    </div>
+    <div class="note">
       <h3>The map is gone and it asks for the files again</h3>
       <p>iOS can clear the storage of web apps you haven't opened for a long time. Import the files again; adding the app to the Home Screen makes this much less likely.</p>
     </div>
@@ -226,7 +247,7 @@
       <li><b>Google Drive sync is optional.</b> If you turn it on, the app signs in to your Google account and keeps a copy of your saved places and routes and your GPX tracks in a hidden app folder in your own Google Drive. The app asks only for access to that folder (the <code>drive.appdata</code> permission), never to your other files. The data goes directly between your device and Google; we never see it. Google's <a href="https://policies.google.com/privacy">privacy policy</a> applies to your Google account and Drive. The app's use of information received from Google APIs follows the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including its Limited Use requirements.</li>
       <li><b>The sign-in helper.</b> So that you don't have to sign in every hour, sign-in goes through a small helper of ours (a Cloudflare Worker at <code>garmin-maps-auth.atlipall.workers.dev</code>). It holds the app's Google client secret, trades Google's one-time sign-in code for access to the app folder, and later renews that access. It keeps nothing: the lasting access key is sent back to your device locked with a key only the helper has, and your device sends it back when the access needs renewing. The helper never receives your saved places, routes, tracks or location, and keeps no logs of keys. Cloudflare, which runs it, may log basic request details such as IP addresses; see <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's privacy policy</a>.</li>
       <li><b>To stop syncing</b>, tap <b>Stop syncing</b> in <b>⋯ → Sync and backup</b>; this also withdraws that device's access key at Google. To remove the synced copy and the app's access, open your Google Account's <a href="https://myaccount.google.com/connections">third-party connections</a> and remove Map viewer, and delete the app's hidden data under Drive's <b>Settings → Manage apps</b>.</li>
-      <li><b>Downloading the app.</b> The app is served by GitHub Pages, which may log basic request details such as your IP address when the app is downloaded or updated; see <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a>. After that the app works offline.</li>
+      <li><b>Downloading the app.</b> The app is served by GitHub Pages, which may log basic request details such as your IP address when the app is downloaded or updated; see <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a>. After that the app works offline. The Android app is downloaded from GitHub too; it only opens this same app in Chrome (or in its own built-in browser), asks for nothing but your location, and collects nothing.</li>
       <li><b>Deleting your data.</b> Remove the app from your Home Screen or clear the website data for atlipall.github.io in your browser settings. <b>⋯ → Load another map → Remove stored map</b> removes the map files.</li>
       <li>Questions: open an issue on <a href="https://github.com/atlipall/garmin-maps/issues">GitHub</a>.</li>
     </ul>
