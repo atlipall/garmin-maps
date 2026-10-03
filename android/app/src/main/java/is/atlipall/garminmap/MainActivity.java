@@ -19,7 +19,8 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 /**
- * Garmin Map for Android head units: the web app (BuildConfig.START_URL) in a full-screen WebView.
+ * Garmin Map in a full-screen WebView: the fallback when there's no browser to run it in Chrome
+ * (./ChromeLauncher.java), on the web app at BuildConfig.START_URL.
  * It loads the live app, so it updates with the site and works offline once loaded (the app's
  * service worker). This adds what a bare WebView lacks: location (asked for once), the file picker
  * (to import the map), the screen kept on, no system bars, and Back that doesn't close it.
