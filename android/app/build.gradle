@@ -7,7 +7,7 @@ def keystore = System.getenv("ANDROID_KEYSTORE_FILE")
 
 android {
     namespace "is.atlipall.garminmap"
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId "is.atlipall.garminmap"
