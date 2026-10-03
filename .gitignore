@@ -4,3 +4,6 @@ node_modules/
 *.img
 *.hgt
 .superpowers/
+
+# The Android signing key (kept outside the repo; see .github/workflows/android.yml).
+.android-signing/

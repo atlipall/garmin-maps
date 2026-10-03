@@ -1,0 +1,63 @@
+plugins {
+    id "com.android.application"
+}
+
+// The release key comes from the environment (GitHub Actions secrets; see .github/workflows/android.yml).
+def keystore = System.getenv("ANDROID_KEYSTORE_FILE")
+
+android {
+    namespace "is.atlipall.garminmap"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "is.atlipall.garminmap"
+        minSdk 24
+        targetSdk 35
+        versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "1")
+        versionName System.getenv("VERSION_NAME") ?: "dev"
+    }
+
+    // Two apps from one project: the app, and the development version (installable alongside it).
+    flavorDimensions = ["site"]
+    productFlavors {
+        live {
+            dimension "site"
+            resValue "string", "app_name", "Garmin Map"
+            buildConfigField "String", "START_URL", "\"https://atlipall.github.io/garmin-maps/app/\""
+        }
+        dev {
+            dimension "site"
+            applicationIdSuffix ".dev"
+            resValue "string", "app_name", "Map Dev"
+            buildConfigField "String", "START_URL", "\"https://atlipall.github.io/garmin-maps/app-dev/\""
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    signingConfigs {
+        release {
+            if (keystore) {
+                storeFile file(keystore)
+                storeType "pkcs12"
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias "garminmap"
+                keyPassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystore ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
