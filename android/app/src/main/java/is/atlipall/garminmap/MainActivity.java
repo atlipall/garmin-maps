@@ -98,7 +98,10 @@ public class MainActivity extends Activity {
                 } catch (Throwable e) {
                     asked = null;
                 }
-                for (Intent pick : new Intent[] {open, get, asked}) {
+                // GET_CONTENT through Android's app chooser: the file manager it lands on may run in
+                // a task of its own, which gives an immediate "cancelled" when started directly.
+                Intent chooser = Intent.createChooser(get, "Choose the file");
+                for (Intent pick : new Intent[] {open, chooser, get, asked}) {
                     if (pick == null) continue;
                     try {
                         startActivityForResult(pick, PICK_FILES);
@@ -147,7 +150,7 @@ public class MainActivity extends Activity {
                     uris = new Uri[] {data.getData()};
                 }
             }
-            App.log(this, "file picker: " + (uris == null ? "nothing picked" : uris.length + " file(s)"));
+            App.log(this, "file picker: " + (uris == null ? "nothing picked (result " + result + ")" : uris.length + " file(s)"));
         } catch (Throwable e) {
             App.log(this, "file picker: reading the result failed: " + e);
             uris = null;

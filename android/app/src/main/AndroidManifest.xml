@@ -42,11 +42,19 @@
             <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR" android:resource="@color/bar" />
         </activity>
 
-        <!-- Without a browser that can run it in Chrome: the app in a WebView. -->
+        <!-- The helper library's "site settings" shortcut, which it turns on or off whenever it
+             opens the app in Chrome: without it declared, that crashes the app. -->
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity"
+            android:exported="false">
+            <meta-data android:name="android.support.customtabs.trusted.MANAGE_SPACE_URL" android:value="@string/start_url" />
+        </activity>
+
+        <!-- Without a browser that can run it in Chrome: the app in a WebView. (Not singleTask: a
+             file picker started from it would come back cancelled at once.) -->
         <activity
             android:name=".MainActivity"
             android:exported="false"
-            android:launchMode="singleTask"
             android:screenOrientation="unspecified"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density" />
     </application>
