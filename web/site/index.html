@@ -53,6 +53,33 @@
     .mode span { color: var(--muted); font-size: 15px; }
 
     .note { padding: 14px 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); display: grid; gap: 8px; }
+    /* Pictures of the app: phone screens side by side, a caption under each. */
+    .shots { display: flex; flex-wrap: wrap; gap: 16px; margin: 4px 0; }
+    /* Up to 220 px each; two side by side even on a phone. */
+    .shots > figure { flex: 0 1 min(220px, calc(50% - 8px)); min-width: 0; }
+    figure { margin: 0; display: grid; gap: 8px; align-content: start; justify-items: start; }
+    figure img { display: block; width: 100%; height: auto; border-radius: 20px; border: 1px solid var(--line); box-shadow: 0 6px 22px rgba(20, 30, 40, 0.16); background: var(--card); }
+    figure.wide img { border-radius: 14px; }
+    figcaption { font-size: 14px; color: var(--muted); }
+    figure.wide figcaption { max-width: none; }
+
+    /* Contents: a bar at the top on phones (folds out), a sidebar beside the text on wide screens. */
+    #toc { position: sticky; top: 0; z-index: 2; margin: 0 calc(-1 * max(20px, env(safe-area-inset-left))); padding: 0 max(20px, env(safe-area-inset-left)); background: var(--paper); border-bottom: 1px solid var(--line); }
+    #toc summary { padding: 12px 0; font-weight: 600; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; }
+    #toc summary::-webkit-details-marker { display: none; }
+    #toc summary::before { content: ""; width: 18px; height: 12px; background: linear-gradient(currentColor 0 0) top / 100% 2px no-repeat, linear-gradient(currentColor 0 0) center / 100% 2px no-repeat, linear-gradient(currentColor 0 0) bottom / 100% 2px no-repeat; }
+    #toc ol { list-style: none; padding: 0 0 14px; gap: 2px; max-height: 70vh; overflow-y: auto; }
+    #toc a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--ink); text-decoration: none; font-size: 16px; }
+    #toc a:hover { background: var(--card); }
+    #toc a[aria-current="true"] { background: var(--card); color: var(--accent); font-weight: 600; }
+    #toc .sub a { padding-left: 24px; font-size: 15px; color: var(--muted); }
+    section { scroll-margin-top: 56px; }
+    @media (min-width: 1100px) {
+      #toc { position: fixed; top: 32px; left: max(20px, calc(50% - 360px - 280px)); width: 240px; margin: 0; padding: 0; border: 0; background: none; }
+      #toc summary { display: none; }
+      #toc ol { max-height: calc(100vh - 64px); }
+      section { scroll-margin-top: 24px; }
+    }
     footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 18px; }
   </style>
 </head>
@@ -65,9 +92,34 @@
     </div>
     <p class="lead">Your Garmin <code>.img</code> maps on iPhone, Mac and Android car head units, drawn straight from the map file and fully offline, with hillshading, search, GPS follow, route planning, turn-by-turn navigation and saved places.</p>
     <a class="open" href="app/">Open the map →</a>
+    <div class="shots"><figure><img src="images/map.webp" width="780" height="1688" loading="lazy" alt="The map around Landmannalaugar with hillshading, contour lines, rivers and place names" /><figcaption>Landmannalaugar: the Garmin map with hillshading, offline.</figcaption></figure></div>
   </header>
 
-  <section>
+  <nav id="toc" aria-label="Contents">
+    <details>
+      <summary>Contents</summary>
+      <ol>
+        <li><a href="#need">What you need</a></li>
+        <li><a href="#iphone">Install on iPhone</a></li>
+        <li><a href="#android">Install on an Android head unit</a></li>
+        <li><a href="#load">Load your map</a></li>
+        <li><a href="#search">Find places</a></li>
+        <li><a href="#location">Follow your position</a></li>
+        <li><a href="#tracks">Show GPX tracks</a></li>
+        <li><a href="#route">Plan a route</a></li>
+        <li class="sub"><a href="#navigate">Navigating</a></li>
+        <li><a href="#save">Save places and routes</a></li>
+        <li class="sub"><a href="#sync">Sync and backup</a></li>
+        <li><a href="#screen">Keep the screen on</a></li>
+        <li><a href="#offline">Offline and privacy</a></li>
+        <li><a href="#help">If something goes wrong</a></li>
+        <li><a href="#privacy">Privacy policy</a></li>
+        <li><a href="#terms">Terms of service</a></li>
+      </ol>
+    </details>
+  </nav>
+
+  <section id="need">
     <h2>What you need</h2>
     <ul>
       <li><b>A Garmin map in <code>.img</code> format</b>, unlocked (not encrypted). For example <a href="https://www.gpsmap.is/">GPSmap.is</a> Iceland: in its Android package the map is in the <span class="key">MAPS</span> folder.</li>
@@ -76,7 +128,7 @@
     </ul>
   </section>
 
-  <section>
+  <section id="iphone">
     <h2>Install on iPhone</h2>
     <ol class="steps">
       <li><span>Open <a href="app/">atlipall.github.io/garmin-maps/app</a> in <b>Safari</b>.</span></li>
@@ -90,6 +142,7 @@
     <h2>Install on an Android head unit</h2>
     <p>For a car's Android head unit (or any Android device) there's an app to install. It opens the map in the unit's Chrome, full screen with no address bar; the map inside it updates with the site, so the APK itself rarely needs updating.</p>
     <a class="open" href="https://github.com/atlipall/garmin-maps/releases/latest/download/GarminMap.apk">Download the Android app (APK) →</a>
+    <figure class="wide"><img src="images/head-unit.webp" width="1920" height="1080" loading="lazy" alt="Navigating on a wide head-unit screen: the next turn and the trip panel in a column on the left, the map with the route on the right" /><figcaption>On a head unit the guidance sits in a column on the left.</figcaption></figure>
     <ol class="steps">
       <li><span>On the head unit, open <a href="https://github.com/atlipall/garmin-maps/releases/latest/download/GarminMap.apk">the download link</a> in Chrome, or copy <code>GarminMap.apk</code> to it on a USB stick.</span></li>
       <li><span>Open the downloaded file. Android asks whether to allow installing apps from Chrome (or the file manager): allow it, then tap <b>Install</b>.</span></li>
@@ -99,25 +152,26 @@
     <p class="muted">A new version of the app installs over the old one and keeps your map and data. The app needs Chrome on the unit; without it, it opens the map in its own built-in browser, where Google Drive sync, <b>Export GPX</b> and <b>Back up…</b> don't work. On a phone or tablet with Chrome's <b>⋮ → Install app</b> you don't need the APK: install the site from Chrome instead.</p>
   </section>
 
-  <section>
+  <section id="load">
     <h2>Load your map</h2>
     <ol class="steps">
       <li><span>Under <b>Map (.img)</b>, choose your map file.</span></li>
       <li><span>Under <b>Elevation</b>, select all the <code>.hgt</code> files at once (optional).</span></li>
       <li><span>Tap <b>Import</b>. The files are copied into the app's storage on this device; a 100 MB map takes a few seconds.</span></li>
     </ol>
+    <div class="shots"><figure><img src="images/import.webp" width="780" height="1688" loading="lazy" alt="The import screen with fields for the map file and the elevation files, and an Import button" /><figcaption>The first screen: pick the map and elevation files.</figcaption></figure></div>
     <p class="muted">To switch maps later, use <b>⋯ → Load another map</b>. Your current map stays until the new one has finished importing.</p>
   </section>
 
-  <section>
+  <section id="search">
     <h2>Find places</h2>
     <p>Tap the magnifier at the top left and type. Accents don't matter: <i>thorsmork</i> finds <i>Þórsmörk</i>. Each result shows what it is, where it is and how far away:</p>
-    <div class="note"><div><b>Hótel Edda</b><br /><span class="muted">Hotel · in Egilsstaðir</span><span style="float: right;">216 km →</span></div></div>
+    <div class="shots"><figure><img src="images/search.webp" width="780" height="1688" loading="lazy" alt="Search results for Hekla: tracks, a farm, a peak, a region and accommodation, each with what it is, where and how far" /><figcaption>Searching for <i>Hekla</i>: what each place is, where, and how far.</figcaption></figure><figure><img src="images/place.webp" width="780" height="1688" loading="lazy" alt="A place card for Hekla on the map with Route here and Save buttons" /><figcaption>A place&#39;s card: <b>Route here</b> or <b>Save</b>.</figcaption></figure></div>
     <p>Places near you come first. Tap a result to fly there and open its card (see <a href="#route">Plan a route</a>); the <b>×</b> clears the search and the pin. An empty search folds back into the magnifier when you tap the map.</p>
     <p><b>Press and hold</b> anywhere on the map (on a computer: right-click, or Ctrl+Click on a Mac) to drop a pin there. A pin dropped on a named feature takes its name: <i>Dropped pin · Hekla 1491m</i>, <i>Dropped pin · Þórisvatn</i>.</p>
   </section>
 
-  <section>
+  <section id="location">
     <h2>Follow your position</h2>
     <p>The locate button sits bottom-right. Each tap moves to the next mode:</p>
     <div class="modes">
@@ -145,9 +199,10 @@
       <li>While following, the zoom adapts to your speed: close in on foot, further out when driving (about 100 m across the scale bar walking, 1 km on fast roads). Zoom by hand to keep your own zoom until you next tap the locate button.</li>
       <li>The <span class="key">▲ 611 m</span> label bottom-left is the <b>ground height</b> where you are, read from the elevation files.</li>
     </ul>
+    <div class="shots"><figure><img src="images/location.webp" width="780" height="1688" loading="lazy" alt="Your position as a blue dot at Landmannalaugar, the locate button bottom right and the ground height, 611 m, bottom left" /><figcaption>Following you at Landmannalaugar; the ground height is bottom left.</figcaption></figure></div>
   </section>
 
-  <section>
+  <section id="tracks">
     <h2>Show GPX tracks</h2>
     <p>The app can't record in the background, but it can show tracks recorded with another app, or routes planned elsewhere.</p>
     <ol class="steps">
@@ -155,12 +210,14 @@
       <li><span>Each file gets its own colour on the map: tracks and routes as lines, waypoints as pins with their names.</span></li>
       <li><span>The list shows each file's distance, climb and time. Tap a row to see it on the map, the eye to hide it, and the bin twice to delete it.</span></li>
     </ol>
+    <div class="shots"><figure><img src="images/tracks.webp" width="780" height="1688" loading="lazy" alt="The Tracks panel listing a GPX track with its distance and climb, and the track drawn on the map" /><figcaption>A GPX track: its line on the map, distance and climb in the list.</figcaption></figure></div>
     <p class="muted">Tracks are stored on this device and stay when you load another map.</p>
   </section>
 
   <section id="route">
     <h2>Plan a route</h2>
     <p>Open a place's card (a search result, a dropped pin or a saved star) and tap <b>Route here</b>. The route is worked out on the phone, offline, over the map's own road network, from your position (or the map centre without GPS). Tap the map elsewhere to close a card you haven't routed yet.</p>
+    <div class="shots"><figure><img src="images/route.webp" width="780" height="1688" loading="lazy" alt="The route card for a route from Selfoss to Landmannalaugar: 2 hours, 125 km, the stops, route options and a Start button" /><figcaption>A route: time, distance, arrival, and <b>Start</b>.</figcaption></figure><figure><img src="images/navigation.webp" width="780" height="1688" loading="lazy" alt="Navigating: a blue banner with the next turn, Turn right onto F225 in 36 km, and a dark panel with the arrival time and distance left" /><figcaption>Navigating: the next turn on top, the trip below.</figcaption></figure></div>
     <div class="note">
       <h3>The route card</h3>
       <ul>
@@ -175,7 +232,7 @@
       <h3>Waypoints</h3>
       <p>With a route shown, drop a pin (or pick a search result or saved star) and tap <b>Add as waypoint</b>. It's fitted in where it adds the least distance, moved onto the nearest road, and shown as a numbered circle; the route is worked out again through it without moving the map. Remove one with its <b>×</b> in the card, or tap its circle on the map. <b>New route</b> starts over from the new place instead.</p>
     </div>
-    <div class="note">
+    <div class="note" id="navigate">
       <h3>On the road</h3>
       <p>Tap <b>Start</b> on the route card for turn-by-turn guidance (on screen, no voice yet). The map follows you heading up; the banner at the top shows the next turn, how far it is and the one after it (<i>Turn left onto F26 · Then: roundabout, 2nd exit</i>), and the dark panel at the bottom your arrival time, the time and distance left, and <b>End</b>. If you leave the route for more than a few seconds it plans a new route from where you are. In the highlands, where leaving the route may be on purpose (a viewpoint, a ford), you can have it ask first: turn on <b>⋯ → Ask before rerouting in the highlands</b>, and on an F-road or track it asks <b>Plan again</b> or <b>Keep going</b> (it then waits until you're back on the route). On a wide landscape screen, such as a car's head unit, the guidance sits in a column on the left. The app has to stay open with the screen on: iOS pauses web apps in the background.</p>
       <p>Without navigating, the card shrinks to a dark panel with the arrival time, driving time and distance once you're moving faster than walking pace; the chevron does the same by hand, and a tap on the panel opens the card again (it then stays open for this route).</p>
@@ -183,7 +240,7 @@
     <p class="muted">Routes use the map's own speeds, capped on the highland roads: F-roads 40 km/h, tracks 25, rough 4×4 tracks 20. If iOS closes the app (in the background, or when it runs short of memory), it opens again where you were: the same map view, location mode and route, worked out again from your position.</p>
   </section>
 
-  <section>
+  <section id="save">
     <h2>Save places and routes</h2>
     <ul>
       <li>Tap <b>Save</b> on a place's card or a route, keep or change the suggested name, and it's kept on this device.</li>
@@ -191,17 +248,19 @@
       <li>Saved places show on the map as gold stars; tap one to open its card. Routing to it reads <i>Routing to</i> and its name.</li>
       <li><b>⋯ → Saved pins and routes</b> lists everything. A saved route opens just as it was drawn, waypoints included, without being worked out again; change its start or route options to plan it afresh. Delete an item with the bin (tap twice).</li>
       <li><b>Export GPX</b> on a route (or the share icon next to a saved route) makes a GPX file: the route as a track, and the start, waypoints and destination as named points, for a Garmin device, another map app or Google Earth. On the iPhone it opens the share sheet (save to Files, AirDrop, another app); on a computer it downloads.</li>
-      <li><b>⋯ → Sync and backup → Back up…</b> writes one file with all your saved places and routes and your GPX tracks. <b>Restore…</b> on another device (or after reinstalling) brings in what the file has and this device doesn't; nothing is deleted. Keep the file in iCloud Drive to move it between your iPhone and Mac.</li>
+      <li id="sync"><b>⋯ → Sync and backup → Back up…</b> writes one file with all your saved places and routes and your GPX tracks. <b>Restore…</b> on another device (or after reinstalling) brings in what the file has and this device doesn't; nothing is deleted. Keep the file in iCloud Drive to move it between your iPhone and Mac.</li>
       <li><b>Sync with Google Drive</b> (optional, in <b>⋯ → Sync and backup</b>) keeps your saved places and routes and your GPX tracks the same on every device you sign in on. They're kept in a hidden folder in your Google Drive that only this app can see; the app gets no access to your other files. It syncs when the app opens, when you come back to it and a few seconds after a change; everything keeps working offline and syncs when you're back online. <b>Stop syncing</b> turns it off on that device. You sign in once on each device: signing in goes to Google's page and back to the app, and after that it stays signed in until you tap <b>Stop syncing</b> (or remove the app's access in your Google account). If the app's sign-in helper can't be reached, it offers Google's one-hour sign-in instead.</li>
     </ul>
+    <div class="shots"><figure><img src="images/saved.webp" width="780" height="1688" loading="lazy" alt="The Saved panel listing two saved places, and their gold stars on the map" /><figcaption>Saved places: gold stars on the map.</figcaption></figure><figure><img src="images/sync.webp" width="780" height="1688" loading="lazy" alt="The Sync and backup panel with Sync with Google Drive, Back up and Restore" /><figcaption><b>⋯ → Sync and backup</b>.</figcaption></figure></div>
   </section>
 
-  <section>
+  <section id="screen">
     <h2>Keep the screen on</h2>
+    <div class="shots"><figure><img src="images/menu.webp" width="780" height="1688" loading="lazy" alt="The menu: the map loaded, Tracks, Saved, Sync and backup, the Keep screen on and Ask before rerouting switches, Load another map and the version" /><figcaption>The <b>⋯</b> menu, with its switches.</figcaption></figure></div>
     <p>While location is on, the screen stays on so the map doesn't go dark as you walk. Turn this off in <b>⋯ → Keep screen on while locating</b>. It needs iOS 18.4 or later for Home Screen apps, and Low Power Mode may still let the screen sleep.</p>
   </section>
 
-  <section>
+  <section id="offline">
     <h2>Offline and privacy</h2>
     <ul>
       <li>After the first launch the app works without a connection, in airplane mode too.</li>
@@ -210,7 +269,7 @@
     </ul>
   </section>
 
-  <section>
+  <section id="help">
     <h2>If something goes wrong</h2>
     <div class="note">
       <h3>The Android app shows an address bar</h3>
@@ -269,5 +328,27 @@
     <p>Made for GPSmap.is maps but works with other unlocked Garmin IMG maps. Map data belongs to its publisher. <a href="#privacy">Privacy policy</a> · <a href="#terms">Terms of service</a> · <a href="https://github.com/atlipall/garmin-maps">Source code</a>.</p>
   </footer>
 </main>
+<script>
+  // The contents: open beside the text on wide screens; on phones it folds away after a tap. The
+  // section being read is highlighted.
+  (() => {
+    const toc = document.querySelector('#toc details');
+    const wide = matchMedia('(min-width: 1100px)');
+    const fit = () => { if (wide.matches) toc.open = true; };
+    fit();
+    wide.addEventListener('change', fit);
+    toc.addEventListener('click', (e) => { if (e.target.closest('a') && !wide.matches) toc.open = false; });
+    const links = [...toc.querySelectorAll('a')];
+    const sections = links.map((a) => document.getElementById(a.hash.slice(1))).filter(Boolean);
+    const mark = () => {
+      // The last section whose top has passed a quarter of the way down the window.
+      let current = sections[0];
+      for (const sec of sections) if (sec.getBoundingClientRect().top < innerHeight / 4) current = sec;
+      for (const a of links) a.setAttribute('aria-current', String(a.hash === '#' + current.id));
+    };
+    addEventListener('scroll', mark, { passive: true });
+    mark();
+  })();
+</script>
 </body>
 </html>

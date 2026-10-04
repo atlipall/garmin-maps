@@ -25,6 +25,7 @@ is the only user and tests on an iPhone 13 and the head unit.
 npm run e2e                             # build with VITE_GOOGLE_CLIENT_ID=e2e, then the full headless-Chrome run (~5 min)
 node scripts/e2e.mjs                    # the e2e again without rebuilding
 npm run dev                             # http://localhost:5173
+npm run shots                           # retake the guide's screenshots (web/site/images/) after a UI change
 ```
 
 - **`npm install` is blocked** unless logged in to npm (`npm login`): no new dependencies without asking.
