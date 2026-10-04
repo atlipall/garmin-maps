@@ -49,22 +49,13 @@ public class StartActivity extends Activity {
         prefs.edit().putString("starts", kept.toString() + now).apply();
         File report = new File(getFilesDir(), App.REPORT);
         boolean builtIn = prefs.getBoolean("builtIn", false);
-        // Opened again within 30 s of handing over to Chrome: Chrome didn't keep the app. Show
-        // what happened rather than trying the same again.
-        long handedOver = prefs.getLong("handedOverAt", 0);
-        if (!builtIn && now - handedOver < 30_000) {
-            prefs.edit().remove("handedOverAt").remove("starts").apply();
-            App.log(this, "start: back " + (now - handedOver) / 1000 + " s after handing over to Chrome");
-            showDiagnostics(report, false, true);
-            return;
-        }
         App.log(this, "start #" + recent + " in 15 s" + (builtIn ? " (built-in browser chosen)" : "") + (report.exists() ? " (crash report waiting)" : ""));
         if (!report.exists() && recent < LOOP_STARTS) {
             go(builtIn);
             return;
         }
         prefs.edit().remove("starts").apply();
-        showDiagnostics(report, recent >= LOOP_STARTS, false);
+        showDiagnostics(report, recent >= LOOP_STARTS);
     }
 
     private void go(boolean builtIn) {
@@ -78,7 +69,7 @@ public class StartActivity extends Activity {
         finish();
     }
 
-    private void showDiagnostics(File report, boolean looped, boolean backFromChrome) {
+    private void showDiagnostics(File report, boolean looped) {
         String crash = read(report);
         String log = read(new File(getFilesDir(), App.LOG));
         LinearLayout page = new LinearLayout(this);
@@ -86,9 +77,7 @@ public class StartActivity extends Activity {
         page.setPadding(48, 32, 48, 32);
         page.setBackgroundColor(Color.WHITE);
         TextView title = new TextView(this);
-        title.setText(backFromChrome
-            ? "Back soon after opening in Chrome: it didn't keep the map open? Take a photo of this screen and send it on."
-            : looped
+        title.setText(looped
             ? "Garmin Map kept starting over, so it stopped here. Take a photo of this screen and send it on."
             : "Garmin Map stopped the last time it started. Take a photo of this screen and send it on.");
         title.setTextSize(20);

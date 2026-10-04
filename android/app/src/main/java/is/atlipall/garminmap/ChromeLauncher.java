@@ -29,8 +29,6 @@ public class ChromeLauncher extends LauncherActivity {
         String mode = pick.launchMode == TwaProviderPicker.LaunchMode.TRUSTED_WEB_ACTIVITY ? "full-screen app"
             : pick.launchMode == TwaProviderPicker.LaunchMode.CUSTOM_TAB ? "Chrome tab only" : "browser only";
         App.log(this, "Chrome launcher: handing over to " + pick.provider + " (" + mode + ")");
-        // Coming back to the app shortly after this means Chrome didn't keep it (StartActivity).
-        getSharedPreferences("start", MODE_PRIVATE).edit().putLong("handedOverAt", System.currentTimeMillis()).apply();
         super.launchTwa();
     }
 

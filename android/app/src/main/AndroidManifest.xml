@@ -42,6 +42,17 @@
             <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR" android:resource="@color/bar" />
         </activity>
 
+        <!-- Location for the app in Chrome: Chrome asks the app for it (./LocationService.java). -->
+        <service
+            android:name=".LocationService"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
         <!-- The helper library's "site settings" shortcut, which it turns on or off whenever it
              opens the app in Chrome: without it declared, that crashes the app. -->
         <activity
