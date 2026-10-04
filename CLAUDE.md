@@ -45,6 +45,7 @@ npm run shots                           # retake the guide's screenshots (web/si
 | Android app | GitHub Releases, `releases/latest/download/GarminMap.apk` | push `main` touching `android/` → `android.yml` |
 | Sign-in helper | garmin-maps-auth.atlipall.workers.dev | `wrangler deploy` in `web/auth-worker/` |
 | Asset links | atlipall.github.io/.well-known/assetlinks.json | repo `atlipall/atlipall.github.io` |
+| Development page | atlipall.github.io/garmin-maps/dev/ (APK downloads, short to type on the head unit) | `web/site/dev/index.html`, deployed with the site; update its pinned APK version |
 
 - Only `main` may deploy to Pages (environment rule): never loosen it; dev deploys go through `dev.yml`.
 - **The development version keeps its own storage** (`web/src/channel.ts`, build flag `VITE_CHANNEL=dev`):

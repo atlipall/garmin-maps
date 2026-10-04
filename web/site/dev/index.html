@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Garmin Map development</title>
+  <style>
+    :root { --ink: #1d2a38; --muted: #5a6573; --paper: #f4f0e4; --card: #ffffff; --line: #d9d3c2; --accent: #2c5a85; --on-accent: #ffffff; --dev: #7c3aed; color-scheme: light; }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #e9e5d9; --muted: #a8b0ba; --paper: #151b22; --card: #1d252e; --line: #323d49; --accent: #86b4e0; --on-accent: #0f1720; --dev: #b794f6; color-scheme: dark; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 18px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding-inline: 20px; padding-block: 32px 48px; display: grid; gap: 28px; }
+    h1 { margin: 0; font-size: 32px; }
+    h2 { margin: 0; font-size: 21px; }
+    p { margin: 0; }
+    section { display: grid; gap: 12px; }
+    .muted { color: var(--muted); font-size: 16px; }
+    /* Big targets: tapped on a car's screen. */
+    .get { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 16px; padding: 18px 20px; min-height: 72px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+    .get b { font-size: 20px; }
+    .get span { grid-column: 1; color: var(--muted); font-size: 15px; }
+    .get::after { content: "↓"; grid-column: 2; grid-row: 1 / span 2; font-size: 26px; color: var(--accent); }
+    .get.open::after { content: "→"; }
+    .get.main { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    .get.main span, .get.main::after { color: var(--on-accent); }
+    .get.dev b { color: var(--dev); }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Garmin Map development</h1>
+
+  <section>
+    <h2>Android app for the head unit</h2>
+    <a class="get main" href="https://github.com/atlipall/garmin-maps/releases/download/android-1.4/GarminMap.apk"><b>Garmin Map 1.4</b><span>Opens the map in Chrome. If it stops, open it again: it shows why, with a button to try the built-in browser.</span></a>
+    <a class="get" href="https://github.com/atlipall/garmin-maps/releases/latest/download/GarminMap.apk"><b>Garmin Map, newest version</b><span>Whatever the latest build is.</span></a>
+    <a class="get dev" href="https://github.com/atlipall/garmin-maps/releases/latest/download/GarminMapDev.apk"><b>Map Dev, newest version</b><span>The development version as its own app, next to Garmin Map.</span></a>
+    <a class="get" href="https://github.com/atlipall/garmin-maps/releases/download/android-1.1/GarminMap.apk"><b>Garmin Map 1.1</b><span>Built-in browser only, no Chrome. Uninstall Garmin Map first (it's an older version).</span></a>
+    <p class="muted">Open a download, then the file: Android asks to allow installing from the browser the first time. All versions are listed on <a href="https://github.com/atlipall/garmin-maps/releases">GitHub</a>.</p>
+  </section>
+
+  <section>
+    <h2>In the browser</h2>
+    <a class="get open dev" href="../app-dev/"><b>Map Dev</b><span>The development version (its own storage: import the map once).</span></a>
+    <a class="get open" href="../app/"><b>Garmin Map</b><span>The app.</span></a>
+    <a class="get open" href="../"><b>User guide</b><span>How to use it.</span></a>
+  </section>
+</main>
+</body>
+</html>
