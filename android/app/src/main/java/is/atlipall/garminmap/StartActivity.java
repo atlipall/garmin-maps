@@ -30,6 +30,10 @@ public class StartActivity extends Activity {
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         SharedPreferences prefs = getSharedPreferences("start", MODE_PRIVATE);
+        // A new version tries Chrome again (it may be what fixes it), whatever was chosen before.
+        if (prefs.getInt("version", 0) != BuildConfig.VERSION_CODE) {
+            prefs.edit().putInt("version", BuildConfig.VERSION_CODE).remove("builtIn").remove("starts").apply();
+        }
         long now = System.currentTimeMillis();
         // Recent starts, oldest first, as "t1,t2,…".
         StringBuilder kept = new StringBuilder();
@@ -56,7 +60,12 @@ public class StartActivity extends Activity {
 
     private void go(boolean builtIn) {
         App.log(this, builtIn ? "opening the built-in browser" : "opening in Chrome");
-        startActivity(new Intent(this, builtIn ? MainActivity.class : ChromeLauncher.class));
+        Intent intent = new Intent(this, builtIn ? MainActivity.class : ChromeLauncher.class);
+        // The Chrome launcher wants a task of its own: without one it relaunches itself, and that
+        // second copy, seeing the first still alive, takes the app for running and closes (the
+        // head unit's flicker: Chrome was never asked).
+        if (!builtIn) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
         finish();
     }
 

@@ -82,17 +82,34 @@ public class MainActivity extends Activity {
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (filesWanted != null) filesWanted.onReceiveValue(null);
                 filesWanted = callback;
-                Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                pick.addCategory(Intent.CATEGORY_OPENABLE);
-                pick.setType("*/*"); // a map file (.img) has no type Android knows
-                pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
-                try {
-                    startActivityForResult(pick, PICK_FILES);
-                } catch (ActivityNotFoundException e) {
-                    filesWanted = null;
-                    callback.onReceiveValue(null);
-                    return false;
+                boolean many = params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE;
+                // Head units vary in which file picker they have (or let apps use): Android's own
+                // document picker, else any app that offers files, else what the page asked for.
+                Intent open = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                Intent get = new Intent(Intent.ACTION_GET_CONTENT);
+                for (Intent i : new Intent[] {open, get}) {
+                    i.addCategory(Intent.CATEGORY_OPENABLE);
+                    i.setType("*/*"); // a map file (.img) has no type Android knows
+                    i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, many);
                 }
+                Intent asked;
+                try {
+                    asked = params.createIntent();
+                } catch (Throwable e) {
+                    asked = null;
+                }
+                for (Intent pick : new Intent[] {open, get, asked}) {
+                    if (pick == null) continue;
+                    try {
+                        startActivityForResult(pick, PICK_FILES);
+                        App.log(MainActivity.this, "file picker: opened " + pick.getAction());
+                        return true;
+                    } catch (Throwable e) {
+                        App.log(MainActivity.this, "file picker: " + pick.getAction() + " failed: " + e);
+                    }
+                }
+                filesWanted = null;
+                callback.onReceiveValue(null);
                 return true;
             }
         });
@@ -121,13 +138,19 @@ public class MainActivity extends Activity {
             return;
         }
         Uri[] uris = null;
-        if (result == RESULT_OK && data != null) {
-            if (data.getClipData() != null) {
-                uris = new Uri[data.getClipData().getItemCount()];
-                for (int i = 0; i < uris.length; i++) uris[i] = data.getClipData().getItemAt(i).getUri();
-            } else if (data.getData() != null) {
-                uris = new Uri[] {data.getData()};
+        try {
+            if (result == RESULT_OK && data != null) {
+                if (data.getClipData() != null) {
+                    uris = new Uri[data.getClipData().getItemCount()];
+                    for (int i = 0; i < uris.length; i++) uris[i] = data.getClipData().getItemAt(i).getUri();
+                } else if (data.getData() != null) {
+                    uris = new Uri[] {data.getData()};
+                }
             }
+            App.log(this, "file picker: " + (uris == null ? "nothing picked" : uris.length + " file(s)"));
+        } catch (Throwable e) {
+            App.log(this, "file picker: reading the result failed: " + e);
+            uris = null;
         }
         filesWanted.onReceiveValue(uris);
         filesWanted = null;
