@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
+        App.log(this, "built-in browser: created");
         // A map in a car: the screen stays on while the app is in front.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 

@@ -41,8 +41,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Plain names for the "latest" links, and with the version so a downloads folder tells them apart.
+          V=1.${{ github.run_number }}
           cp android/app/build/outputs/apk/live/release/app-live-release.apk GarminMap.apk
           cp android/app/build/outputs/apk/dev/release/app-dev-release.apk GarminMapDev.apk
-          gh release create "android-1.${{ github.run_number }}" GarminMap.apk GarminMapDev.apk \
+          cp GarminMap.apk "GarminMap-$V.apk"
+          cp GarminMapDev.apk "GarminMapDev-$V.apk"
+          gh release create "android-$V" GarminMap.apk GarminMapDev.apk "GarminMap-$V.apk" "GarminMapDev-$V.apk" \
             --title "Android app 1.${{ github.run_number }}" \
             --notes "Garmin Map for Android head units: GarminMap.apk loads the app, GarminMapDev.apk the development version (both can be installed). Built from ${GITHUB_SHA::7}."

@@ -19,6 +19,22 @@ import java.util.Date;
  */
 public class App extends Application {
     static final String REPORT = "crash.txt";
+    /** What happened at the last starts (a few dozen lines), shown on the diagnostics screen. */
+    static final String LOG = "log.txt";
+    private static final int LOG_KEEP = 60;
+
+    /** Adds a line to the log (dropping the oldest past LOG_KEEP). */
+    static synchronized void log(Context c, String line) {
+        try {
+            File f = new File(c.getFilesDir(), LOG);
+            java.util.List<String> lines = f.exists() ? new java.util.ArrayList<>(java.nio.file.Files.readAllLines(f.toPath(), StandardCharsets.UTF_8)) : new java.util.ArrayList<>();
+            lines.add(new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.ROOT).format(new Date()) + " " + line);
+            while (lines.size() > LOG_KEEP) lines.remove(0);
+            java.nio.file.Files.write(f.toPath(), lines, StandardCharsets.UTF_8);
+        } catch (Throwable ignored) {
+            // the log is a help, never a reason to fail
+        }
+    }
 
     @Override
     public void onCreate() {
@@ -32,6 +48,7 @@ public class App extends Application {
             } catch (Throwable ignored) {
                 // nothing more to be done
             }
+            log(this, "crash: " + error);
             if (system != null) system.uncaughtException(thread, error);
         });
     }
