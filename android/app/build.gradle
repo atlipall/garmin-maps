@@ -67,4 +67,6 @@ android {
 dependencies {
     // Opens the app in Chrome as a Trusted Web Activity (MainActivity is the fallback).
     implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.7.3"
+    // CustomTabsCallback, for logging what Chrome reports (ChromeLauncher).
+    implementation "androidx.browser:browser:1.10.0"
 }

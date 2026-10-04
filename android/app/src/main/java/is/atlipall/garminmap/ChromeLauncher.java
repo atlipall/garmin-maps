@@ -1,9 +1,13 @@
 package is.atlipall.garminmap;
 
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import androidx.browser.customtabs.CustomTabsCallback;
 import com.google.androidbrowserhelper.trusted.LauncherActivity;
+import com.google.androidbrowserhelper.trusted.QualityEnforcer;
 import com.google.androidbrowserhelper.trusted.TwaLauncher;
+import com.google.androidbrowserhelper.trusted.TwaProviderPicker;
 
 /**
  * Starts the app in the head unit's Chrome as a Trusted Web Activity: full screen, with Chrome's
@@ -21,8 +25,50 @@ public class ChromeLauncher extends LauncherActivity {
 
     @Override
     protected void launchTwa() {
-        App.log(this, "Chrome launcher: handing over to Chrome");
+        TwaProviderPicker.Action pick = TwaProviderPicker.pickProvider(getPackageManager());
+        String mode = pick.launchMode == TwaProviderPicker.LaunchMode.TRUSTED_WEB_ACTIVITY ? "full-screen app"
+            : pick.launchMode == TwaProviderPicker.LaunchMode.CUSTOM_TAB ? "Chrome tab only" : "browser only";
+        App.log(this, "Chrome launcher: handing over to " + pick.provider + " (" + mode + ")");
+        // Coming back to the app shortly after this means Chrome didn't keep it (StartActivity).
+        getSharedPreferences("start", MODE_PRIVATE).edit().putLong("handedOverAt", System.currentTimeMillis()).apply();
         super.launchTwa();
+    }
+
+    /** What Chrome reports back while this is alive: whether the site vouched for the app, the
+     *  page loading, the tab shown or hidden. */
+    @Override
+    protected CustomTabsCallback getCustomTabsCallback() {
+        return new QualityEnforcer() {
+            @Override
+            public void onNavigationEvent(int event, Bundle extras) {
+                App.log(ChromeLauncher.this, "Chrome: " + navigation(event));
+                super.onNavigationEvent(event, extras);
+            }
+
+            @Override
+            public void onRelationshipValidationResult(int relation, Uri origin, boolean ok, Bundle extras) {
+                App.log(ChromeLauncher.this, "Chrome: site " + origin + (ok ? " vouches for the app" : " does NOT vouch for the app (address bar shown)"));
+                super.onRelationshipValidationResult(relation, origin, ok, extras);
+            }
+
+            @Override
+            public void extraCallback(String name, Bundle args) {
+                App.log(ChromeLauncher.this, "Chrome: " + name);
+                super.extraCallback(name, args);
+            }
+        };
+    }
+
+    private static String navigation(int event) {
+        switch (event) {
+            case CustomTabsCallback.NAVIGATION_STARTED: return "page loading";
+            case CustomTabsCallback.NAVIGATION_FINISHED: return "page loaded";
+            case CustomTabsCallback.NAVIGATION_FAILED: return "page FAILED to load";
+            case CustomTabsCallback.NAVIGATION_ABORTED: return "page loading aborted";
+            case CustomTabsCallback.TAB_SHOWN: return "shown";
+            case CustomTabsCallback.TAB_HIDDEN: return "hidden";
+            default: return "event " + event;
+        }
     }
 
     @Override
