@@ -5,6 +5,7 @@ import { backupFileName, makeBackup, parseBackup, toStore } from '../saved/backu
 import { deletions, noteDeleted, setDeletions } from '../saved/deleted';
 import { shareFile } from '../gpx/export';
 import { coordsText } from './route';
+import { editName, renameButton } from '../ui/rename';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -44,7 +45,7 @@ function starImage(): ImageData {
  */
 export class SavedPanel {
   private items: SavedPin[] = [];
-  /** Called after a change made here (save, delete, restore), for syncing. */
+  /** Called after a change made here (save, rename, delete, restore), for syncing. */
   onChanged: (() => void) | null = null;
   private readonly panel = $('saved');
   private readonly list = $<HTMLUListElement>('saved-list');
@@ -229,8 +230,20 @@ export class SavedPanel {
       clearTimeout(timer);
       void this.remove(s);
     };
-    li.append(icon, info, del);
+    const rename = renameButton(s.name, () =>
+      editName(li, s.name, (name) => void this.rename(s, name), () => li.replaceWith(this.row(s))),
+    );
+    li.append(icon, info, rename, del);
     return li;
+  }
+
+  /** A new name: kept, synced, and shown on its star and in the list. */
+  private async rename(s: SavedPin, name: string): Promise<void> {
+    s.name = name;
+    s.updated = Date.now();
+    this.refresh();
+    await putSaved(s).catch((err) => this.fail(err));
+    this.onChanged?.();
   }
 
   private async remove(s: Saved): Promise<void> {

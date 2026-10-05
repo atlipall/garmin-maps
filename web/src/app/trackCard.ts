@@ -43,6 +43,11 @@ export class TrackCard {
     document.body.classList.remove('track-card-open');
   }
 
+  /** A track renamed in the list: the card shows the new name if it's this track's. */
+  renamed(t: StoredTrack): void {
+    if (this.track?.id === t.id) $('track-card-title').textContent = t.name;
+  }
+
   /** The track shown (for tests). */
   get shown(): StoredTrack | null {
     return this.track;

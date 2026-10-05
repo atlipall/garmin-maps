@@ -4,6 +4,7 @@ import { parseGpx } from '../gpx/parse';
 import { climb, formatStats, summarize } from '../gpx/stats';
 import { deleteTrack, listTracks, putTrack, type StoredTrack } from '../gpx/store';
 import { noteDeleted } from '../saved/deleted';
+import { editName, renameButton } from '../ui/rename';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -33,10 +34,12 @@ const TRASH = '<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true
  */
 export class TracksPanel {
   private tracks: StoredTrack[] = [];
-  /** Called after a change made here (import, show or hide, delete), for syncing. */
+  /** Called after a change made here (import, rename, show or hide, delete), for syncing. */
   onChanged: (() => void) | null = null;
   /** A track tapped in the list: its card (Navigate, Reverse, Export). */
   onOpen: ((t: StoredTrack) => void) | null = null;
+  /** A track renamed here (its card, if open, shows the new name). */
+  onRenamed: ((t: StoredTrack) => void) | null = null;
   private readonly panel = $('tracks');
   private readonly list = $<HTMLUListElement>('track-list');
   private readonly error = $('tracks-error');
@@ -219,8 +222,21 @@ export class TracksPanel {
       clearTimeout(timer);
       void this.remove(t);
     };
-    li.append(swatch, info, eye, del);
+    const rename = renameButton(t.name, () =>
+      editName(li, t.name, (name) => void this.rename(t, name), () => li.replaceWith(this.row(t))),
+    );
+    li.append(swatch, info, rename, eye, del);
     return li;
+  }
+
+  /** A new name: kept, synced, and shown on the map's labels and the list. */
+  async rename(t: StoredTrack, name: string): Promise<void> {
+    t.name = name;
+    t.updated = Date.now();
+    this.refresh();
+    await putTrack(t).catch((err) => this.fail(err));
+    this.onChanged?.();
+    this.onRenamed?.(t);
   }
 
   private async setVisible(t: StoredTrack, visible: boolean): Promise<void> {

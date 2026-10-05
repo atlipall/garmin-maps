@@ -291,6 +291,32 @@ try {
   await new Promise((r) => setTimeout(r, 1000)); // fitBounds
   await page.screenshot({ path: `${OUT}tracks.png` });
   console.log('gpx ok:', trk.stats);
+  // Renaming a track: the pencil turns the row into a name field; Save keeps the new name (list and
+  // storage, spaces tidied); Escape leaves it as it was without closing the panel.
+  const renameRow = async (list, from, to, how = 'save') => {
+    const row = await page.$$eval(`${list} li`, (lis, f) => lis.findIndex((li) => li.querySelector('.name')?.textContent === f) + 1, from);
+    if (!row) fail(`no row named ${from} in ${list}`);
+    await page.click(`${list} li:nth-child(${row}) .track-rename`);
+    const field = `${list} li:nth-child(${row}) .rename-form input`;
+    const prefilled = await page.$eval(field, (e) => e.value);
+    if (prefilled !== from) fail(`rename field prefilled with ${prefilled}`);
+    // The name is focused and selected: typing replaces it.
+    if (!(await page.$eval(field, (e) => e === document.activeElement && e.selectionStart === 0 && e.selectionEnd === e.value.length))) fail('rename field not focused with the name selected');
+    await page.keyboard.type(to);
+    if (how === 'escape') await page.keyboard.press('Escape');
+    else await page.click(`${list} li:nth-child(${row}) .rename-form button.primary`);
+  };
+  const trackName0 = await page.$eval('#track-list .name', (e) => e.textContent);
+  await renameRow('#track-list', trackName0, '  Laugavegur,   first part ');
+  await page.waitForFunction(() => document.querySelector('#track-list .name')?.textContent === 'Laugavegur, first part', { timeout: 5_000 }).catch(() => fail('track rename not shown'));
+  // Kept in storage, not only on screen.
+  const stored = await page.evaluate(() => new Promise((res) => { const r = indexedDB.open('garmin-map'); r.onsuccess = () => { const q = r.result.transaction('tracks').objectStore('tracks').getAll(); q.onsuccess = () => res(q.result.map((t) => t.name)); }; }));
+  if (!stored.includes('Laugavegur, first part')) fail(`renamed track in storage: ${stored}`);
+  await renameRow('#track-list', 'Laugavegur, first part', 'Never kept', 'escape');
+  if ((await page.$eval('#track-list .name', (e) => e.textContent)) !== 'Laugavegur, first part' || (await page.$('#tracks:not([hidden])')) === null) fail('Escape changed the name or closed the panel');
+  await renameRow('#track-list', 'Laugavegur, first part', trackName0);
+  await page.waitForFunction((n) => window.__app.tracks.all[0].name === n, { timeout: 5_000 }, trackName0).catch(() => fail('track renamed back'));
+  console.log('track rename ok');
   await page.click('#tracks-close');
 
   // 3d. Routing: right-click drops a pin, a tap closes it; Ctrl+Click keeps it; Route here → panel
@@ -812,6 +838,12 @@ try {
   await page.click('#saved-open');
   const rows = await page.$$eval('#saved-list .track-info .name', (els) => els.map((e) => e.textContent));
   if (rows.join('|') !== 'Hekla view|Landmannalaugar') fail(`saved list: ${rows}`);
+  // Renaming a saved pin: the list and its star's label.
+  await renameRow('#saved-list', 'Landmannalaugar', 'Landmannalaugar hut');
+  await page.waitForFunction(() => window.__app.map.getStyle().sources.saved.data.features.some((f) => f.properties.name === 'Landmannalaugar hut'), { timeout: 5_000 }).catch(() => fail('pin rename not on the map'));
+  await renameRow('#saved-list', 'Landmannalaugar hut', 'Landmannalaugar');
+  await page.waitForFunction(() => [...document.querySelectorAll('#saved-list .name')].map((e) => e.textContent).join('|') === 'Hekla view|Landmannalaugar', { timeout: 5_000 }).catch(() => fail('pin renamed back'));
+  console.log('pin rename ok');
   await page.click('#saved-list li:nth-child(1) .track-info');
   const pinCard = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, go: !document.querySelector('#route-go').hidden }));
   if (pinCard.title !== 'Hekla view' || !pinCard.go) fail(`opened saved pin: ${JSON.stringify(pinCard)}`);

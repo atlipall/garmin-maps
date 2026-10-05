@@ -337,6 +337,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     });
     const trackCard = new TrackCard(trackNav, fresh);
     tracks.onOpen = (t) => trackCard.open(t);
+    tracks.onRenamed = (t) => trackCard.renamed(t);
     app.trackCard = trackCard;
     locate.onFix = (at, accuracy) => navigator.fix(at, accuracy);
     app.navigator = navigator;

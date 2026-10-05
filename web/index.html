@@ -133,7 +133,13 @@
       #tracks-close, #saved-close, #sync-close, #diag-close { width: var(--btn); height: var(--btn); margin-right: -10px; border: 0; background: none; font-size: 26px; color: #667; cursor: pointer; }
       #tracks-empty, #saved-empty { margin: 4px 0 8px; color: #556; font-size: 14px; }
       #track-list, #saved-list { list-style: none; margin: 0; padding: 0; }
-      .track { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 8px; border-top: 1px solid #0001; }
+      .track { display: grid; grid-template-columns: 14px 1fr auto auto auto; align-items: center; gap: 8px; border-top: 1px solid #0001; }
+      /* A row being renamed: the name field with Save and Cancel across the whole row. */
+      .track.renaming { display: block; padding: 8px 0; }
+      .rename-form { display: flex; gap: 8px; }
+      .rename-form input { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid var(--accent); border-radius: 10px; font-size: 16px; }
+      .rename-form button { min-height: 44px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+      .rename-form button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
       #sync { margin-top: 4px; display: grid; gap: 8px; font-size: 14px; color: #556; }
       #sync[hidden] { display: none; }
       #sync-menu-status { display: block; font-size: 12px; color: #667; }
@@ -149,15 +155,14 @@
       .backup-buttons button { flex: 1; min-height: 44px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
       #backup-status:empty { display: none; }
       #backup-status { color: #1d5e2a; }
-      .saved-item { grid-template-columns: 18px 1fr auto; }
-      .saved-item:has(.saved-export) { grid-template-columns: 18px 1fr auto auto; }
+      .saved-item { grid-template-columns: 18px 1fr auto auto; }
       .saved-icon { display: grid; place-items: center; font-size: 17px; color: #d49b00; }
       .saved-icon.route { color: #1d3f8f; }
       .track .swatch { width: 14px; height: 14px; border-radius: 50%; }
       .track-info { display: grid; gap: 1px; min-width: 0; padding: 8px 0; border: 0; background: none; text-align: left; color: var(--ink); cursor: pointer; font: inherit; }
       .track-info .name { font-weight: 600; overflow-wrap: anywhere; }
       .track-info .stats { font-size: 13px; color: #667; }
-      .track-eye, .track-delete { min-width: 40px; height: 40px; border: 0; border-radius: 8px; background: none; color: #445; cursor: pointer; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
+      .track-rename, .track-eye, .track-delete { min-width: 40px; height: 40px; border: 0; border-radius: 8px; background: none; color: #445; cursor: pointer; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
       .track-eye[aria-pressed="false"] { color: #778; }
       .track-delete.confirm { padding: 0 10px; background: #b00020; color: #fff; font-size: 14px; font-weight: 600; }
       #tracks-error, #saved-error { color: #b00020; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
