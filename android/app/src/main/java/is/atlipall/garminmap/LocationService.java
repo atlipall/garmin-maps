@@ -8,7 +8,6 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Looper;
-import android.os.RemoteException;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.browser.trusted.TrustedWebActivityCallbackRemote;
@@ -34,6 +33,8 @@ public class LocationService extends DelegationService {
         private TrustedWebActivityCallbackRemote callback;
         private Context context;
         private boolean firstFix;
+        /** Positions handed to Chrome since the last start (every 30th is logged). */
+        private int sent;
 
         @NonNull
         @Override
@@ -41,7 +42,7 @@ public class LocationService extends DelegationService {
             context = c.getApplicationContext();
             Bundle result = new Bundle();
             result.putBoolean(EXTRA_COMMAND_SUCCESS, false);
-            App.log(context, "location: Chrome asks " + command);
+            App.log(context, "location: Chrome asks " + command + (args == null || args.isEmpty() ? "" : " " + args) + (cb == null ? " (no callback)" : ""));
             switch (command) {
                 case "checkAndroidLocationPermission":
                     if (cb == null) break;
@@ -80,6 +81,7 @@ public class LocationService extends DelegationService {
             stop();
             callback = cb;
             firstFix = true;
+            sent = 0;
             if (!granted()) {
                 error("Location permission not granted");
                 return;
@@ -124,7 +126,7 @@ public class LocationService extends DelegationService {
             if (l.hasAccuracy()) b.putDouble("accuracy", l.getAccuracy());
             if (l.hasBearing()) b.putDouble("bearing", l.getBearing());
             if (l.hasSpeed()) b.putDouble("speed", l.getSpeed());
-            run(callback, "onNewLocationAvailable", b);
+            if (run(callback, "onNewLocationAvailable", b) && ++sent % 30 == 1) App.log(context, "location: " + sent + " position(s) handed to Chrome");
         }
 
         private void error(String message) {
@@ -134,12 +136,15 @@ public class LocationService extends DelegationService {
             if (callback != null) run(callback, "onNewErrorAvailable", b);
         }
 
-        private void run(TrustedWebActivityCallbackRemote cb, String name, Bundle args) {
+        /** Calls Chrome back; false if that failed (Chrome went away: stop listening). */
+        private boolean run(TrustedWebActivityCallbackRemote cb, String name, Bundle args) {
             try {
                 cb.runExtraCallback(name, args);
-            } catch (RemoteException e) {
-                // Chrome went away: stop listening.
+                return true;
+            } catch (Throwable e) {
+                App.log(context, "location: telling Chrome " + name + " failed: " + e);
                 stop();
+                return false;
             }
         }
 

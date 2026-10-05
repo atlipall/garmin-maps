@@ -96,6 +96,11 @@ public class LogActivity extends Activity implements LocationListener {
             s.append('\n');
         }
         s.append('\n');
+        // The log first (newest at the top), so a photo of the screen shows the latest.
+        String[] log = read(new File(getFilesDir(), App.LOG)).split("\n");
+        s.append("What happened (newest first):\n");
+        for (int i = log.length - 1; i >= 0; i--) s.append(log[i]).append('\n');
+        s.append('\n');
         if (manager != null || !fixes.isEmpty()) {
             s.append("GPS test (").append(manager != null ? "running" : "stopped").append(", ").append(count).append(" fixes):\n");
             for (int i = fixes.size() - 1; i >= 0; i--) s.append(fixes.get(i)).append('\n');
@@ -103,7 +108,6 @@ public class LogActivity extends Activity implements LocationListener {
         }
         String crash = read(new File(getFilesDir(), App.REPORT));
         if (!crash.isEmpty()) s.append("Last crash:\n").append(crash).append("\n\n");
-        s.append("What happened (newest last):\n").append(read(new File(getFilesDir(), App.LOG)));
         details.setText(s);
         test.setText(manager != null ? "Stop the test" : "Test GPS");
     }
