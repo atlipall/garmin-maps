@@ -29,6 +29,15 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Opens links to the site. Chrome needs this to find the app's location service
+                 (./LocationService.java): it only asks apps that open the site's links ("NoTwaFound"
+                 otherwise). Not autoVerify: links still open in the browser unless chosen. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="atlipall.github.io" />
+            </intent-filter>
         </activity>
 
         <!-- The app in Chrome (a Trusted Web Activity), full screen. -->
