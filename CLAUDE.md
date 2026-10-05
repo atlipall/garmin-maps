@@ -58,7 +58,16 @@ npm run shots                           # retake the guide's screenshots (web/si
 - Wrangler isn't installed globally: use `/Users/atli/projects/katifillinn/node_modules/.bin/wrangler`
   (logged in to the owner's Cloudflare account, workers.dev subdomain `atlipall`). Its secrets:
   `GOOGLE_CLIENT_SECRET`, `SEAL_KEY`.
-- Android: no Android SDK or JDK on this Mac; APKs are built on GitHub. Signing key: repo secrets
+- Android: APKs are built on GitHub; a local setup exists for testing (2026-10-05):
+  `export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ANDROID_HOME=$HOME/Library/Android/sdk`,
+  build with `~/.local/opt/gradle-8.14.3/bin/gradle assembleLiveRelease` in `android/` (set
+  `ANDROID_KEYSTORE_FILE=.android-signing/release.p12` and `ANDROID_KEYSTORE_PASSWORD` from
+  `.android-signing/password.txt`, or Chrome won't verify the app). Emulator `headunit29` (Android 10,
+  1280×720): `$ANDROID_HOME/emulator/emulator -avd headunit29 -dns-server 8.8.8.8` (without the DNS
+  flag sites don't resolve). Its Chrome 91 is disabled; a Chromium snapshot from
+  `commondatastorage.googleapis.com/chromium-browser-snapshots/Android_Arm64/` runs the app. Fake GPS
+  with `adb emu geo fix <lon> <lat>`; drive the page over CDP (`adb forward tcp:9333
+  localabstract:chrome_devtools_remote`, puppeteer `connect`). Signing key: repo secrets
   `ANDROID_KEYSTORE`/`ANDROID_KEYSTORE_PASSWORD`, local copy in `.android-signing/` (git-ignored; never
   lose it, or updates stop installing over the old app).
 
@@ -74,6 +83,8 @@ npm run shots                           # retake the guide's screenshots (web/si
   ⋯ → Diagnostics (web: permission, live location test, location errors) and its "Android app's log"
   (LogActivity via `garminmap://log`: providers, a GPS test without Chrome, App's log). The unit has
   no system file picker (needs a file manager app installed).
+  Verified in the emulator (Chromium 157): with 1.14's service the page gets a fix a second through the
+  app; Chrome also needs its own Android location permission (it shows "needs location permission").
   Chrome's delegation rules (from Chromium 154 source): it delegates whenever the app *requests* a
   location permission; it only finds the service if an exported activity handles VIEW/BROWSABLE
   https links to the bare origin (no pathPrefix); errors go back as `onNewLocationError` (the
