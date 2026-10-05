@@ -43,13 +43,14 @@
             </intent-filter>
         </activity>
 
-        <!-- The app in Chrome (a Trusted Web Activity), full screen. -->
+        <!-- The app in Chrome (a Trusted Web Activity), without an address bar. -->
         <activity
             android:name=".ChromeLauncher"
             android:exported="false"
             android:label="@string/app_name">
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="@string/start_url" />
-            <meta-data android:name="android.support.customtabs.trusted.DISPLAY_MODE" android:value="sticky-immersive" />
+            <!-- Not full screen: the head unit's system bar (clock, back) stays visible. -->
+            <meta-data android:name="android.support.customtabs.trusted.DISPLAY_MODE" android:value="default" />
             <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR" android:resource="@color/bar" />
             <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR" android:resource="@color/bar" />
         </activity>

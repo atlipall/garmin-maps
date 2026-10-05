@@ -8,7 +8,7 @@ import com.google.androidbrowserhelper.trusted.QualityEnforcer;
 import com.google.androidbrowserhelper.trusted.TwaProviderPicker;
 
 /**
- * Starts the app in the head unit's Chrome as a Trusted Web Activity: full screen, with Chrome's
+ * Starts the app in the head unit's Chrome as a Trusted Web Activity: no address bar, with Chrome's
  * own engine and storage (Google sign-in, downloads and keeping the screen on all work there). The
  * site vouches for this app in https://atlipall.github.io/.well-known/assetlinks.json, which is what
  * lets Chrome drop its address bar. The start URL, display mode and colours are in
