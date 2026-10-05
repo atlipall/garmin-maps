@@ -67,13 +67,13 @@
       #map .save-here-button { display: grid; place-items: center; color: var(--ink); border-radius: inherit; }
       #map .maplibregl-ctrl-group[hidden], body.navigating #map .save-here { display: none; }
       body.saving-here #route-card, body.track-card-open #route-card { display: none !important; }
-      #here-card, #track-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; padding: 4px 16px 16px; background: #fff; border-radius: 18px; box-shadow: 0 8px 28px #1e283c38; display: grid; gap: 10px; }
-      #here-card[hidden], #track-card[hidden] { display: none; }
+      #here-card, #track-card, #trip-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; padding: 4px 16px 16px; background: #fff; border-radius: 18px; box-shadow: 0 8px 28px #1e283c38; display: grid; gap: 10px; }
+      #here-card[hidden], #track-card[hidden], #trip-card[hidden] { display: none; }
       body.navigating #track-card { display: none; }
-      #here-head, #track-card-head { display: flex; align-items: center; gap: 6px; padding-top: 6px; }
-      #here-head-text, #track-card-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
-      #here-title, #track-card-title { font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
-      #here-sub, #track-card-stats { font-size: 13px; color: #555f6d; font-variant-numeric: tabular-nums; }
+      #here-head, #track-card-head, #trip-head { display: flex; align-items: center; gap: 6px; padding-top: 6px; }
+      #here-head-text, #track-card-text, #trip-head-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+      #here-title, #track-card-title, #trip-title { font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+      #here-sub, #track-card-stats, #trip-sub { font-size: 13px; color: #555f6d; font-variant-numeric: tabular-nums; }
       #track-card-swatch { width: 14px; height: 14px; flex: none; border-radius: 50%; margin-right: 4px; }
       #track-card-note { margin: 0; padding: 10px 12px; border-radius: 12px; background: #f3f5f8; font-size: 14px; color: #3d4754; }
       #track-card-note:empty { display: none; }
@@ -82,15 +82,30 @@
       .track-card-row { display: flex; gap: 10px; }
       .track-card-row button { flex: 1; min-height: 46px; border: 1.5px solid #d4d9e1; border-radius: 12px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
       #track-reverse[aria-pressed="true"] { border-color: #1d3f8f; background: #eef3fb; color: #1d3f8f; }
-      #here-close, #track-card-close { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: #eef0f3; color: var(--ink); cursor: pointer; }
-      #here-form { display: flex; gap: 8px; }
-      #here-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid #d4d9e1; border-radius: 10px; font-size: 16px; }
-      #here-form button { min-height: 44px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
-      #here-form button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+      #here-close, #track-card-close, #trip-close { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: #eef0f3; color: var(--ink); cursor: pointer; }
+      #here-form, #trip-form { display: flex; gap: 8px; }
+      #here-name, #trip-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid #d4d9e1; border-radius: 10px; font-size: 16px; }
+      #here-form button, #trip-form button { min-height: 44px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+      #here-form button.primary, #trip-form button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
       #here-error { color: #b3261e; font-size: 14px; }
       #here-error:empty { display: none; }
       #here-toast { position: absolute; z-index: 6; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; min-height: 52px; border-radius: 14px; background: #1d2a38; color: #fff; font-size: 15px; box-shadow: 0 6px 20px #0a142859; }
       #here-toast[hidden] { display: none; }
+      /* Recording a trip (Android app): the button by save-a-pin, red while recording; the pill on top
+         (hidden while navigating, where the turn banner is); Discard asks again in red. */
+      #map .trip-record-button { display: grid; place-items: center; color: var(--ink); border-radius: inherit; }
+      #map .trip-record-button.recording { background: #c62828; }
+      #trip-pill { position: absolute; z-index: 3; top: var(--top); left: 50%; transform: translateX(-50%); height: var(--btn); box-sizing: border-box; padding: 0 18px 0 14px; display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 22px; box-shadow: 0 2px 10px #0003; font-size: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      #trip-pill[hidden], body.navigating #trip-pill { display: none; }
+      #trip-pill b { color: #a3191f; }
+      .trip-dot { width: 12px; height: 12px; border-radius: 50%; background: #d32f2f; }
+      /* The name on a row of its own: a suggested trip name is long. */
+      #trip-form { flex-wrap: wrap; }
+      #trip-form #trip-name { flex: 1 1 100%; }
+      #trip-form button { flex: 1; }
+      #trip-form #trip-discard.confirm { border-color: #b00020; background: #b00020; color: #fff; }
+      #trip-note { position: absolute; z-index: 6; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: min(420px, calc(100% - 2 * var(--gap))); box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 12px; background: #1d2a38e6; color: #fff; font-size: 14px; }
+      #trip-note[hidden] { display: none; }
       #here-toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
       #here-undo { min-height: 40px; padding: 0 14px; border: 0; border-radius: 10px; background: #ffffff1f; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
       #here-undo[hidden] { display: none; }
@@ -432,6 +447,15 @@
       <div class="track-card-row"><button id="track-reverse" type="button" aria-pressed="false">Reverse</button><button id="track-export" type="button">Export GPX</button></div>
     </section>
     <div id="here-toast" role="status" hidden><span id="here-toast-text"></span><button id="here-undo" type="button">Undo</button></div>
+    <div id="trip-pill" role="status" hidden><span class="trip-dot" aria-hidden="true"></span><b>Recording</b><span id="trip-pill-text"></span></div>
+    <section id="trip-card" aria-labelledby="trip-title" hidden>
+      <div id="trip-head">
+        <div id="trip-head-text"><div id="trip-title">Save the trip to Tracks</div><div id="trip-sub"></div></div>
+        <button id="trip-close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      </div>
+      <form id="trip-form"><input id="trip-name" type="text" aria-label="Name" autocomplete="off" /><button type="submit" class="primary">Save to Tracks</button><button id="trip-discard" type="button">Discard</button></form>
+    </section>
+    <div id="trip-note" role="status" hidden><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="#9fd3a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="trip-note-text"></span></div>
     <section id="route-card" aria-label="Route" hidden>
       <div id="route-head">
         <div id="route-head-text">

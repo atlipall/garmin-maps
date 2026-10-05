@@ -43,6 +43,8 @@ export class TracksPanel {
   private readonly panel = $('tracks');
   private readonly list = $<HTMLUListElement>('track-list');
   private readonly error = $('tracks-error');
+  /** Settles once the stored tracks have been read the first time. */
+  readonly loaded: Promise<void>;
 
   constructor(
     private readonly map: maplibregl.Map,
@@ -58,7 +60,7 @@ export class TracksPanel {
       void this.importFiles(files);
     };
     $('tracks-close').onclick = () => this.show(false);
-    void this.reload();
+    this.loaded = this.reload();
   }
 
   /** Reads the tracks from storage again (after a restore or a sync). */
@@ -87,10 +89,16 @@ export class TracksPanel {
     return this.tracks.length;
   }
 
-  /** Keeps a track made here (a route saved as a track), with the next free colour. */
-  async addTrack(t: { name: string; gpx: StoredTrack['gpx']; route?: StoredTrack['route'] }): Promise<StoredTrack> {
+  /** Whether a track with this id is kept. */
+  has(id: string): boolean {
+    return this.tracks.some((t) => t.id === id);
+  }
+
+  /** Keeps a track made here (a route saved as a track, a recorded trip), with the next free colour.
+   *  `id`: one of its own (a recorded trip's, so the same trip is never kept twice). */
+  async addTrack(t: { id?: string; name: string; gpx: StoredTrack['gpx']; route?: StoredTrack['route'] }): Promise<StoredTrack> {
     const track: StoredTrack = {
-      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      id: t.id ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       name: t.name,
       color: nextColor(this.tracks),
       visible: true,
@@ -157,8 +165,14 @@ export class TracksPanel {
     }
   }
 
+  /** Deletes a track by id (Discard on a recorded trip). */
+  async deleteById(id: string): Promise<void> {
+    const t = this.tracks.find((x) => x.id === id);
+    if (t) await this.remove(t);
+  }
+
   /** Fits the track in view, keeping it clear of this panel while it is open. */
-  private zoomTo(t: StoredTrack): void {
+  zoomTo(t: StoredTrack): void {
     const top = this.panel.hidden ? 60 : this.panel.getBoundingClientRect().bottom - this.map.getContainer().getBoundingClientRect().top + 30;
     const room = this.map.getContainer().clientHeight - top - 60;
     this.map.fitBounds(trackBounds(t), { padding: { top: room > 120 ? top : 60, bottom: 60, left: 40, right: 40 }, maxZoom: 15, duration: 800 });

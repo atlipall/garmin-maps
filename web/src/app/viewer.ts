@@ -21,7 +21,8 @@ import { HeightControl, LocationControl } from './location';
 import { RoutePlanner } from './route';
 import { SavedPanel } from './savedPanel';
 import { DriveSync } from './driveSync';
-import { DiagnosticsPanel } from './diagnostics';
+import { androidApp, DiagnosticsPanel } from './diagnostics';
+import { TripRecorder } from './tripRecorder';
 import { Navigator } from './navigation';
 import { loadSession, saveSession } from './session';
 import { TracksPanel } from './tracks';
@@ -244,7 +245,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     showImport('', { hasMap: true, canCancel: true });
   };
 
-  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, trackCard: null as TrackCard | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, sync: null as DriveSync | null, navigator: null as Navigator | null, screenAwake: awake };
+  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, trackCard: null as TrackCard | null, trip: null as TripRecorder | null, lastIntent: null as string | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, sync: null as DriveSync | null, navigator: null as Navigator | null, screenAwake: awake };
   window.__app = app;
   // F-road/track classes from the place-index pass, keyed by tile id and NET offset. Resolved
   // once `loadPlaces` finishes; a route requested before then awaits this instead. Rejected if
@@ -339,7 +340,11 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     tracks.onOpen = (t) => trackCard.open(t);
     tracks.onRenamed = (t) => trackCard.renamed(t);
     app.trackCard = trackCard;
-    locate.onFix = (at, accuracy) => navigator.fix(at, accuracy);
+    let trip: TripRecorder | null = null;
+    locate.onFix = (at, accuracy) => {
+      navigator.fix(at, accuracy);
+      trip?.fix(at);
+    };
     app.navigator = navigator;
     app.screenAwake = awake;
     // Saved pins (stars on the map) and routes, from the route card's Save.
@@ -382,6 +387,28 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     });
     map.addControl(saveHere, 'bottom-right');
     saveHere.setAvailable(locating);
+    // Recording a trip, in the Android app only (it records in the background): its button goes
+    // left of save-a-pin. A trip the app hands over comes in once the stored tracks are read.
+    const android = androidApp();
+    if (android) {
+      trip = new TripRecorder({
+        app: android,
+        open: (href) => {
+          app.lastIntent = href;
+          location.href = href;
+        },
+        tracks: {
+          has: (id) => tracks.has(id),
+          add: (t) => tracks.addTrack(t),
+          rename: (t, name) => tracks.rename(t, name),
+          remove: (id) => tracks.deleteById(id),
+          show: (t) => tracks.zoomTo(t),
+        },
+      });
+      map.addControl(trip, 'bottom-right');
+      app.trip = trip;
+      void tracks.loaded.then(() => trip?.receiveStartup());
+    }
     $('sync-open').onclick = () => {
       setMenu(false);
       $('sync-panel').hidden = false;

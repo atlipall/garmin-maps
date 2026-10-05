@@ -1147,6 +1147,98 @@ try {
   await page.waitForFunction(() => !document.querySelector('#update').hidden, { timeout: 10_000 }).catch(() => fail('a newer version already in control at start was not told'));
   await page.setOfflineMode(false);
   console.log('update notice ok');
+
+  // 11. Recording a trip (in the Android app; here the app's part is played by the test): no record
+  // button in a browser; in the app the button sits left of save-a-pin; Record asks the app to start
+  // and shows the pill and the way so far; Stop asks it to stop. A trip handed over in the address
+  // is kept in Tracks at once and offered for naming; the same trip twice is kept once; Discard asks
+  // again; left alone the card closes after 30 s with a quiet note; an empty trip only says so; a
+  // trip in the address at startup comes in too.
+  if (await page.$('#map .trip-record')) fail('record button outside the Android app');
+  await page.evaluate(() => localStorage.setItem('android-app', 'is.atlipall.garminmap'));
+  await page.reload();
+  await waitReady();
+  await page.waitForSelector('#map .trip-record-button', { timeout: 10_000 }).catch(() => fail('no record button in the Android app'));
+  if ((await page.$eval('.locate-button', (e) => e.dataset.state)) === 'off') await page.click('.locate-button');
+  await gps.send('Emulation.setGeolocationOverride', { latitude: 64.11, longitude: -21.89, accuracy: 8 });
+  await page.waitForFunction(() => !document.querySelector('#map .save-here').hidden, { timeout: 10_000 });
+  const tripPlace = await page.evaluate(() => {
+    const r = (q) => { const b = document.querySelector(q).getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top }; };
+    return { rec: r('#map .trip-record'), pin: r('#map .save-here') };
+  });
+  if (!(tripPlace.rec.right <= tripPlace.pin.left + 1 && Math.abs(tripPlace.rec.top - tripPlace.pin.top) < 2)) fail(`record button not left of save-a-pin: ${JSON.stringify(tripPlace)}`);
+  await page.click('#map .trip-record-button');
+  const tripStarted = await page.evaluate(() => ({ intent: window.__app.lastIntent, pill: !document.querySelector('#trip-pill').hidden, text: document.querySelector('#trip-pill-text').textContent, label: document.querySelector('#map .trip-record-button').getAttribute('aria-label') }));
+  if (tripStarted.intent !== 'intent://trip/start#Intent;scheme=garminmap;package=is.atlipall.garminmap;end' || !tripStarted.pill || tripStarted.text !== '0.0 km · 0 min' || tripStarted.label !== 'Stop recording') fail(`record: ${JSON.stringify(tripStarted)}`);
+  for (let k = 1; k <= 6; k++) {
+    await gps.send('Emulation.setGeolocationOverride', { latitude: 64.11 + k * 0.0009, longitude: -21.89, accuracy: 8 });
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  const tripLive = await page.evaluate(() => ({ text: document.querySelector('#trip-pill-text').textContent, line: window.__app.map.getStyle().sources['trip-live'].data.features[0]?.geometry.coordinates.length ?? 0 }));
+  if (tripLive.text !== '0.5 km · 0 min' || tripLive.line !== 6) fail(`recording: ${JSON.stringify(tripLive)}`);
+  await page.screenshot({ path: `${OUT}trip-recording.png` });
+  // Kept over a reload (the app goes on recording whatever the map does).
+  await page.reload();
+  await waitReady();
+  await page.waitForSelector('#map .trip-record-button.recording', { timeout: 10_000 }).catch(() => fail('recording state lost on reload'));
+  await page.click('#map .trip-record-button');
+  const tripStopped = await page.evaluate(() => ({ intent: window.__app.lastIntent, pill: !document.querySelector('#trip-pill').hidden, line: window.__app.map.getStyle().sources['trip-live'].data.features.length }));
+  if (tripStopped.intent !== 'intent://trip/stop#Intent;scheme=garminmap;package=is.atlipall.garminmap;end' || tripStopped.pill || tripStopped.line) fail(`stop: ${JSON.stringify(tripStopped)}`);
+  // The app's hand-over: the address fragment Trip.java writes (encoded polyline, %-escaped).
+  const tripEnc = (v, out) => { let x = v < 0 ? ~(v * 2) : v * 2; while (x >= 0x20) { out.push(String.fromCharCode((0x20 | (x & 0x1f)) + 63)); x = Math.floor(x / 32); } out.push(String.fromCharCode(x + 63)); };
+  const tripHash = (start, n) => {
+    const c = [], t = [];
+    let pl = 0, po = 0, pt = Math.floor(start / 1000);
+    for (let k = 0; k < n; k++) {
+      const la = Math.round((64.11 + k * 0.00014) * 1e5), lo = Math.round(-21.89 * 1e5), ts = pt + 1;
+      tripEnc(la - pl, c); tripEnc(lo - po, c); tripEnc(ts - pt, t);
+      pl = la; po = lo; pt = ts;
+    }
+    const esc = (a) => a.join('').replace(/[^A-Za-z?@_~]/g, (ch) => '%' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+    return `#trip=1.${start}.${start + n * 1000}.${esc(c)}.${esc(t)}`;
+  };
+  const tripTracks = () => page.evaluate(() => window.__app.tracks.all.map((t) => ({ id: t.id, name: t.name })));
+  const tripsBefore = (await tripTracks()).length;
+  const tripT0 = Date.UTC(2026, 9, 5, 14, 20);
+  await page.evaluate((h) => (location.hash = h), tripHash(tripT0, 120));
+  await page.waitForFunction(() => !document.querySelector('#trip-card').hidden, { timeout: 10_000 }).catch(() => fail('no save card for a handed-over trip'));
+  const tripCard = await page.evaluate(() => ({ name: document.querySelector('#trip-name').value, sub: document.querySelector('#trip-sub').textContent, hash: location.hash }));
+  if (!/^Drive 5 Oct, \d\d:20–\d\d:22$/.test(tripCard.name) || !/^1\.9 km · 2 min · \d\d:20–\d\d:22$/.test(tripCard.sub) || tripCard.hash !== '') fail(`trip card: ${JSON.stringify(tripCard)}`);
+  if ((await tripTracks()).length !== tripsBefore + 1) fail('trip not kept in Tracks at once');
+  await page.screenshot({ path: `${OUT}trip-card.png` });
+  await page.click('#trip-name', { count: 3 });
+  await page.evaluate(() => document.querySelector('#trip-name').select());
+  await page.keyboard.type('Home to work');
+  await page.click('#trip-form button.primary');
+  await page.waitForFunction(() => document.querySelector('#trip-card').hidden && document.querySelector('#trip-note-text').textContent === 'Saved to Tracks: Home to work', { timeout: 5_000 }).catch(() => fail('naming the trip'));
+  if (!(await tripTracks()).some((t) => t.name === 'Home to work')) fail('trip name not kept');
+  // The same trip again (a reload of the hand-over): kept once, no card.
+  await page.evaluate((h) => (location.hash = h), tripHash(tripT0, 120));
+  await new Promise((r) => setTimeout(r, 800));
+  if ((await tripTracks()).length !== tripsBefore + 1 || !(await page.$eval('#trip-card', (e) => e.hidden))) fail('the same trip kept twice');
+  // Discard asks again, then deletes.
+  await page.evaluate((h) => (location.hash = h), tripHash(tripT0 + 3_600_000, 60));
+  await page.waitForFunction(() => !document.querySelector('#trip-card').hidden, { timeout: 10_000 });
+  await page.click('#trip-discard');
+  if ((await page.$eval('#trip-discard', (e) => e.textContent)) !== 'Delete trip?' || (await tripTracks()).length !== tripsBefore + 2) fail('Discard did not ask again');
+  await page.click('#trip-discard');
+  await page.waitForFunction((n) => window.__app.tracks.all.length === n && document.querySelector('#trip-note-text').textContent === 'Trip deleted.', { timeout: 5_000 }, tripsBefore + 1).catch(() => fail('Discard did not delete the trip'));
+  // Left alone: the card closes after 30 s, the trip kept under its suggested name.
+  await page.evaluate((h) => (location.hash = h), tripHash(tripT0 + 7_200_000, 60));
+  await page.waitForFunction(() => !document.querySelector('#trip-card').hidden, { timeout: 10_000 });
+  await page.waitForFunction(() => document.querySelector('#trip-card').hidden, { timeout: 35_000, polling: 1000 }).catch(() => fail('the card did not close by itself'));
+  const tripQuiet = await page.$eval('#trip-note-text', (e) => e.textContent);
+  if (!/^Saved to Tracks: Drive 5 Oct, \d\d:20–\d\d:21$/.test(tripQuiet) || (await tripTracks()).length !== tripsBefore + 2) fail(`auto-save: ${tripQuiet}`);
+  // An empty trip only says so.
+  await page.evaluate(() => (location.hash = '#trip=1.5.9..'));
+  await page.waitForFunction(() => /^Nothing was recorded/.test(document.querySelector('#trip-note-text').textContent), { timeout: 5_000 }).catch(() => fail('empty trip'));
+  // A trip in the address when the map starts (the app opened it with one).
+  await page.goto(`http://localhost:${PORT}/${tripHash(tripT0 + 10_800_000, 30)}`);
+  await waitReady();
+  await page.waitForFunction(() => !document.querySelector('#trip-card').hidden, { timeout: 15_000 }).catch(() => fail('trip at startup not taken in'));
+  if ((await tripTracks()).length !== tripsBefore + 3) fail('trip at startup not kept');
+  await page.evaluate(() => localStorage.removeItem('android-app'));
+  console.log('trip recording ok');
 } finally {
   if (swBuilt) await writeFile(SW, swBuilt);
   await browser?.close();
