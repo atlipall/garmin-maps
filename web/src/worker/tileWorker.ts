@@ -11,6 +11,7 @@ import { planRoute } from '../routing/plan';
 import type { RoadClasses } from '../routing/roadClass';
 import { roadLineSource, routeShape } from '../routing/shape';
 import { collectIndex } from '../search/places';
+import { matchTrack } from '../tracks/match';
 import { buildTile, SubdivisionCache } from '../tiles/buildTile';
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -166,6 +167,13 @@ self.onmessage = async (e: MessageEvent) => {
       const shape = (route: Route) => routeShape(graph, index, route, lines);
       const result = await planRoute(graph, index, lines, msg.from as [number, number], msg.to as [number, number], msg.allowFRoads as boolean, shape, msg.preferFRoads === true);
       self.postMessage({ type: 'route', id: msg.id, result });
+    } else if (msg.type === 'match') {
+      // A track matched to the map's roads (for its turn instructions): only the road lines needed.
+      if (!opened) throw new Error('map not opened');
+      const m = await opened;
+      const decode = (tile: MapTile, sd: Subdivision) => cache.get(`${tile.id}:${sd.index}`, async () => decodeSubdivision(await m.readSubdivision(tile, sd), sd, { sections: 0, badSections: 0 }));
+      const segs = await matchTrack(msg.coords as Array<[number, number]>, roadLineSource(m, decode, msg.roads as RoadClasses), msg.times as Array<number | null> | undefined);
+      self.postMessage({ type: 'match', id: msg.id, segs });
     }
   } catch (err) {
     if (cancelled.delete(msg.id)) return;

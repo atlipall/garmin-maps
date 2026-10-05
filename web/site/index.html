@@ -105,7 +105,7 @@
         <li><a href="#load">Load your map</a></li>
         <li><a href="#search">Find places</a></li>
         <li><a href="#location">Follow your position</a></li>
-        <li><a href="#tracks">Show GPX tracks</a></li>
+        <li><a href="#tracks">Tracks</a></li>
         <li><a href="#route">Plan a route</a></li>
         <li class="sub"><a href="#navigate">Navigating</a></li>
         <li><a href="#save">Save places and routes</a></li>
@@ -203,13 +203,15 @@
   </section>
 
   <section id="tracks">
-    <h2>Show GPX tracks</h2>
-    <p>The app can't record in the background, but it can show tracks recorded with another app, or routes planned elsewhere.</p>
+    <h2>Tracks</h2>
+    <p>Tracks are routes you've saved and GPX files you've imported. The app can't record in the background, but it can show and navigate tracks recorded with another app, or routes planned elsewhere.</p>
     <ol class="steps">
-      <li><span>Open <b>⋯ → Tracks (GPX)</b> and tap <b>Import GPX…</b>. You can pick several files at once.</span></li>
-      <li><span>Each file gets its own colour on the map: tracks and routes as lines, waypoints as pins with their names.</span></li>
-      <li><span>The list shows each file's distance, climb and time. Tap a row to see it on the map, the eye to hide it, and the bin twice to delete it.</span></li>
+      <li><span>Save a planned route with <b>Save as track</b> on its card, or open <b>⋯ → Tracks</b> and tap <b>Import GPX…</b> (you can pick several files at once).</span></li>
+      <li><span>Each track gets its own colour on the map: lines, and waypoints as pins with their names.</span></li>
+      <li><span>The list shows each track's distance, climb and time; the eye hides it and the bin deletes it (tap twice). Tap a track for its card: <b>Navigate</b>, <b>Reverse</b> and <b>Export GPX</b>.</span></li>
     </ol>
+    <h3>Navigating a track</h3>
+    <p>Tap <b>Navigate</b> on a track's card. If you're not on the track, the app plans the way to its nearest point ahead of you, then guides you along the track to its end. <b>Reverse</b> follows it the other way. A route saved as a track keeps its turn instructions; an imported track gets them from the map, with road names where it follows roads and the turns of its bends on trails ("Keep right on the trail"). Leave the track on a road and the app plans the way back to it; leave it on a trail and the banner says how far it is and which way.</p>
     <div class="shots"><figure><img src="images/tracks.webp" width="780" height="1688" loading="lazy" alt="The Tracks panel listing a GPX track with its distance and climb, and the track drawn on the map" /><figcaption>A GPX track: its line on the map, distance and climb in the list.</figcaption></figure></div>
     <p class="muted">Tracks are stored on this device and stay when you load another map.</p>
   </section>
@@ -243,11 +245,11 @@
   <section id="save">
     <h2>Save places and routes</h2>
     <ul>
-      <li>Tap <b>Save</b> on a place's card or a route, keep or change the suggested name, and it's kept on this device.</li>
+      <li>Tap <b>Save</b> on a place's card, keep or change the suggested name, and it's kept on this device. A route is saved as a track (see <a href="#tracks">Tracks</a>).</li>
       <li><b>Where you are:</b> with location on, the pin button left of the locate button saves your position. It suggests a name from the map (the feature you're at, or the nearest named place); change it and tap <b>Save</b>. While navigating, the ☆ next to <b>End</b> saves the spot at once with the suggested name, so there's nothing to type. Either way, <b>Undo</b> takes it back for a few seconds.</li>
       <li>Saved places show on the map as gold stars; tap one to open its card. Routing to it reads <i>Routing to</i> and its name.</li>
-      <li><b>⋯ → Saved pins and routes</b> lists everything. A saved route opens just as it was drawn, waypoints included, without being worked out again; change its start or route options to plan it afresh. Delete an item with the bin (tap twice).</li>
-      <li><b>Export GPX</b> on a route (or the share icon next to a saved route) makes a GPX file: the route as a track, and the start, waypoints and destination as named points, for a Garmin device, another map app or Google Earth. On the iPhone it opens the share sheet (save to Files, AirDrop, another app); on a computer it downloads.</li>
+      <li><b>⋯ → Saved places</b> lists your saved places. Delete one with the bin (tap twice).</li>
+      <li><b>Export GPX</b> on a route or a track's card makes a GPX file: the route as a track, and the start, waypoints and destination as named points, for a Garmin device, another map app or Google Earth. On the iPhone it opens the share sheet (save to Files, AirDrop, another app); on a computer it downloads.</li>
       <li id="sync"><b>⋯ → Sync and backup → Back up…</b> writes one file with all your saved places and routes and your GPX tracks. <b>Restore…</b> on another device (or after reinstalling) brings in what the file has and this device doesn't; nothing is deleted. Keep the file in iCloud Drive to move it between your iPhone and Mac.</li>
       <li><b>Sync with Google Drive</b> (optional, in <b>⋯ → Sync and backup</b>) keeps your saved places and routes and your GPX tracks the same on every device you sign in on. They're kept in a hidden folder in your Google Drive that only this app can see; the app gets no access to your other files. It syncs when the app opens, when you come back to it and a few seconds after a change; everything keeps working offline and syncs when you're back online. <b>Stop syncing</b> turns it off on that device. You sign in once on each device: signing in goes to Google's page and back to the app, and after that it stays signed in until you tap <b>Stop syncing</b> (or remove the app's access in your Google account). If the app's sign-in helper can't be reached, it offers Google's one-hour sign-in instead.</li>
     </ul>

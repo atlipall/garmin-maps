@@ -25,12 +25,15 @@ export interface NavRoute {
   /** "To Landmannalaugar" (or the saved route's name). */
   title: string;
   dest: string;
+  /** Following a track (its wording: "Off the track"). */
+  track?: boolean;
 }
 
 /** Ways navigation reaches the rest of the app. */
 export interface NavHooks {
-  /** Plans the route again from your position, leaving out the first `passed` waypoints. */
-  replan(passed: number): void;
+  /** Plans the route again from your position, leaving out the first `passed` waypoints; `along`:
+   *  metres along the route you had got to (a track is rejoined ahead of it). */
+  replan(passed: number, along: number): void;
   /** Keeps the map's centre clear of a column of `left` pixels (0: none). */
   keepClear(left: number): void;
   /** The "Ask before rerouting in the highlands" setting. */
@@ -62,9 +65,16 @@ const FLAG = svg('<path d="M14 50V8M14 10h26l-6 9 6 9H14"/>');
 const PIN = '<svg viewBox="0 0 56 56"><path d="M28 4C18.6 4 11 11.6 11 21c0 13 17 31 17 31s17-18 17-31C45 11.6 37.4 4 28 4z" fill="currentColor"/><circle cx="28" cy="21" r="6.5" fill="#1d3f8f"/></svg>';
 const WARNING = svg('<path d="M28 8 50 46H6z" stroke-width="5"/><path d="M28 22v12" stroke-width="5"/><circle cx="28" cy="40" r="2" fill="currentColor"/>');
 
+const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+/** Compass bearing (degrees clockwise from north) from a to b. */
+function bearing(a: LonLat, b: LonLat): number {
+  const k = Math.cos(((a[1] + b[1]) / 2) * (Math.PI / 180));
+  return ((Math.atan2((b[0] - a[0]) * k, b[1] - a[1]) * 180) / Math.PI + 360) % 360;
+}
+
 function icon(m: Maneuver): string {
   if (m.kind === 'roundabout') return ROUNDABOUT;
-  if (m.kind === 'via') return FLAG;
+  if (m.kind === 'via' || m.kind === 'join') return FLAG;
   if (m.kind === 'arrive') return PIN;
   if (m.kind === 'depart' || m.kind === 'continue') return ARROWS.straight;
   return ARROWS[m.turn ?? 'straight'];
@@ -114,7 +124,17 @@ export class Navigator {
     this.replanning = true;
     this.banner(WARNING, 'Planning…', 'A new route from here', null, 'off');
     const along = this.lastOn?.along ?? 0;
-    this.hooks.replan(this.viaAlong.filter((a) => a <= along).length);
+    this.hooks.replan(this.viaAlong.filter((a) => a <= along).length, along);
+  }
+
+  /** Where you left the route was off the roads (a trail): there's no road way back to plan. */
+  private onTrail(): boolean {
+    const segs = this.nav?.route.segs;
+    const i = this.lastOn?.index;
+    if (!segs?.length || i === undefined) return false;
+    let k = 0;
+    while (k + 1 < segs.length && segs[k + 1].start <= i) k++;
+    return !!segs[k].trail;
   }
 
   /** Where you left the route was an F-road or a track: the highlands. */
@@ -193,14 +213,20 @@ export class Navigator {
     const off = this.offFixes >= OFF_ROUTE_FIXES;
     if (!off) this.lastOn = where;
     // Off the route: a new route straight away; in the highlands, where leaving the route may be on
-    // purpose (a viewpoint, a ford), ask first if the setting says so.
-    if (off && !this.quiet && !this.asking) {
+    // purpose (a viewpoint, a ford), ask first if the setting says so. Off a trail there's no road
+    // way back: the banner points the way instead.
+    const trail = off && this.onTrail();
+    if (off && !trail && !this.quiet && !this.asking) {
       if (this.hooks.askInHighlands() && this.inHighlands()) this.ask(true);
       else return this.replan();
     }
     if (off) {
-      if (this.noRoute) this.banner(WARNING, 'No new route', "Couldn't plan a route from here", null, 'off');
-      else this.banner(WARNING, 'Off route', `You're ${fmtDist(where.off)} from the route`, null, 'off');
+      const what = this.nav.track ? 'Off the track' : 'Off route';
+      if (trail) {
+        const back = this.progress.pointAt(where.along);
+        this.banner(WARNING, what, `${fmtDist(where.off)} from it · back to it ${COMPASS[Math.round(bearing(at, back) / 45) % 8]}`, null, 'off');
+      } else if (this.noRoute) this.banner(WARNING, 'No new route', "Couldn't plan a route from here", null, 'off');
+      else this.banner(WARNING, what, `You're ${fmtDist(where.off)} from the ${this.nav.track ? 'track' : 'route'}`, null, 'off');
       this.panel(this.lastOn ?? where);
       return;
     }

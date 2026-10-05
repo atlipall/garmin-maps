@@ -12,6 +12,8 @@ import { versionLabel } from '../buildInfo';
 import { DEV } from '../channel';
 import { featureNameAt } from '../map/featureName';
 import { SaveHere } from './saveHere';
+import { TrackCard } from './trackCard';
+import { TrackNav } from './trackNav';
 import { PerfStats } from '../ui/perf';
 import { browserScreenAwake } from '../location/wakeLock';
 import { readSetting, writeSetting } from '../ui/settings';
@@ -19,7 +21,8 @@ import { HeightControl, LocationControl } from './location';
 import { RoutePlanner } from './route';
 import { SavedPanel } from './savedPanel';
 import { DriveSync } from './driveSync';
-import { DiagnosticsPanel } from './diagnostics';
+import { androidApp, DiagnosticsPanel } from './diagnostics';
+import { TripRecorder } from './tripRecorder';
 import { Navigator } from './navigation';
 import { loadSession, saveSession } from './session';
 import { TracksPanel } from './tracks';
@@ -242,7 +245,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     showImport('', { hasMap: true, canCancel: true });
   };
 
-  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, sync: null as DriveSync | null, navigator: null as Navigator | null, screenAwake: awake };
+  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, trackCard: null as TrackCard | null, trip: null as TripRecorder | null, lastIntent: null as string | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, sync: null as DriveSync | null, navigator: null as Navigator | null, screenAwake: awake };
   window.__app = app;
   // F-road/track classes from the place-index pass, keyed by tile id and NET offset. Resolved
   // once `loadPlaces` finishes; a route requested before then awaits this instead. Rejected if
@@ -300,27 +303,48 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     locate.onSpeed = (mps) => routePlanner.moving(mps);
     // Turn-by-turn along the route shown: Start follows you heading up; every fix moves the guidance on.
     const navigator = new Navigator({
-      replan: (passed) => routePlanner.replanFromHere(passed),
+      replan: (passed, along) => (trackNav.active ? trackNav.rejoin(along) : routePlanner.replanFromHere(passed)),
       keepClear: (left) => map.setPadding({ top: 0, bottom: 0, right: 0, left }),
       askInHighlands: () => askInHighlands,
-      ended: () => {},
+      ended: () => trackNav.ended(),
     });
     // A fix from the last two minutes (an old one would start guidance from the wrong place).
     const fresh = () => { const f = locate.lastFix; return f && Date.now() - f.time < 120_000 ? f : null; };
     routePlanner.onStart = () => {
       const nav = routePlanner.navRoute();
       if (!nav) return;
+      trackNav.ended(); // a route now, not a track
       locate.navigate();
       navigator.start(nav, fresh());
     };
     routePlanner.onPlanned = (ok) => {
-      if (!navigator.active) return;
+      if (!navigator.active || trackNav.active) return;
       const nav = ok ? routePlanner.navRoute() : null;
       if (nav) navigator.start(nav, fresh());
       else navigator.couldNotReplan();
     };
-    routePlanner.onCleared = () => navigator.end();
-    locate.onFix = (at, accuracy) => navigator.fix(at, accuracy);
+    routePlanner.onCleared = () => {
+      if (!trackNav.active) navigator.end();
+    };
+    // Navigating a track: to its nearest point ahead, then along it (./trackNav.ts); a track's card
+    // (a tap on it in the Tracks panel) starts it.
+    const trackNav = new TrackNav({
+      map,
+      navigator,
+      fix: fresh,
+      follow: () => locate.navigate(),
+      plan: (from, to) => roadsReady.then((roads) => pool.route(from, to, readSetting('allowFRoads', true), readSetting('preferFRoads', false), roads)),
+      match: (coords, times) => roadsReady.then((roads) => pool.matchTrack(coords, times, roads)),
+    });
+    const trackCard = new TrackCard(trackNav, fresh);
+    tracks.onOpen = (t) => trackCard.open(t);
+    tracks.onRenamed = (t) => trackCard.renamed(t);
+    app.trackCard = trackCard;
+    let trip: TripRecorder | null = null;
+    locate.onFix = (at, accuracy) => {
+      navigator.fix(at, accuracy);
+      trip?.fix(at);
+    };
     app.navigator = navigator;
     app.screenAwake = awake;
     // Saved pins (stars on the map) and routes, from the route card's Save.
@@ -331,7 +355,6 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
         routePlanner.pick({ name: p.name, lon: p.lon, lat: p.lat, saved: true });
         map.easeTo({ center: [p.lon, p.lat], zoom: Math.max(map.getZoom(), 12), duration: 600 });
       },
-      (r) => routePlanner.openSaved(r),
       () => tracks.reload(),
       () => tracks.all,
     );
@@ -344,6 +367,9 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     saved.onChanged = tracks.onChanged = () => sync.changed();
     app.sync = sync;
     routePlanner.onSave = (item) => saved.add(item);
+    routePlanner.onSaveTrack = async (t) => {
+      await tracks.addTrack(t);
+    };
     // A pin where you are: the button left of the locate button (added after it, so placed first), and
     // the ☆ while navigating. Named after the map feature there when it's on screen, else the
     // nearest named place.
@@ -361,6 +387,28 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     });
     map.addControl(saveHere, 'bottom-right');
     saveHere.setAvailable(locating);
+    // Recording a trip, in the Android app only (it records in the background): its button goes
+    // left of save-a-pin. A trip the app hands over comes in once the stored tracks are read.
+    const android = androidApp();
+    if (android) {
+      trip = new TripRecorder({
+        app: android,
+        open: (href) => {
+          app.lastIntent = href;
+          location.href = href;
+        },
+        tracks: {
+          has: (id) => tracks.has(id),
+          add: (t) => tracks.addTrack(t),
+          rename: (t, name) => tracks.rename(t, name),
+          remove: (id) => tracks.deleteById(id),
+          show: (t) => tracks.zoomTo(t),
+        },
+      });
+      map.addControl(trip, 'bottom-right');
+      app.trip = trip;
+      void tracks.loaded.then(() => trip?.receiveStartup());
+    }
     $('sync-open').onclick = () => {
       setMenu(false);
       $('sync-panel').hidden = false;

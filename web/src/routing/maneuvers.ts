@@ -10,7 +10,7 @@ export type Turn = 'straight' | 'slight-left' | 'slight-right' | 'left' | 'right
 export interface Maneuver {
   index: number;
   along: number;
-  kind: 'depart' | 'turn' | 'keep' | 'continue' | 'roundabout' | 'via' | 'arrive';
+  kind: 'depart' | 'turn' | 'keep' | 'continue' | 'roundabout' | 'via' | 'join' | 'arrive';
   turn?: Turn;
   /** The roundabout exit to take (1 = first). */
   exit?: number;
@@ -67,7 +67,7 @@ function pointFrom(coords: LonLat[], cum: number[], k: number, dir: 1 | -1, dist
 
 /** The change of direction at point k (degrees, right positive), from the way in over the last
  *  30 m to the way out over the next 30 m. */
-function turnAngle(coords: LonLat[], cum: number[], k: number): number {
+export function turnAngle(coords: LonLat[], cum: number[], k: number): number {
   const into = bearing(pointFrom(coords, cum, k, -1, 30), coords[k]);
   const out = bearing(coords[k], pointFrom(coords, cum, k, 1, 30));
   return ((out - into + 540) % 360) - 180;
@@ -107,14 +107,27 @@ export function maneuvers(coords: LonLat[], segs: RoadSeg[], dest: string): Mane
   const cum = cumulative(coords);
   const out: Maneuver[] = [];
   const add = (m: Omit<Maneuver, 'along'>) => out.push({ ...m, along: cum[m.index] });
-  const first = roadLabel(segs[0]?.name ?? null);
+  // Off the roads, a track's way is "the trail" (a straight leg to or from a road has no name).
+  const label = (s: RoadSeg | undefined) => (s?.offRoad ? null : s?.trail ? 'the trail' : roadLabel(s?.name ?? null));
+  const first = label(segs[0]);
   const heading = COMPASS[Math.round(bearing(coords[0], pointFrom(coords, cum, 0, 1, 50)) / 45) % 8];
   add({ index: 0, kind: 'depart', road: first, text: `Head ${heading}${first ? ` on ${first}` : ''}` });
   for (let i = 1; i < segs.length; i++) {
     const s = segs[i];
     const k = s.start;
     if (s.via) {
-      add({ index: k, kind: 'via', via: s.via, road: roadLabel(s.name), text: `Waypoint ${s.via}` });
+      add({ index: k, kind: 'via', via: s.via, road: label(s), text: `Waypoint ${s.via}` });
+      continue;
+    }
+    // Where the way to a track meets it.
+    if (s.join) {
+      add({ index: k, kind: 'join', road: label(s), text: `Join ${s.join}` });
+      continue;
+    }
+    // A bend of a trail (no junction to go by): a turn when it is one.
+    if (s.bend) {
+      const turn = classify(turnAngle(coords, cum, k));
+      if (turn !== 'straight') add({ index: k, kind: turn.startsWith('slight') ? 'keep' : 'turn', turn, road: 'the trail', text: `${TURN_WORDS[turn]} on the trail` });
       continue;
     }
     // A roundabout: each stretch on it passes one exit; the instruction names the exit and the road
@@ -123,7 +136,7 @@ export function maneuvers(coords: LonLat[], segs: RoadSeg[], dest: string): Mane
       let j = i;
       while (j < segs.length && segs[j].type === ROUNDABOUT) j++;
       const exit = j - i;
-      const road = roadLabel(segs[j]?.name ?? null);
+      const road = label(segs[j]);
       add({ index: k, kind: 'roundabout', exit, road, text: `At the roundabout, take the ${ordinal(exit)} exit${onto(road)}` });
       // The way off the roundabout needs no turn of its own, but may be where a waypoint is.
       if (segs[j]?.via) add({ index: segs[j].start, kind: 'via', via: segs[j].via, road, text: `Waypoint ${segs[j].via}` });
@@ -131,8 +144,8 @@ export function maneuvers(coords: LonLat[], segs: RoadSeg[], dest: string): Mane
       continue;
     }
     if (s.type === ROUNDABOUT) continue;
-    const road = roadLabel(s.name);
-    const changed = road !== roadLabel(segs[i - 1].name);
+    const road = label(s);
+    const changed = road !== label(segs[i - 1]);
     // A choice to make: a junction, or a different road (a junction the network can miss where
     // one-way streets and dual carriageways meet).
     if (!s.junction && !changed) continue;

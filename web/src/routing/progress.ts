@@ -53,6 +53,16 @@ export class Progress {
     return best;
   }
 
+  /** The point `along` metres from the start. */
+  pointAt(along: number): LonLat {
+    let i = 0;
+    while (i + 2 < this.cum.length && this.cum[i + 1] < along) i++;
+    const span = this.cum[i + 1] - this.cum[i];
+    const t = span ? Math.max(0, Math.min(1, (along - this.cum[i]) / span)) : 0;
+    const [a, b] = [this.coords[i], this.coords[Math.min(i + 1, this.coords.length - 1)]];
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  }
+
   /** Metres and driving seconds from `along` to the end. */
   left(along: number): { metres: number; seconds: number } {
     let i = 0;

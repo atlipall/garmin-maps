@@ -21,6 +21,14 @@ export interface RoadSeg {
   junction: boolean;
   seconds: number;
   via?: number;
+  /** Off the roads: a trail, or a straight leg to or from one (on a track, ../tracks/match.ts). */
+  trail?: boolean;
+  /** A straight leg between a point and the road or track (no trail to name). */
+  offRoad?: boolean;
+  /** Where a route to a track joins it: the track's name (../tracks/trackNav.ts). */
+  join?: string;
+  /** A bend of a trail worth a turn instruction (it has no junctions to go by). */
+  bend?: boolean;
 }
 
 /** A graph route drawn along its roads, with its road stretches. */

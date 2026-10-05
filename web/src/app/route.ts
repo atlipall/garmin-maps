@@ -9,7 +9,10 @@ import type { LonLat } from '../routing/plan';
 import { bestInsert, joinLegs, type JoinedRoute } from '../routing/waypoints';
 import { gpxFileName, routeGpx, shareFile } from '../gpx/export';
 import type { NavRoute } from './navigation';
-import { newId, type RouteOk, type Saved, type SavedRoute } from '../saved/saved';
+import { newId, type RouteOk, type Saved } from '../saved/saved';
+import { routeAsTrack } from '../gpx/fromRoute';
+import type { Gpx } from '../gpx/parse';
+import type { TrackRoute } from '../gpx/store';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 /** Hold time for a long press: below iOS's own ~0.5 s long-press gestures (selection loupe, callout). */
@@ -83,6 +86,8 @@ export class RoutePlanner {
   private saved = false;
   /** Stores a saved pin or route (the Saved panel). */
   onSave: ((item: Saved) => Promise<void>) | null = null;
+  /** Keeps a route as a track (the Tracks panel). */
+  onSaveTrack: ((t: { name: string; gpx: Gpx; route: TrackRoute }) => Promise<void>) | null = null;
   /** "Start": navigate along the route shown. */
   onStart: (() => void) | null = null;
   /** A route was planned (`ok`) or couldn't be (for navigation, which plans again on the way). */
@@ -452,7 +457,10 @@ export class RoutePlanner {
     const button = $<HTMLButtonElement>('route-save');
     button.hidden = !this.dest || (this.started && !this.last);
     button.disabled = this.saved;
-    button.querySelector('span')!.textContent = this.saved ? 'Saved' : 'Save';
+    // A route is saved as a track: "Save as track", or just "Save" where that doesn't fit.
+    const label = button.querySelector('span')!;
+    label.textContent = this.saved ? 'Saved' : this.last ? 'Save as track' : 'Save';
+    if (!this.saved && this.last && !button.hidden && button.scrollWidth > button.clientWidth) label.textContent = 'Save';
     if (button.hidden) this.showSaveForm(false);
     // Export and Start only for a drawn route.
     $('route-export').hidden = !this.last;
@@ -473,13 +481,16 @@ export class RoutePlanner {
   }
 
   private async save(name: string): Promise<void> {
-    if (!this.dest || !this.onSave) return;
-    const base = { id: newId(), name: name || $<HTMLInputElement>('route-save-name').placeholder, added: Date.now() };
-    const item: Saved = this.last
-      ? { ...base, kind: 'route', dest: this.dest, from: this.last.from, vias: this.vias, allowFRoads: this.allow, preferFRoads: this.prefer, route: this.last.route }
-      : { ...base, kind: 'pin', lon: this.dest.lon, lat: this.dest.lat };
+    if (!this.dest) return;
+    const title = name || $<HTMLInputElement>('route-save-name').placeholder;
     try {
-      await this.onSave(item);
+      if (this.last) {
+        if (!this.onSaveTrack) return;
+        await this.onSaveTrack({ name: title, ...routeAsTrack(title, this.last.route, this.dest, this.vias) });
+      } else {
+        if (!this.onSave) return;
+        await this.onSave({ id: newId(), name: title, added: Date.now(), kind: 'pin', lon: this.dest.lon, lat: this.dest.lat });
+      }
       this.saved = true;
       this.showSaveForm(false);
       this.showSave();
@@ -494,33 +505,6 @@ export class RoutePlanner {
     const name = $('route-title').textContent || 'Route';
     const gpx = routeGpx({ name, summary: $('route-info').textContent ?? '', route: this.last.route, start: this.last.route.offRoadStart?.[0] ?? this.last.from, vias: this.vias, dest: this.dest });
     await shareFile(gpxFileName(name), gpx).catch((err) => this.setInfo($('route-info').textContent ?? '', $('route-off').textContent ?? '', `Couldn't export: ${err instanceof Error ? err.message : String(err)}`));
-  }
-
-  /** Shows a saved route as it was drawn (no planning), with its start and switches; changing
-   *  those plans it again. Asks first when another route is on the map. */
-  openSaved(r: SavedRoute): void {
-    if (this.shown || this.planning) {
-      this.ask(`Show ${r.name} and clear the current route?`, null, () => {
-        this.clearRoute();
-        this.openSaved(r);
-      });
-      return;
-    }
-    this.pick(r.dest);
-    this.setVias(r.vias ?? []);
-    this.clearStart();
-    this.start = r.from;
-    this.startPin = new maplibregl.Marker({ element: startPinElement(), anchor: 'bottom' }).setLngLat(r.from).addTo(this.map);
-    this.allow = r.allowFRoads;
-    this.prefer = r.preferFRoads;
-    $<HTMLInputElement>('route-froads').checked = this.allow;
-    $<HTMLInputElement>('route-prefer').checked = this.prefer;
-    this.showStarted();
-    this.showFrom();
-    this.showRoute(r.route, r.from, 'chosen', true);
-    $('route-title').textContent = r.name;
-    this.saved = true;
-    this.showSave();
   }
 
   private clearStart(): void {

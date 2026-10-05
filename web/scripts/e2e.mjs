@@ -291,6 +291,32 @@ try {
   await new Promise((r) => setTimeout(r, 1000)); // fitBounds
   await page.screenshot({ path: `${OUT}tracks.png` });
   console.log('gpx ok:', trk.stats);
+  // Renaming a track: the pencil turns the row into a name field; Save keeps the new name (list and
+  // storage, spaces tidied); Escape leaves it as it was without closing the panel.
+  const renameRow = async (list, from, to, how = 'save') => {
+    const row = await page.$$eval(`${list} li`, (lis, f) => lis.findIndex((li) => li.querySelector('.name')?.textContent === f) + 1, from);
+    if (!row) fail(`no row named ${from} in ${list}`);
+    await page.click(`${list} li:nth-child(${row}) .track-rename`);
+    const field = `${list} li:nth-child(${row}) .rename-form input`;
+    const prefilled = await page.$eval(field, (e) => e.value);
+    if (prefilled !== from) fail(`rename field prefilled with ${prefilled}`);
+    // The name is focused and selected: typing replaces it.
+    if (!(await page.$eval(field, (e) => e === document.activeElement && e.selectionStart === 0 && e.selectionEnd === e.value.length))) fail('rename field not focused with the name selected');
+    await page.keyboard.type(to);
+    if (how === 'escape') await page.keyboard.press('Escape');
+    else await page.click(`${list} li:nth-child(${row}) .rename-form button.primary`);
+  };
+  const trackName0 = await page.$eval('#track-list .name', (e) => e.textContent);
+  await renameRow('#track-list', trackName0, '  Laugavegur,   first part ');
+  await page.waitForFunction(() => document.querySelector('#track-list .name')?.textContent === 'Laugavegur, first part', { timeout: 5_000 }).catch(() => fail('track rename not shown'));
+  // Kept in storage, not only on screen.
+  const stored = await page.evaluate(() => new Promise((res) => { const r = indexedDB.open('garmin-map'); r.onsuccess = () => { const q = r.result.transaction('tracks').objectStore('tracks').getAll(); q.onsuccess = () => res(q.result.map((t) => t.name)); }; }));
+  if (!stored.includes('Laugavegur, first part')) fail(`renamed track in storage: ${stored}`);
+  await renameRow('#track-list', 'Laugavegur, first part', 'Never kept', 'escape');
+  if ((await page.$eval('#track-list .name', (e) => e.textContent)) !== 'Laugavegur, first part' || (await page.$('#tracks:not([hidden])')) === null) fail('Escape changed the name or closed the panel');
+  await renameRow('#track-list', 'Laugavegur, first part', trackName0);
+  await page.waitForFunction((n) => window.__app.tracks.all[0].name === n, { timeout: 5_000 }, trackName0).catch(() => fail('track renamed back'));
+  console.log('track rename ok');
   await page.click('#tracks-close');
 
   // 3d. Routing: right-click drops a pin, a tap closes it; Ctrl+Click keeps it; Route here → panel
@@ -678,7 +704,7 @@ try {
   if (await page.$('.start-pin')) fail('start pin still shown after ×');
   console.log('routing ok:', withF);
 
-  // 3e. Saving: a place (named in the card's name box) becomes a star; a route keeps its line.
+  // 3e. Saving: a place (named in the card's name box) becomes a star; a route becomes a track.
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Hekla', lon: -19.67, lat: 63.99 }));
   await page.click('#route-save');
   if (await page.$eval('#route-save-name', (e) => e.value) !== 'Hekla') fail('save name not prefilled with the place name');
@@ -711,13 +737,26 @@ try {
   const trkpts = (gpxText.match(/<trkpt /g) ?? []).length;
   if (trkpts < 50 || !/<wpt [^>]*><name>Landmannalaugar<\/name>/.test(gpxText) || !gpxText.includes(`<desc>${savedInfo}</desc>`)) fail(`exported GPX: ${trkpts} track points, ${gpxText.slice(0, 300)}`);
   console.log('export ok:', trkpts, 'track points');
+  if (await page.$eval('#route-save span', (e) => e.textContent) !== 'Save as track') fail('a route\'s Save does not say "Save as track"');
+  const tracksBeforeSave = await page.evaluate(() => window.__app.tracks.count);
   await page.click('#route-save');
   if (await page.$eval('#route-save-name', (e) => e.value) !== 'To Landmannalaugar') fail('route save name not prefilled');
   await page.click('#route-save-form button[type="submit"]');
-  await page.waitForFunction(() => window.__app.saved.count === 2, { timeout: 5_000 }).catch(() => fail('route not saved'));
+  await page.waitForFunction((n) => window.__app.tracks.count === n + 1 && window.__app.saved.count === 1, { timeout: 5_000 }, tracksBeforeSave).catch(() => fail('route not saved as a track'));
+  const savedTrack = await page.evaluate(() => {
+    const t = window.__app.tracks.all.find((x) => x.name === 'To Landmannalaugar');
+    return { segs: t?.route?.segs.length ?? 0, points: t?.gpx.lines[0].points.length ?? 0, button: document.querySelector('#route-save').textContent };
+  });
+  if (!savedTrack.segs || savedTrack.points < 50 || savedTrack.button !== 'Saved') fail(`route saved as a track: ${JSON.stringify(savedTrack)}`);
   await page.click('#route-close');
   await page.click('#route-confirm-yes');
-  console.log('saving ok:', savedInfo);
+  // The destination as a pin too (the steps below work with two saved pins).
+  await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
+  await page.click('#route-save');
+  await page.click('#route-save-form button[type="submit"]');
+  await page.waitForFunction(() => window.__app.saved.count === 2, { timeout: 5_000 }).catch(() => fail('second pin not saved'));
+  await page.click('#route-close');
+  console.log('saving ok:', savedInfo, '· saved as a track with', savedTrack.segs, 'road stretches');
 
   // 4. reload opens straight from storage, where the app was: view, location mode and route
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
@@ -742,18 +781,69 @@ try {
   // Location came back on with the app, so the screen is kept on (the setting is on by default).
   if (was.locate !== 'off') await page.waitForFunction(() => window.__app.screenAwake.held, { timeout: 5_000 }).catch(() => fail('screen not kept on after the app reopened with location on'));
   console.log('restore after reload ok');
-  // Saved pins and routes are kept across the reload: the star is back, and a saved route opens as
-  // it was drawn (no planning: its numbers are there at once).
+  // Saved pins are kept across the reload (the star is back), and so is the route saved as a track.
   await page.waitForFunction(() => window.__app.saved?.count === 2, { timeout: 10_000 }).catch(() => fail('saved items not kept across reload'));
+  if (!(await page.$eval('#route-card', (e) => e.hidden))) {
+    await page.click('#route-close');
+    await page.click('#route-confirm-yes');
+  }
+  // Navigating the saved route from 2 km off it: its card says how far; the way to its nearest
+  // point is planned, then along it ("Join To Landmannalaugar").
+  const setFix = async (lat, lon) => {
+    await gps.send('Emulation.setGeolocationOverride', { latitude: lat, longitude: lon, accuracy: 8, speed: 0 });
+    await new Promise((r) => setTimeout(r, 400));
+  };
+  const firstPoint = await page.evaluate(() => { const p = window.__app.tracks.all.find((x) => x.name === 'To Landmannalaugar').gpx.lines[0].points[0]; return [p.lat, p.lon]; });
+  await setFix(firstPoint[0] + 0.018, firstPoint[1]);
+  await page.click('#menu-button');
+  await page.click('#tracks-open');
+  const routeRow = await page.$$eval('#track-list li', (lis) => lis.findIndex((li) => li.querySelector('.name').textContent === 'To Landmannalaugar') + 1);
+  await page.click(`#track-list li:nth-child(${routeRow}) .track-info`);
+  if (!(await page.$eval('#tracks', (e) => e.hidden))) await page.click('#tracks-close');
+  const trackCardNote = await page.$eval('#track-card-note', (e) => e.textContent);
+  if (!/^You're \d(\.\d)? km from the track: navigation takes you to its nearest point, then along it\.$/.test(trackCardNote)) fail(`track card: ${trackCardNote}`);
+  await page.screenshot({ path: `${OUT}track-card.png` });
+  await page.click('#track-navigate');
+  await page.waitForFunction(() => document.body.classList.contains('navigating'), { timeout: 60_000 }).catch(async () => fail(`track navigation did not start: ${await page.$eval('#track-card-note', (e) => e.textContent)}`));
+  // The route drawn is the way to the track and the track on to its end.
+  const trackNavState = await page.evaluate(() => {
+    const drawn = window.__app.map.getStyle().sources['track-nav'].data.features[0]?.geometry.coordinates ?? [];
+    const pts = window.__app.tracks.all.find((x) => x.name === 'To Landmannalaugar').gpx.lines[0].points;
+    const end = pts[pts.length - 1];
+    return { to: document.querySelector('#nav-to').textContent, steps: window.__app.navigator.steps.map((m) => m.text), drawnToEnd: !!drawn.length && drawn[drawn.length - 1][0] === end.lon && drawn[drawn.length - 1][1] === end.lat, drawnFromYou: !!drawn.length && Math.abs(drawn[0][1] - pts[0].lat - 0.018) < 0.01 };
+  });
+  if (trackNavState.to !== 'To Landmannalaugar' || !trackNavState.steps.includes('Join To Landmannalaugar') || !trackNavState.drawnToEnd || !trackNavState.drawnFromYou || trackNavState.steps.length < 4) fail(`navigating a saved route: ${JSON.stringify(trackNavState)}`);
+  await page.screenshot({ path: `${OUT}track-nav.png` });
+  console.log('to the track:', trackNavState.steps.slice(0, 4).join(' · '));
+  await page.click('#nav-end');
+  if (await page.evaluate(() => window.__app.map.getStyle().sources['track-nav'].data.features.length)) fail('the way to the track still drawn after End');
+  // An imported trail: on it from its start; 150 m off it, the way back is pointed out (no road
+  // route planned to a hillside).
+  const trail = await page.evaluate(() => window.__app.tracks.all.find((x) => !x.route).gpx.lines[0].points.slice(0, 2).map((p) => [p.lat, p.lon]));
+  await setFix(trail[0][0], trail[0][1]);
+  await page.click('#menu-button');
+  await page.click('#tracks-open');
+  const trailRow = await page.$$eval('#track-list li', (lis) => lis.findIndex((li) => li.querySelector('.name').textContent === 'Laugavegur start') + 1);
+  await page.click(`#track-list li:nth-child(${trailRow}) .track-info`);
+  if (!(await page.$eval('#tracks', (e) => e.hidden))) await page.click('#tracks-close');
+  if (!/^You're on the track/.test(await page.$eval('#track-card-note', (e) => e.textContent))) fail(`trail card: ${await page.$eval('#track-card-note', (e) => e.textContent)}`);
+  await page.click('#track-navigate');
+  await page.waitForFunction(() => document.body.classList.contains('navigating'), { timeout: 60_000 }).catch(() => fail('trail navigation did not start'));
+  for (let k = 0; k < 4; k++) await setFix(trail[0][0] + 0.0004 * (k + 1) * 0.3, trail[0][1] + 0.0035);
+  const offTrail = await page.evaluate(() => ({ banner: document.querySelector('#nav-banner').className, dist: document.querySelector('#nav-dist').textContent, text: document.querySelector('#nav-text').textContent }));
+  if (offTrail.banner !== 'off' || offTrail.dist !== 'Off the track' || !/ from it · back to it (north|south|east|west)/.test(offTrail.text)) fail(`off the trail: ${JSON.stringify(offTrail)}`);
+  console.log('off the trail:', offTrail.text);
+  await page.click('#nav-end');
   await page.click('#menu-button');
   await page.click('#saved-open');
   const rows = await page.$$eval('#saved-list .track-info .name', (els) => els.map((e) => e.textContent));
-  if (rows.join('|') !== 'Hekla view|To Landmannalaugar') fail(`saved list: ${rows}`);
-  await page.click('#saved-list li:nth-child(2) .track-info');
-  const opened = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, info: document.querySelector('#route-info').textContent, drawn: window.__app.map.getStyle().sources.route.data.features.length, button: document.querySelector('#route-save').textContent }));
-  if (opened.title !== 'To Landmannalaugar' || opened.info !== savedInfo || !opened.drawn || opened.button !== 'Saved') fail(`opened saved route: ${JSON.stringify(opened)}`);
-  await page.click('#route-close');
-  await page.click('#route-confirm-yes');
+  if (rows.join('|') !== 'Hekla view|Landmannalaugar') fail(`saved list: ${rows}`);
+  // Renaming a saved pin: the list and its star's label.
+  await renameRow('#saved-list', 'Landmannalaugar', 'Landmannalaugar hut');
+  await page.waitForFunction(() => window.__app.map.getStyle().sources.saved.data.features.some((f) => f.properties.name === 'Landmannalaugar hut'), { timeout: 5_000 }).catch(() => fail('pin rename not on the map'));
+  await renameRow('#saved-list', 'Landmannalaugar hut', 'Landmannalaugar');
+  await page.waitForFunction(() => [...document.querySelectorAll('#saved-list .name')].map((e) => e.textContent).join('|') === 'Hekla view|Landmannalaugar', { timeout: 5_000 }).catch(() => fail('pin renamed back'));
+  console.log('pin rename ok');
   await page.click('#saved-list li:nth-child(1) .track-info');
   const pinCard = await page.evaluate(() => ({ title: document.querySelector('#route-title').textContent, go: !document.querySelector('#route-go').hidden }));
   if (pinCard.title !== 'Hekla view' || !pinCard.go) fail(`opened saved pin: ${JSON.stringify(pinCard)}`);
@@ -782,7 +872,7 @@ try {
     backupText = await readFile(`${dl}${backupName}`, 'utf8').catch(() => '');
   }
   const backup = JSON.parse(backupText || '{}');
-  if (backup.saved?.length !== 2 || backup.tracks?.length !== 1) fail(`backup file: ${backupText.slice(0, 200)}`);
+  if (backup.saved?.length !== 2 || backup.tracks?.length !== 2) fail(`backup file: ${backupText.slice(0, 200)}`);
   for (const left of [1, 0]) {
     await page.click('#saved-list li:first-child .track-delete');
     await page.click('#saved-list li:first-child .track-delete');
@@ -925,16 +1015,16 @@ try {
   await page.click('#tracks-close');
   console.log('drive sync ok');
   if (await page.$eval('#saved', (e) => !e.hidden)) await page.click('#saved-close');
-  console.log('saved list ok:', opened.info);
+  console.log('saved list ok');
   if (await page.$('#import:not([hidden])')) fail('import screen shown after reload');
-  await page.waitForFunction(() => window.__app?.tracks?.count === 1, { timeout: 10_000 }).catch(() => fail('GPX track not kept across reload'));
+  await page.waitForFunction((n) => window.__app?.tracks?.count === n, { timeout: 10_000 }, tracksBefore).catch(() => fail('tracks not kept across reload'));
   // Deleting asks for a second tap.
   await page.click('#menu-button');
   await page.click('#tracks-open');
   await page.click('.track-delete');
-  if ((await page.evaluate(() => window.__app.tracks.count)) !== 1) fail('deleted a track without confirmation');
+  if ((await page.evaluate(() => window.__app.tracks.count)) !== tracksBefore) fail('deleted a track without confirmation');
   await page.click('.track-delete');
-  await page.waitForFunction(() => window.__app.tracks.count === 0 && !document.querySelector('#track-list .track'), { timeout: 5_000 }).catch(() => fail('track not deleted'));
+  await page.waitForFunction((n) => window.__app.tracks.count === n - 1 && document.querySelectorAll('#track-list .track').length === n - 1, { timeout: 5_000 }, tracksBefore).catch(() => fail('track not deleted'));
   await page.click('#tracks-close');
   console.log('reload from storage ok');
 
@@ -1057,6 +1147,112 @@ try {
   await page.waitForFunction(() => !document.querySelector('#update').hidden, { timeout: 10_000 }).catch(() => fail('a newer version already in control at start was not told'));
   await page.setOfflineMode(false);
   console.log('update notice ok');
+
+  // 11. Recording a trip (in the Android app; here the app's part is played by the test): no record
+  // button in a browser; in the app the button sits left of save-a-pin; Record asks the app to start
+  // and shows the pill and the way so far; Stop asks it to stop. A trip handed over in the address
+  // is kept in Tracks at once and offered for naming; the same trip twice is kept once; Discard asks
+  // again; left alone the card closes after 30 s with a quiet note; an empty trip only says so; a
+  // trip in the address at startup comes in too.
+  if (await page.$('#map .trip-record')) fail('record button outside the Android app');
+  await page.evaluate(() => localStorage.setItem('android-app', 'is.atlipall.garminmap'));
+  await page.reload();
+  await waitReady();
+  await page.waitForSelector('#map .trip-record-button', { timeout: 10_000 }).catch(() => fail('no record button in the Android app'));
+  if ((await page.$eval('.locate-button', (e) => e.dataset.state)) === 'off') await page.click('.locate-button');
+  await gps.send('Emulation.setGeolocationOverride', { latitude: 64.11, longitude: -21.89, accuracy: 8 });
+  await page.waitForFunction(() => !document.querySelector('#map .save-here').hidden, { timeout: 10_000 });
+  const tripPlace = await page.evaluate(() => {
+    const r = (q) => { const b = document.querySelector(q).getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top }; };
+    return { rec: r('#map .trip-record'), pin: r('#map .save-here') };
+  });
+  if (!(tripPlace.rec.right <= tripPlace.pin.left + 1 && Math.abs(tripPlace.rec.top - tripPlace.pin.top) < 2)) fail(`record button not left of save-a-pin: ${JSON.stringify(tripPlace)}`);
+  // Record asks the app; nothing shows as recording until the app says it records.
+  const appLink = (what) => `intent://trip/${what}#Intent;scheme=garminmap;package=is.atlipall.garminmap;S.browser_fallback_url=${encodeURIComponent(`http://localhost:${PORT}/#trip-failed=old-app`)};end`;
+  await page.click('#map .trip-record-button');
+  const recAsked = await page.evaluate(() => ({ intent: window.__app.lastIntent, pill: !document.querySelector('#trip-pill').hidden }));
+  if (recAsked.intent !== appLink('start') || recAsked.pill) fail(`record asked: ${JSON.stringify(recAsked)}`);
+  // No answer (an app that can't record): a note after 10 s.
+  await page.waitForFunction(() => /didn't start recording/.test(document.querySelector('#trip-note-text').textContent) && !document.querySelector('#trip-note').hidden, { timeout: 15_000 }).catch(() => fail('no note when the app did not answer'));
+  // The app's answers: precise location refused; too old (Chrome's fallback); recording.
+  await page.evaluate(() => (location.hash = '#trip-failed=location'));
+  await page.waitForFunction(() => /needs precise location/.test(document.querySelector('#trip-note-text').textContent), { timeout: 5_000 }).catch(() => fail('location refused'));
+  await page.evaluate(() => (location.hash = '#trip-failed=old-app'));
+  await page.waitForFunction(() => /newest version of the Android app/.test(document.querySelector('#trip-note-text').textContent), { timeout: 5_000 }).catch(() => fail('old app'));
+  await page.click('#map .trip-record-button');
+  await page.evaluate((t) => (location.hash = `#trip-recording=${t}`), Date.now());
+  await page.waitForFunction(() => !document.querySelector('#trip-pill').hidden, { timeout: 5_000 }).catch(() => fail('no pill once the app records'));
+  const tripStarted = await page.evaluate(() => ({ text: document.querySelector('#trip-pill-text').textContent, label: document.querySelector('#map .trip-record-button').getAttribute('aria-label'), hash: location.hash }));
+  if (tripStarted.text !== '0.0 km · 0 min' || tripStarted.label !== 'Stop recording' || tripStarted.hash !== '') fail(`recording: ${JSON.stringify(tripStarted)}`);
+  for (let k = 1; k <= 6; k++) {
+    await gps.send('Emulation.setGeolocationOverride', { latitude: 64.11 + k * 0.0009, longitude: -21.89, accuracy: 8 });
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  const tripLive = await page.evaluate(() => ({ text: document.querySelector('#trip-pill-text').textContent, line: window.__app.map.getStyle().sources['trip-live'].data.features[0]?.geometry.coordinates.length ?? 0 }));
+  if (tripLive.text !== '0.5 km · 0 min' || tripLive.line !== 6) fail(`recording: ${JSON.stringify(tripLive)}`);
+  await page.screenshot({ path: `${OUT}trip-recording.png` });
+  // Kept over a reload (the app goes on recording whatever the map does).
+  await page.reload();
+  await waitReady();
+  await page.waitForSelector('#map .trip-record-button.recording', { timeout: 10_000 }).catch(() => fail('recording state lost on reload'));
+  await page.click('#map .trip-record-button');
+  const tripStopped = await page.evaluate(() => ({ intent: window.__app.lastIntent, pill: !document.querySelector('#trip-pill').hidden, line: window.__app.map.getStyle().sources['trip-live'].data.features.length }));
+  if (tripStopped.intent !== appLink('stop') || tripStopped.pill || tripStopped.line) fail(`stop: ${JSON.stringify(tripStopped)}`);
+  // The app's hand-over: the address fragment Trip.java writes (encoded polyline, %-escaped).
+  const tripEnc = (v, out) => { let x = v < 0 ? ~(v * 2) : v * 2; while (x >= 0x20) { out.push(String.fromCharCode((0x20 | (x & 0x1f)) + 63)); x = Math.floor(x / 32); } out.push(String.fromCharCode(x + 63)); };
+  const tripHash = (start, n) => {
+    const c = [], t = [];
+    let pl = 0, po = 0, pt = Math.floor(start / 1000);
+    for (let k = 0; k < n; k++) {
+      const la = Math.round((64.11 + k * 0.00014) * 1e5), lo = Math.round(-21.89 * 1e5), ts = pt + 1;
+      tripEnc(la - pl, c); tripEnc(lo - po, c); tripEnc(ts - pt, t);
+      pl = la; po = lo; pt = ts;
+    }
+    const esc = (a) => a.join('').replace(/[^A-Za-z?@_~]/g, (ch) => '%' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+    return `#trip=1.${start}.${start + n * 1000}.${esc(c)}.${esc(t)}`;
+  };
+  const tripTracks = () => page.evaluate(() => window.__app.tracks.all.map((t) => ({ id: t.id, name: t.name })));
+  const tripsBefore = (await tripTracks()).length;
+  const tripT0 = Date.UTC(2026, 9, 5, 14, 20);
+  await page.evaluate((h) => (location.hash = h), tripHash(tripT0, 120));
+  await page.waitForFunction(() => !document.querySelector('#trip-card').hidden, { timeout: 10_000 }).catch(() => fail('no save card for a handed-over trip'));
+  const tripCard = await page.evaluate(() => ({ name: document.querySelector('#trip-name').value, sub: document.querySelector('#trip-sub').textContent, hash: location.hash }));
+  if (!/^Drive 5 Oct, \d\d:20–\d\d:22$/.test(tripCard.name) || !/^1\.9 km · 2 min · \d\d:20–\d\d:22$/.test(tripCard.sub) || tripCard.hash !== '') fail(`trip card: ${JSON.stringify(tripCard)}`);
+  if ((await tripTracks()).length !== tripsBefore + 1) fail('trip not kept in Tracks at once');
+  await page.screenshot({ path: `${OUT}trip-card.png` });
+  await page.click('#trip-name', { count: 3 });
+  await page.evaluate(() => document.querySelector('#trip-name').select());
+  await page.keyboard.type('Home to work');
+  await page.click('#trip-form button.primary');
+  await page.waitForFunction(() => document.querySelector('#trip-card').hidden && document.querySelector('#trip-note-text').textContent === 'Saved to Tracks: Home to work', { timeout: 5_000 }).catch(() => fail('naming the trip'));
+  if (!(await tripTracks()).some((t) => t.name === 'Home to work')) fail('trip name not kept');
+  // The same trip again (a reload of the hand-over): kept once, no card.
+  await page.evaluate((h) => (location.hash = h), tripHash(tripT0, 120));
+  await new Promise((r) => setTimeout(r, 800));
+  if ((await tripTracks()).length !== tripsBefore + 1 || !(await page.$eval('#trip-card', (e) => e.hidden))) fail('the same trip kept twice');
+  // Discard asks again, then deletes.
+  await page.evaluate((h) => (location.hash = h), tripHash(tripT0 + 3_600_000, 60));
+  await page.waitForFunction(() => !document.querySelector('#trip-card').hidden, { timeout: 10_000 });
+  await page.click('#trip-discard');
+  if ((await page.$eval('#trip-discard', (e) => e.textContent)) !== 'Delete trip?' || (await tripTracks()).length !== tripsBefore + 2) fail('Discard did not ask again');
+  await page.click('#trip-discard');
+  await page.waitForFunction((n) => window.__app.tracks.all.length === n && document.querySelector('#trip-note-text').textContent === 'Trip deleted.', { timeout: 5_000 }, tripsBefore + 1).catch(() => fail('Discard did not delete the trip'));
+  // Left alone: the card closes after 30 s, the trip kept under its suggested name.
+  await page.evaluate((h) => (location.hash = h), tripHash(tripT0 + 7_200_000, 60));
+  await page.waitForFunction(() => !document.querySelector('#trip-card').hidden, { timeout: 10_000 });
+  await page.waitForFunction(() => document.querySelector('#trip-card').hidden, { timeout: 35_000, polling: 1000 }).catch(() => fail('the card did not close by itself'));
+  const tripQuiet = await page.$eval('#trip-note-text', (e) => e.textContent);
+  if (!/^Saved to Tracks: Drive 5 Oct, \d\d:20–\d\d:21$/.test(tripQuiet) || (await tripTracks()).length !== tripsBefore + 2) fail(`auto-save: ${tripQuiet}`);
+  // An empty trip only says so.
+  await page.evaluate(() => (location.hash = '#trip=1.5.9..'));
+  await page.waitForFunction(() => /^Nothing was recorded/.test(document.querySelector('#trip-note-text').textContent), { timeout: 5_000 }).catch(() => fail('empty trip'));
+  // A trip in the address when the map starts (the app opened it with one).
+  await page.goto(`http://localhost:${PORT}/${tripHash(tripT0 + 10_800_000, 30)}`);
+  await waitReady();
+  await page.waitForFunction(() => !document.querySelector('#trip-card').hidden, { timeout: 15_000 }).catch(() => fail('trip at startup not taken in'));
+  if ((await tripTracks()).length !== tripsBefore + 3) fail('trip at startup not kept');
+  await page.evaluate(() => localStorage.removeItem('android-app'));
+  console.log('trip recording ok');
 } finally {
   if (swBuilt) await writeFile(SW, swBuilt);
   await browser?.close();

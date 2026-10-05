@@ -4,6 +4,7 @@ import { parseGpx } from '../gpx/parse';
 import { climb, formatStats, summarize } from '../gpx/stats';
 import { deleteTrack, listTracks, putTrack, type StoredTrack } from '../gpx/store';
 import { noteDeleted } from '../saved/deleted';
+import { editName, renameButton } from '../ui/rename';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -33,11 +34,17 @@ const TRASH = '<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true
  */
 export class TracksPanel {
   private tracks: StoredTrack[] = [];
-  /** Called after a change made here (import, show or hide, delete), for syncing. */
+  /** Called after a change made here (import, rename, show or hide, delete), for syncing. */
   onChanged: (() => void) | null = null;
+  /** A track tapped in the list: its card (Navigate, Reverse, Export). */
+  onOpen: ((t: StoredTrack) => void) | null = null;
+  /** A track renamed here (its card, if open, shows the new name). */
+  onRenamed: ((t: StoredTrack) => void) | null = null;
   private readonly panel = $('tracks');
   private readonly list = $<HTMLUListElement>('track-list');
   private readonly error = $('tracks-error');
+  /** Settles once the stored tracks have been read the first time. */
+  readonly loaded: Promise<void>;
 
   constructor(
     private readonly map: maplibregl.Map,
@@ -53,7 +60,7 @@ export class TracksPanel {
       void this.importFiles(files);
     };
     $('tracks-close').onclick = () => this.show(false);
-    void this.reload();
+    this.loaded = this.reload();
   }
 
   /** Reads the tracks from storage again (after a restore or a sync). */
@@ -80,6 +87,32 @@ export class TracksPanel {
   /** Number of stored tracks (for tests). */
   get count(): number {
     return this.tracks.length;
+  }
+
+  /** Whether a track with this id is kept. */
+  has(id: string): boolean {
+    return this.tracks.some((t) => t.id === id);
+  }
+
+  /** Keeps a track made here (a route saved as a track, a recorded trip), with the next free colour.
+   *  `id`: one of its own (a recorded trip's, so the same trip is never kept twice). */
+  async addTrack(t: { id?: string; name: string; gpx: StoredTrack['gpx']; route?: StoredTrack['route'] }): Promise<StoredTrack> {
+    const track: StoredTrack = {
+      id: t.id ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      name: t.name,
+      color: nextColor(this.tracks),
+      visible: true,
+      added: Date.now(),
+      stats: summarize(t.gpx),
+      gpx: t.gpx,
+      ...(t.route ? { route: t.route } : {}),
+    };
+    await putTrack(track);
+    this.tracks.push(track);
+    this.refresh();
+    this.onChanged?.();
+    if (track.stats.climb === null) void this.fillClimb(track);
+    return track;
   }
 
   async importFiles(files: File[]): Promise<void> {
@@ -132,8 +165,14 @@ export class TracksPanel {
     }
   }
 
+  /** Deletes a track by id (Discard on a recorded trip). */
+  async deleteById(id: string): Promise<void> {
+    const t = this.tracks.find((x) => x.id === id);
+    if (t) await this.remove(t);
+  }
+
   /** Fits the track in view, keeping it clear of this panel while it is open. */
-  private zoomTo(t: StoredTrack): void {
+  zoomTo(t: StoredTrack): void {
     const top = this.panel.hidden ? 60 : this.panel.getBoundingClientRect().bottom - this.map.getContainer().getBoundingClientRect().top + 30;
     const room = this.map.getContainer().clientHeight - top - 60;
     this.map.fitBounds(trackBounds(t), { padding: { top: room > 120 ? top : 60, bottom: 60, left: 40, right: 40 }, maxZoom: 15, duration: 800 });
@@ -167,6 +206,7 @@ export class TracksPanel {
       if (!t.visible) void this.setVisible(t, true);
       this.zoomTo(t);
       if (matchMedia('(pointer: coarse)').matches) this.show(false);
+      this.onOpen?.(t);
     };
     const eye = document.createElement('button');
     eye.type = 'button';
@@ -196,8 +236,21 @@ export class TracksPanel {
       clearTimeout(timer);
       void this.remove(t);
     };
-    li.append(swatch, info, eye, del);
+    const rename = renameButton(t.name, () =>
+      editName(li, t.name, (name) => void this.rename(t, name), () => li.replaceWith(this.row(t))),
+    );
+    li.append(swatch, info, rename, eye, del);
     return li;
+  }
+
+  /** A new name: kept, synced, and shown on the map's labels and the list. */
+  async rename(t: StoredTrack, name: string): Promise<void> {
+    t.name = name;
+    t.updated = Date.now();
+    this.refresh();
+    await putTrack(t).catch((err) => this.fail(err));
+    this.onChanged?.();
+    this.onRenamed?.(t);
   }
 
   private async setVisible(t: StoredTrack, visible: boolean): Promise<void> {
