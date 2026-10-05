@@ -64,13 +64,11 @@ npm run shots                           # retake the guide's screenshots (web/si
 
 ## Open work (update this when it changes)
 
-- **`trip-recording` branch** (on the dev site, and Map Dev 1.18, a pre-release APK): contains
-  `tracks-nav` (routes saved as tracks, the track card, navigating a track) merged with main, plus
-  renaming tracks and pins (pencil on each row) and recording a trip in the Android app (record
-  button by save-a-pin → TripActivity/TripRecorder foreground service → the map gets the trip in
-  `#trip=…` and keeps it in Tracks; save card with a 30 s quiet auto-close). Tested in the emulator
-  end to end. Waiting for the owner's car test; merge to `main` when they say so (that ships
-  `tracks-nav` too). Branch APKs: `gh workflow run android.yml --ref <branch>` (pre-release).
+- **Shipped 2026-10-05** (merged from `trip-recording`, which held `tracks-nav`): routes saved as
+  tracks, the track card and track navigation; renaming tracks and pins; trip recording in the
+  Android app (TripActivity/TripRecorder/TripStore → `#trip-recording=` / `#trip=` / `#trip-failed=`
+  in the map's address). Not yet tried in the car. Branch APKs: `gh workflow run android.yml --ref
+  <branch>` (published as a pre-release).
 - **`map-layers` branch** (paused by the owner): imported GeoJSON/Shapefile layers and HMS farm
   boundaries. Next idea if resumed: HMS estimated boundaries (`HMS_AETLUN_SKIKI`) as dashed lines.
 - **Android app on the head unit**: works, location included, since 1.15 (Chrome only); 1.16 keeps the
