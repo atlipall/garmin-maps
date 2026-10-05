@@ -35,6 +35,9 @@ export interface RoadGraph {
    *  (−1 when unknown). */
   edgeTile: Uint16Array;
   edgeNet: Int32Array;
+  /** The road's importance from the map, 0 (least: residential streets, minor roads) to 4 (main
+   *  roads). */
+  edgeRank: Uint8Array;
   /** Optional shape per edge: points geomStart[e] .. geomStart[e + 1] - 1 of geomX/geomY, from
    *  the source node to the target (exclusive of both ends). Absent: straight between nodes. */
   geomStart?: Int32Array;
@@ -55,6 +58,7 @@ export class GraphBuilder {
   private readonly flags: number[] = [];
   private readonly tile: number[] = [];
   private readonly net: number[] = [];
+  private readonly rank: number[] = [];
   private readonly geom: Array<number[] | null> = [];
   private hasGeom = false;
 
@@ -71,7 +75,7 @@ export class GraphBuilder {
   }
 
   /** Adds a directed edge; `shape` is the interior points as a flat [x, y, x, y, …] list. */
-  edge(a: number, b: number, metres: number, kmh: number, flags: number, shape: number[] | null = null, road: { tile: number; net: number } | null = null): void {
+  edge(a: number, b: number, metres: number, kmh: number, flags: number, shape: number[] | null = null, road: { tile: number; net: number } | null = null, rank = TOP_RANK): void {
     if (a === b) return;
     this.from.push(a);
     this.to.push(b);
@@ -80,6 +84,7 @@ export class GraphBuilder {
     this.flags.push(flags);
     this.tile.push(road?.tile ?? 0);
     this.net.push(road?.net ?? -1);
+    this.rank.push(rank);
     this.geom.push(shape);
     if (shape) this.hasGeom = true;
   }
@@ -103,6 +108,7 @@ export class GraphBuilder {
     const edgeFlags = new Uint8Array(m);
     const edgeTile = new Uint16Array(m);
     const edgeNet = new Int32Array(m);
+    const edgeRank = new Uint8Array(m);
     let maxSpeed = 1;
     let geomPoints = 0;
     if (this.hasGeom) for (const g of this.geom) geomPoints += g ? g.length / 2 : 0;
@@ -118,6 +124,7 @@ export class GraphBuilder {
       edgeFlags[i] = this.flags[e];
       edgeTile[i] = this.tile[e];
       edgeNet[i] = this.net[e];
+      edgeRank[i] = this.rank[e];
       if (this.speed[e] > maxSpeed) maxSpeed = this.speed[e];
       if (geomStart) {
         geomStart[i] = gp;
@@ -129,7 +136,7 @@ export class GraphBuilder {
       }
     }
     if (geomStart) geomStart[m] = gp;
-    return { nodeX: Int32Array.from(this.xs), nodeY: Int32Array.from(this.ys), edgeStart, edgeTo, edgeLen, edgeSpeed, edgeFlags, edgeTile, edgeNet, geomStart, geomX, geomY, maxSpeed };
+    return { nodeX: Int32Array.from(this.xs), nodeY: Int32Array.from(this.ys), edgeStart, edgeTo, edgeLen, edgeSpeed, edgeFlags, edgeTile, edgeNet, edgeRank, geomStart, geomX, geomY, maxSpeed };
   }
 }
 
@@ -205,6 +212,20 @@ const terminals = (t: number | Terminal[]): Terminal[] => (typeof t === 'number'
 /** With F-roads preferred, time on F-roads and tracks counts this much when choosing a route. */
 export const PREFER_FROAD_WEIGHT = 0.6;
 
+/** The most important road rank (main roads); an edge without one counts as this. */
+export const TOP_RANK = 4;
+
+/** How a route is chosen beyond driving time. `rankWeight[r]`: time on a normal road of rank r
+ *  counts this much (≥ 1); `changeSeconds`: added each time the route turns onto another road.
+ *  Both make it keep to main roads instead of shorter zig-zags through streets whose speed class
+ *  equals the main road's (common in towns). F-roads and tracks are left to `fWeight`. */
+export interface Preference {
+  rankWeight: readonly number[];
+  changeSeconds: number;
+}
+
+export const NO_PREFERENCE: Preference = { rankWeight: [1, 1, 1, 1, 1], changeSeconds: 0 };
+
 /**
  * Fastest route (A*, time in seconds) from any of the sources to any of the targets, counting each
  * source's and target's cost, or null when none is reachable. `seconds` includes those costs,
@@ -212,7 +233,7 @@ export const PREFER_FROAD_WEIGHT = 0.6;
  * makes F-road and track time count for less when choosing (to prefer them); `seconds` is still
  * the real driving time.
  */
-export function fastestRoute(g: RoadGraph, from: number | Terminal[], to: number | Terminal[], allowFRoads: boolean, fWeight = 1): Route | null {
+export function fastestRoute(g: RoadGraph, from: number | Terminal[], to: number | Terminal[], allowFRoads: boolean, fWeight = 1, pref: Preference = NO_PREFERENCE): Route | null {
   const sources = terminals(from);
   const targets = terminals(to);
   if (!sources.length || !targets.length) return null;
@@ -255,7 +276,11 @@ export function fastestRoute(g: RoadGraph, from: number | Terminal[], to: number
       if (!allowFRoads && g.edgeFlags[e] & EDGE_FROAD) continue;
       const v = g.edgeTo[e];
       if (done[v]) continue;
-      const t = best[u] + (g.edgeLen[e] / (g.edgeSpeed[e] / 3.6)) * (g.edgeFlags[e] & EDGE_FROAD ? fWeight : 1);
+      const froad = g.edgeFlags[e] & EDGE_FROAD;
+      const into = via[u];
+      // Onto another road (not just across a map tile boundary, where a road's NET record changes).
+      const change = into >= 0 && g.edgeTile[into] === g.edgeTile[e] && g.edgeNet[into] !== g.edgeNet[e] ? pref.changeSeconds : 0;
+      const t = best[u] + (g.edgeLen[e] / (g.edgeSpeed[e] / 3.6)) * (froad ? fWeight : pref.rankWeight[g.edgeRank[e]]) + change;
       if (t < best[v]) {
         best[v] = t;
         via[v] = e;

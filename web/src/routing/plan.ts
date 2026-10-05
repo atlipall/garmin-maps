@@ -1,4 +1,12 @@
-import { fastestRoute, metresBetween, PREFER_FROAD_WEIGHT, UNITS_PER_DEG, type NodeIndex, type RoadGraph, type Route, type Terminal } from './graph';
+import { fastestRoute, metresBetween, PREFER_FROAD_WEIGHT, UNITS_PER_DEG, type NodeIndex, type Preference, type RoadGraph, type Route, type Terminal } from './graph';
+
+/**
+ * How routes keep to main roads (see Preference). In towns many collector streets share the main
+ * roads' speed class, and by time alone a zig-zag through them won (Grandi → Mosfellsbær took 24
+ * turns through Borgartún, Háaleitisbraut and Fellsmúli instead of Hringbraut and Miklabraut). The
+ * road-change cost does most of the work; the rank weights tip close calls towards main roads.
+ */
+export const ROUTE_PREFERENCE: Preference = { rankWeight: [1.5, 1.3, 1.15, 1.05, 1], changeSeconds: 10 };
 import { cutLine, lineMetres, Snapper, type Anchor, type RoadLines, type Side } from './snap';
 
 export type LonLat = [number, number];
@@ -110,7 +118,7 @@ export async function planRoute(
 
   const sources: Terminal[] = a.sides.filter((s) => s.leave > 0).map((s) => ({ node: s.node, cost: seconds(s.metres, s.leave) }));
   const targets: Terminal[] = b.sides.filter((s) => s.arrive > 0).map((s) => ({ node: s.node, cost: seconds(s.metres, s.arrive) }));
-  const route = fastestRoute(graph, sources, targets, allowFRoads, allowFRoads && preferFRoads ? PREFER_FROAD_WEIGHT : 1);
+  const route = fastestRoute(graph, sources, targets, allowFRoads, allowFRoads && preferFRoads ? PREFER_FROAD_WEIGHT : 1, ROUTE_PREFERENCE);
   if (!route) return { status: allowFRoads ? 'no-route-any' : 'no-route' };
   const first = route.nodes[0];
   const last = route.nodes[route.nodes.length - 1];
