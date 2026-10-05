@@ -1,11 +1,16 @@
 package is.atlipall.garminmap;
 
 import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.Service;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import androidx.annotation.NonNull;
@@ -21,20 +26,30 @@ import com.google.androidbrowserhelper.trusted.ExtraCommandHandler;
  * delegation. The positions come straight from the unit's GPS (Android's LocationManager), as on
  * a car's head unit, where Google Play services' fused location may give none; the permission is
  * asked with the library's PermissionRequestActivity. Every step is logged (App).
+ *
+ * While Chrome listens the service runs in the foreground (a notification): once the app has
+ * handed over to Chrome it has no screen of its own, and Android 10 head units may then give it
+ * no positions (newer Android lends it Chrome's foreground; this unit apparently doesn't).
  */
 public class LocationService extends DelegationService {
     public LocationService() {
-        registerExtraCommandHandler(new GpsHandler());
+        registerExtraCommandHandler(new GpsHandler(this));
     }
 
     /** The commands and callbacks of androidbrowserhelper's LocationDelegationExtraCommandHandler. */
     static class GpsHandler implements ExtraCommandHandler, LocationListener {
+        private static final int NOTIFICATION = 1;
+        private final Service service;
         private LocationManager manager;
         private TrustedWebActivityCallbackRemote callback;
         private Context context;
         private boolean firstFix;
         /** Positions handed to Chrome since the last start (every 30th is logged). */
         private int sent;
+
+        GpsHandler(Service service) {
+            this.service = service;
+        }
 
         @NonNull
         @Override
@@ -104,11 +119,43 @@ public class LocationService extends DelegationService {
             }
             App.log(context, "location: listening to " + providers + " source(s)");
             if (providers == 0) error("Location is turned off on this device");
+            else foreground(true);
         }
 
         private void stop() {
-            if (manager != null) manager.removeUpdates(this);
+            if (manager != null) {
+                manager.removeUpdates(this);
+                foreground(false);
+            }
             manager = null;
+        }
+
+        /** In the foreground (with a notification) while listening; out of it when done. */
+        @SuppressWarnings("deprecation")
+        private void foreground(boolean on) {
+            try {
+                if (!on) {
+                    service.stopForeground(true);
+                    return;
+                }
+                Notification.Builder n;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    NotificationManager nm = context.getSystemService(NotificationManager.class);
+                    nm.createNotificationChannel(new NotificationChannel("location", "Location for the map", NotificationManager.IMPORTANCE_LOW));
+                    n = new Notification.Builder(context, "location");
+                } else {
+                    n = new Notification.Builder(context);
+                }
+                n.setSmallIcon(android.R.drawable.ic_menu_mylocation).setContentTitle(context.getString(R.string.app_name)).setContentText("Giving the map your position").setOngoing(true);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    service.startForeground(NOTIFICATION, n.build(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+                } else {
+                    service.startForeground(NOTIFICATION, n.build());
+                }
+                App.log(context, "location: in the foreground while Chrome listens");
+            } catch (Throwable e) {
+                App.log(context, "location: couldn't go to the foreground: " + e);
+            }
         }
 
         @Override
@@ -133,7 +180,9 @@ public class LocationService extends DelegationService {
             App.log(context, "location: " + message);
             Bundle b = new Bundle();
             b.putString("message", message);
-            if (callback != null) run(callback, "onNewErrorAvailable", b);
+            // Chrome's name for it (InstalledWebappGeolocationBridge); the library's own,
+            // onNewErrorAvailable, is ignored and leaves the page waiting for a timeout.
+            if (callback != null) run(callback, "onNewLocationError", b);
         }
 
         /** Calls Chrome back; false if that failed (Chrome went away: stop listening). */

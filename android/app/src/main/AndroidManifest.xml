@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- LocationService runs in the foreground while Chrome listens for positions. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <!-- Installable on head units that don't list a GPS or a touch screen (the app works without). -->
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
@@ -55,6 +58,7 @@
         <service
             android:name=".LocationService"
             android:enabled="true"
+            android:foregroundServiceType="location"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE" />

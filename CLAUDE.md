@@ -74,4 +74,10 @@ npm run shots                           # retake the guide's screenshots (web/si
   ⋯ → Diagnostics (web: permission, live location test, location errors) and its "Android app's log"
   (LogActivity via `garminmap://log`: providers, a GPS test without Chrome, App's log). The unit has
   no system file picker (needs a file manager app installed).
+  Chrome's delegation rules (from Chromium 154 source): it delegates whenever the app *requests* a
+  location permission; it only finds the service if an exported activity handles VIEW/BROWSABLE
+  https links to the bare origin (no pathPrefix); errors go back as `onNewLocationError` (the
+  library's `onNewErrorAvailable` is ignored). After a manifest change, force-stop Chrome. Have only
+  one flavour installed while testing. Fallback if delegation never works: drop the location
+  permissions (Chrome then uses its own, which worked in plain Chrome), losing WebView location.
 - Import screen tip is iOS-only ("Share → Add to Home Screen"); Android would need its own.
