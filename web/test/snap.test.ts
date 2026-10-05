@@ -72,6 +72,15 @@ describe.skipIf(!hasRealData || !existsSync(F_ROAD_DETAILED))('planRoute on real
     expect(turns).toBeLessThanOrEqual(14);
   }, 120_000);
 
+  test('Kársnes → Sundahöfn by Kringlumýrarbraut and Sæbraut (the owner\'s report: it went through Háaleitisbraut and Langholtsvegur)', async () => {
+    const r = await plan([-21.927, 64.1105], [-21.857, 64.1455], true);
+    if (r.status !== 'ok') throw new Error(`expected ok, got ${r.status}`);
+    const roads = new Set((r.segs ?? []).map((x) => x.name));
+    expect(roads).toContain('KRINGLUMÝRARBRAUT');
+    expect(roads).toContain('SÆBRAUT');
+    for (const side of ['HÁALEITISBRAUT', 'GRENSÁSVEGUR', 'LANGHOLTSVEGUR']) expect(roads).not.toContain(side);
+  }, 120_000);
+
   test('the middle of Vatnajökull: the far search steps stay quick', async () => {
     const t0 = performance.now();
     const r = await plan([-16.8, 64.45], [-21.0, 63.936], true);
