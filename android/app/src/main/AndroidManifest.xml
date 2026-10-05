@@ -87,12 +87,5 @@
             </intent-filter>
         </activity>
 
-        <!-- Without a browser that can run it in Chrome: the app in a WebView. (Not singleTask: a
-             file picker started from it would come back cancelled at once.) -->
-        <activity
-            android:name=".MainActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density" />
     </application>
 </manifest>

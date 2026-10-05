@@ -65,7 +65,7 @@ android {
 }
 
 dependencies {
-    // Opens the app in Chrome as a Trusted Web Activity (MainActivity is the fallback).
+    // Opens the app in Chrome as a Trusted Web Activity.
     implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.7.3"
     // Location for the app in Chrome (LocationService).
     implementation "com.google.androidbrowserhelper:locationdelegation:1.1.2"

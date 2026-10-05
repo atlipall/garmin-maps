@@ -32,11 +32,9 @@ const APP_KEY = storageName('android-app');
 /**
  * The Android app this page runs in (its package name), or null in a browser. Chrome tells a
  * Trusted Web Activity's page with the referrer (android-app://<package>/) on the first load only,
- * so it's remembered; the app's built-in browser says so in its user agent.
+ * so it's remembered.
  */
 export function androidApp(): string | null {
-  const ua = /GarminMapApp\/([\w.]+)/.exec(navigator.userAgent);
-  if (ua) return ua[1];
   const ref = /^android-app:\/\/([\w.]+)/.exec(document.referrer);
   try {
     if (ref) localStorage.setItem(APP_KEY, ref[1]);
@@ -47,7 +45,7 @@ export function androidApp(): string | null {
 }
 
 function runningIn(app: string | null): string {
-  if (app) return `Android app ${app}, ${/GarminMapApp\//.test(navigator.userAgent) ? 'built-in browser' : 'in Chrome'}`;
+  if (app) return `Android app ${app}, in Chrome`;
   const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
   return standalone ? 'Home Screen app' : 'browser tab';
 }

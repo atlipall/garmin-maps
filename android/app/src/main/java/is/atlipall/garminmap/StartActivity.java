@@ -15,11 +15,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
 /**
- * The app's entry point: starts the app in Chrome (ChromeLauncher), or in the built-in browser
- * (MainActivity) once that was chosen. Shows a diagnostics screen instead when the last start
- * crashed, or when the app has started over and over in a few seconds (a loop through Chrome):
- * what happened (App's log and crash report) and on what, with a way to try again or to use the
- * built-in browser.
+ * The app's entry point: starts the app in Chrome (ChromeLauncher). Shows a diagnostics screen
+ * instead when the last start crashed, or when the app has started over and over in a few seconds
+ * (a loop through Chrome): what happened (App's log and crash report) and on what, with a way to
+ * try again.
  */
 public class StartActivity extends Activity {
     /** This many starts within LOOP_MS is a loop, not someone opening the app. */
@@ -30,9 +29,9 @@ public class StartActivity extends Activity {
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         SharedPreferences prefs = getSharedPreferences("start", MODE_PRIVATE);
-        // A new version tries Chrome again (it may be what fixes it), whatever was chosen before.
+        // A new version starts afresh (it may be what fixes it).
         if (prefs.getInt("version", 0) != BuildConfig.VERSION_CODE) {
-            prefs.edit().putInt("version", BuildConfig.VERSION_CODE).remove("builtIn").remove("starts").apply();
+            prefs.edit().putInt("version", BuildConfig.VERSION_CODE).remove("starts").apply();
         }
         long now = System.currentTimeMillis();
         // Recent starts, oldest first, as "t1,t2,…".
@@ -48,23 +47,22 @@ public class StartActivity extends Activity {
         }
         prefs.edit().putString("starts", kept.toString() + now).apply();
         File report = new File(getFilesDir(), App.REPORT);
-        boolean builtIn = prefs.getBoolean("builtIn", false);
-        App.log(this, "start #" + recent + " in 15 s" + (builtIn ? " (built-in browser chosen)" : "") + (report.exists() ? " (crash report waiting)" : ""));
+        App.log(this, "start #" + recent + " in 15 s" + (report.exists() ? " (crash report waiting)" : ""));
         if (!report.exists() && recent < LOOP_STARTS) {
-            go(builtIn);
+            go();
             return;
         }
         prefs.edit().remove("starts").apply();
         showDiagnostics(report, recent >= LOOP_STARTS);
     }
 
-    private void go(boolean builtIn) {
-        App.log(this, builtIn ? "opening the built-in browser" : "opening in Chrome");
-        Intent intent = new Intent(this, builtIn ? MainActivity.class : ChromeLauncher.class);
+    private void go() {
+        App.log(this, "opening in Chrome");
+        Intent intent = new Intent(this, ChromeLauncher.class);
         // The Chrome launcher wants a task of its own: without one it relaunches itself, and that
         // second copy, seeing the first still alive, takes the app for running and closes (the
         // head unit's flicker: Chrome was never asked).
-        if (!builtIn) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
         finish();
     }
@@ -85,13 +83,13 @@ public class StartActivity extends Activity {
         page.addView(title);
         LinearLayout buttons = new LinearLayout(this);
         Button chrome = new Button(this);
-        chrome.setText("Try Chrome again");
-        chrome.setOnClickListener(v -> choose(report, false));
-        Button builtIn = new Button(this);
-        builtIn.setText("Use the built-in browser");
-        builtIn.setOnClickListener(v -> choose(report, true));
+        chrome.setText("Try again");
+        chrome.setOnClickListener(v -> {
+            report.delete();
+            getSharedPreferences("start", MODE_PRIVATE).edit().remove("starts").apply();
+            go();
+        });
         buttons.addView(chrome);
-        buttons.addView(builtIn);
         page.addView(buttons);
         TextView details = new TextView(this);
         details.setText(App.deviceInfo(this) + "\n" + (crash.isEmpty() ? "" : "Crash:\n" + crash + "\n\n") + "What happened:\n" + log);
@@ -102,13 +100,6 @@ public class StartActivity extends Activity {
         scroll.addView(details);
         page.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(page);
-    }
-
-    /** Chrome or the built-in browser from now on (remembered), starting afresh. */
-    private void choose(File report, boolean builtIn) {
-        report.delete();
-        getSharedPreferences("start", MODE_PRIVATE).edit().putBoolean("builtIn", builtIn).remove("starts").apply();
-        go(builtIn);
     }
 
     private static String read(File f) {

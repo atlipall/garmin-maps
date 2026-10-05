@@ -1,20 +1,18 @@
 package is.atlipall.garminmap;
 
-import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import androidx.browser.customtabs.CustomTabsCallback;
 import com.google.androidbrowserhelper.trusted.LauncherActivity;
 import com.google.androidbrowserhelper.trusted.QualityEnforcer;
-import com.google.androidbrowserhelper.trusted.TwaLauncher;
 import com.google.androidbrowserhelper.trusted.TwaProviderPicker;
 
 /**
  * Starts the app in the head unit's Chrome as a Trusted Web Activity: full screen, with Chrome's
  * own engine and storage (Google sign-in, downloads and keeping the screen on all work there). The
  * site vouches for this app in https://atlipall.github.io/.well-known/assetlinks.json, which is what
- * lets Chrome drop its address bar. Without a browser that can do this, the app's own WebView
- * (MainActivity) takes over. The start URL, display mode and colours are in AndroidManifest.xml.
+ * lets Chrome drop its address bar. The start URL, display mode and colours are in
+ * AndroidManifest.xml.
  */
 public class ChromeLauncher extends LauncherActivity {
     @Override
@@ -79,14 +77,5 @@ public class ChromeLauncher extends LauncherActivity {
     protected void onDestroy() {
         App.log(this, "Chrome launcher: finished");
         super.onDestroy();
-    }
-
-    @Override
-    protected TwaLauncher.FallbackStrategy getFallbackStrategy() {
-        return (context, builder, provider, done) -> {
-            App.log(context, "Chrome launcher: no browser for this (" + provider + "), using the built-in browser");
-            context.startActivity(new Intent(context, MainActivity.class));
-            if (done != null) done.run();
-        };
     }
 }
