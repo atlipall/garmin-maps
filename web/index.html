@@ -127,10 +127,10 @@
       #map .locate-button.unavailable { opacity: 0.45; }
       #map .height-pill { padding: 3px 10px; border-radius: 999px; background: #fff; box-shadow: 0 1px 4px #0003; font: 600 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink); }
       /* Tracks panel (⋯ → Tracks): below the top row, scrolls when long. */
-      #tracks, #saved, #sync-panel { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
+      #tracks, #saved, #sync-panel, #diag-panel { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
       .tracks-head { display: flex; align-items: center; justify-content: space-between; }
       .tracks-head h2 { margin: 0; font-size: 18px; }
-      #tracks-close, #saved-close, #sync-close { width: var(--btn); height: var(--btn); margin-right: -10px; border: 0; background: none; font-size: 26px; color: #667; cursor: pointer; }
+      #tracks-close, #saved-close, #sync-close, #diag-close { width: var(--btn); height: var(--btn); margin-right: -10px; border: 0; background: none; font-size: 26px; color: #667; cursor: pointer; }
       #tracks-empty, #saved-empty { margin: 4px 0 8px; color: #556; font-size: 14px; }
       #track-list, #saved-list { list-style: none; margin: 0; padding: 0; }
       .track { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 8px; border-top: 1px solid #0001; }
@@ -139,6 +139,8 @@
       #sync-menu-status { display: block; font-size: 12px; color: #667; }
       #sync-menu-status:empty { display: none; }
       #sync p { margin: 0; }
+      #diag-panel .backup-buttons { margin: 4px 0 8px; }
+      #diag-text { margin: 0; font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; color: #334; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
       #sync-connect { border-color: var(--accent) !important; background: var(--accent) !important; color: #fff !important; }
       #backup { margin-top: 12px; padding-top: 10px; border-top: 1px solid #0001; display: grid; gap: 8px; font-size: 14px; color: #556; }
       #backup p { margin: 0; }
@@ -334,6 +336,7 @@
       <button id="keep-awake" role="switch" aria-checked="true">Keep screen on while locating</button>
       <button id="ask-highlands" role="switch" aria-checked="false">Ask before rerouting in the highlands</button>
       <button id="replace">Load another map</button>
+      <button id="diag-open">Diagnostics</button>
       <div id="app-version"></div>
     </div>
     <div id="perf" class="panel" hidden></div>
@@ -375,6 +378,14 @@
         <p id="backup-status" role="status"></p>
         <input id="backup-file" type="file" accept=".json,application/json" hidden />
       </div>
+    </section>
+    <section id="diag-panel" class="panel" aria-labelledby="diag-title" hidden>
+      <div class="tracks-head">
+        <h2 id="diag-title" tabindex="-1">Diagnostics</h2>
+        <button id="diag-close" type="button" aria-label="Close diagnostics">×</button>
+      </div>
+      <div class="backup-buttons"><button id="diag-test" type="button">Test location</button><button id="diag-android" type="button" hidden>Android app's log</button><button id="diag-copy" type="button">Copy</button></div>
+      <pre id="diag-text"></pre>
     </section>
     <div id="nav-say" class="sr-only" aria-live="polite"></div>
     <section id="nav-banner" aria-label="Next turn" hidden>

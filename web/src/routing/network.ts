@@ -1,5 +1,5 @@
 import type { GarminMap } from '../map/garminMap';
-import { EDGE_FROAD, GraphBuilder, type RoadGraph } from './graph';
+import { EDGE_FROAD, GraphBuilder, TOP_RANK, type RoadGraph } from './graph';
 import { parseNodHeader, readNodes, type NodNode } from './nod';
 import { CLASS_CAP_KMH, type RoadClass, type RoadClasses } from './roadClass';
 
@@ -23,7 +23,7 @@ export function addTileNetwork(b: GraphBuilder, nodes: Map<number, NodNode>, cla
       if (!t) continue;
       const cls = classes.get(a.net) ?? 0;
       const kmh = Math.min(SPEED_CLASS_KMH[a.info & 7], CLASS_CAP_KMH[cls]);
-      b.edge(u, b.node(t.x, t.y), a.length * NOD_UNIT_M, kmh, cls ? EDGE_FROAD : 0, null, { tile, net: a.net });
+      b.edge(u, b.node(t.x, t.y), a.length * NOD_UNIT_M, kmh, cls ? EDGE_FROAD : 0, null, { tile, net: a.net }, Math.min(TOP_RANK, (a.info >> 4) & 7));
     }
   }
 }

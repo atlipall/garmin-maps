@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- LocationService runs in the foreground while Chrome listens for positions. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- Installable on head units that don't list a GPS or a touch screen (the app works without). -->
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <application
+        android:name=".App"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@style/AppTheme"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true"
+        android:usesCleartextTraffic="false">
+        <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
+
+        <!-- The entry point: the app in Chrome, or what went wrong if the last start crashed. -->
+        <activity
+            android:name=".StartActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Opens links to the site. Chrome needs this to find the app's location service
+                 (./LocationService.java): it only asks apps that open the site's links ("NoTwaFound"
+                 otherwise). Not autoVerify: links still open in the browser unless chosen. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="atlipall.github.io" />
+            </intent-filter>
+        </activity>
+
+        <!-- The app in Chrome (a Trusted Web Activity), without an address bar. -->
+        <activity
+            android:name=".ChromeLauncher"
+            android:exported="false"
+            android:label="@string/app_name">
+            <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="@string/start_url" />
+            <!-- Not full screen: the head unit's system bar (clock, back) stays visible. -->
+            <meta-data android:name="android.support.customtabs.trusted.DISPLAY_MODE" android:value="default" />
+            <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR" android:resource="@color/bar" />
+            <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR" android:resource="@color/bar" />
+        </activity>
+
+        <!-- Location for the app in Chrome: Chrome asks the app for it (./LocationService.java). -->
+        <service
+            android:name=".LocationService"
+            android:enabled="true"
+            android:foregroundServiceType="location"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
+        <!-- The helper library's "site settings" shortcut, which it turns on or off whenever it
+             opens the app in Chrome: without it declared, that crashes the app. -->
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity"
+            android:exported="false">
+            <meta-data android:name="android.support.customtabs.trusted.MANAGE_SPACE_URL" android:value="@string/start_url" />
+        </activity>
+
+        <!-- The app's log, opened from the web app's Diagnostics (garminmap://log). -->
+        <activity
+            android:name=".LogActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="garminmap" android:host="log" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>

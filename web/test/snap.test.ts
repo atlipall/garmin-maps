@@ -5,6 +5,7 @@ import type { Subdivision } from '../src/img/tre';
 import { GarminMap, type MapTile } from '../src/map/garminMap';
 import { NodeIndex, type RoadGraph } from '../src/routing/graph';
 import { buildNetwork } from '../src/routing/network';
+import { maneuvers } from '../src/routing/maneuvers';
 import { planRoute } from '../src/routing/plan';
 import type { RoadClasses } from '../src/routing/roadClass';
 import { roadLineSource, routeShape } from '../src/routing/shape';
@@ -56,6 +57,28 @@ describe.skipIf(!hasRealData || !existsSync(F_ROAD_DETAILED))('planRoute on real
     expect(hours).toBeLessThanOrEqual(3.3);
     // Without F-roads: the normal road stubs around Landmannalaugar are reached only over F-roads.
     await expect(plan([-21.0, 63.936], [-19.06, 63.991], false)).resolves.toEqual({ status: 'no-route' });
+  }, 120_000);
+
+  test('in town the route keeps to the main roads (Grandi → Mosfellsbær by Hringbraut and Miklabraut)', async () => {
+    // By time alone it zig-zagged through Borgartún, Háaleitisbraut and Fellsmúli (24 turns): those
+    // streets have the main roads' speed class.
+    const r = await plan([-21.94, 64.1555], [-21.7, 64.167], true);
+    if (r.status !== 'ok') throw new Error(`expected ok, got ${r.status}`);
+    const roads = new Set((r.segs ?? []).map((x) => x.name));
+    const turns = maneuvers(r.coords, r.segs ?? [], 'here').filter((m) => m.kind === 'turn' || m.kind === 'keep' || m.kind === 'roundabout').length;
+    console.log(`Grandi → Mosfellsbær: ${(r.metres / 1000).toFixed(1)} km, ${(r.seconds / 60).toFixed(1)} min, ${turns} turns`);
+    expect(roads).toContain('MIKLABRAUT');
+    for (const side of ['HÁALEITISBRAUT', 'FELLSMÚLI', 'BORGARTÚN']) expect(roads).not.toContain(side);
+    expect(turns).toBeLessThanOrEqual(14);
+  }, 120_000);
+
+  test('Kársnes → Sundahöfn by Kringlumýrarbraut and Sæbraut (the owner\'s report: it went through Háaleitisbraut and Langholtsvegur)', async () => {
+    const r = await plan([-21.927, 64.1105], [-21.857, 64.1455], true);
+    if (r.status !== 'ok') throw new Error(`expected ok, got ${r.status}`);
+    const roads = new Set((r.segs ?? []).map((x) => x.name));
+    expect(roads).toContain('KRINGLUMÝRARBRAUT');
+    expect(roads).toContain('SÆBRAUT');
+    for (const side of ['HÁALEITISBRAUT', 'GRENSÁSVEGUR', 'LANGHOLTSVEGUR']) expect(roads).not.toContain(side);
   }, 120_000);
 
   test('the middle of Vatnajökull: the far search steps stay quick', async () => {

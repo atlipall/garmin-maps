@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { canArrive, canLeave, EDGE_FROAD, fastestRoute, GraphBuilder, hasNormalRoad, NodeIndex, UNITS_PER_DEG } from '../src/routing/graph';
+import { ROUTE_PREFERENCE } from '../src/routing/plan';
 import { addTileNetwork } from '../src/routing/network';
 import type { NodNode } from '../src/routing/nod';
 import { RoadClassCollector, roadClass } from '../src/routing/roadClass';
@@ -35,7 +36,7 @@ describe('NOD network', () => {
     const arc = (target: number, length: number, forward: boolean, net: number, info: number) => ({ target, length, forward, direct: true, net, info, access: 0 });
     return new Map([
       [0, n(0, -21.0, 64.0, [arc(10, 1000, true, 1, 0x08 | 4)])],
-      [10, n(10, -20.95, 64.0, [arc(0, 1000, false, 1, 0x08 | 4), arc(20, 500, true, 2, 3), { ...arc(30, 900, true, 2, 3), direct: false }])],
+      [10, n(10, -20.95, 64.0, [arc(0, 1000, false, 1, 0x08 | 4), arc(20, 500, true, 2, 0x20 | 3), { ...arc(30, 900, true, 2, 3), direct: false }])],
       [20, n(20, -20.95, 64.01, [arc(10, 500, false, 2, 3)])],
       [30, n(30, -20.95, 64.02, [])],
     ]);
@@ -59,6 +60,8 @@ describe('NOD network', () => {
     expect(f.seconds).toBeCloseTo(1200 / (40 / 3.6), 1); // speed class 3 (60 km/h), capped at 40 on an F-road
     expect(g.edgeFlags[f.edges[0]] & EDGE_FROAD).toBe(EDGE_FROAD);
     expect([g.edgeTile[f.edges[0]], g.edgeNet[f.edges[0]]]).toEqual([3, 2]);
+    // The road's rank (Table A bits 4-6).
+    expect(g.edgeRank[f.edges[0]]).toBe(2);
     expect(fastestRoute(g, bN, c, false)).toBeNull(); // F-roads not allowed
     expect(g.edgeTo.length).toBe(3); // a→b, b→c, c→b (indirect b→d skipped, b→a one-way)
   });
@@ -135,6 +138,47 @@ describe('fastestRoute with several sources and targets', () => {
     expect(preferred.nodes).toEqual([a, c, bb]);
     expect(preferred.seconds).toBeCloseTo(140, 6);
     expect(preferred.metres).toBeCloseTo(1400, 6);
+  });
+
+  test('keeping to the main road: a road change costs extra, so a slightly shorter zig-zag through side streets loses', () => {
+    // a → m → b along one main road (NET 1, 2 × 500 m), or a → s1 → s2 → b on three side streets
+    // (NETs 2, 3, 4, 3 × 320 m: 4 s quicker at 36 km/h, but three more road changes).
+    const b = new GraphBuilder();
+    const [a, m, bb, s1, s2] = [b.node(0, 0), b.node(U(0.004), 0), b.node(U(0.008), 0), b.node(U(0.0027), U(0.0005)), b.node(U(0.0053), U(0.0005))];
+    const road = (net: number) => ({ tile: 1, net });
+    b.edge(a, m, 500, 36, 0, null, road(1));
+    b.edge(m, bb, 500, 36, 0, null, road(1));
+    b.edge(a, s1, 320, 36, 0, null, road(2));
+    b.edge(s1, s2, 320, 36, 0, null, road(3));
+    b.edge(s2, bb, 320, 36, 0, null, road(4));
+    const g = b.build();
+    expect(fastestRoute(g, a, bb, true)!.nodes).toEqual([a, s1, s2, bb]);
+    const kept = fastestRoute(g, a, bb, true, 1, ROUTE_PREFERENCE)!;
+    expect(kept.nodes).toEqual([a, m, bb]);
+    expect(kept.seconds).toBeCloseTo(100, 6); // the real time, without the preference's costs
+  });
+
+  test('crossing a map tile boundary (a new NET record for the same road) is not a road change', () => {
+    // a → m → b on a road that changes tile at m (100 s), or a → b on one road at 102 s.
+    const b = new GraphBuilder();
+    const [a, m, bb] = [b.node(0, 0), b.node(U(0.004), 0), b.node(U(0.008), 0)];
+    b.edge(a, m, 500, 36, 0, null, { tile: 1, net: 1 });
+    b.edge(m, bb, 500, 36, 0, null, { tile: 2, net: 7 });
+    b.edge(a, bb, 1020, 36, 0, null, { tile: 1, net: 2 });
+    const g = b.build();
+    expect(fastestRoute(g, a, bb, true, 1, ROUTE_PREFERENCE)!.nodes).toEqual([a, m, bb]);
+  });
+
+  test('a minor road counts for more than a main road of the same speed; F-roads keep their own weight', () => {
+    // a → b on a minor road (rank 0, 1000 m) or a → c → b on a main road (rank 4, 2 × 550 m), all 36 km/h.
+    const b = new GraphBuilder();
+    const [a, bb, c] = [b.node(0, 0), b.node(U(0.008), 0), b.node(U(0.004), U(0.002))];
+    b.edge(a, bb, 1000, 36, 0, null, { tile: 1, net: 1 }, 0);
+    b.edge(a, c, 550, 36, 0, null, { tile: 1, net: 2 }, 4);
+    b.edge(c, bb, 550, 36, 0, null, { tile: 1, net: 2 }, 4);
+    const g = b.build();
+    expect(fastestRoute(g, a, bb, true)!.nodes).toEqual([a, bb]);
+    expect(fastestRoute(g, a, bb, true, 1, ROUTE_PREFERENCE)!.nodes).toEqual([a, c, bb]);
   });
 
   test('a node that is both a source and a target gives an empty route', () => {
