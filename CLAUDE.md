@@ -69,7 +69,9 @@ npm run shots                           # retake the guide's screenshots (web/si
   Waiting for the owner to try it; merge to `main` when they say so.
 - **`map-layers` branch** (paused by the owner): imported GeoJSON/Shapefile layers and HMS farm
   boundaries. Next idea if resumed: HMS estimated boundaries (`HMS_AETLUN_SKIKI`) as dashed lines.
-- **Android app doesn't run on the head unit** (1.3, Trusted Web Activity). Waiting for the owner to
-  say what happens and to try 1.1 (WebView only, `releases/download/android-1.1/GarminMap.apk`, needs
-  an uninstall first). If 1.1 fails too, install the Android tools and reproduce in an emulator.
+- **Android app on the head unit**: runs in Chrome (TWA) since 1.8. Location in it still fails as of
+  1.10 (LocationService answers Chrome's location delegation from LocationManager). Diagnose with
+  ⋯ → Diagnostics (web: permission, live location test, location errors) and its "Android app's log"
+  (LogActivity via `garminmap://log`: providers, a GPS test without Chrome, App's log). The unit has
+  no system file picker (needs a file manager app installed).
 - Import screen tip is iOS-only ("Share → Add to Home Screen"); Android would need its own.

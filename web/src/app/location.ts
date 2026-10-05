@@ -1,6 +1,7 @@
 import * as maplibregl from 'maplibre-gl';
 import { angleDelta, chooseHeading, smoothAngle } from '../location/heading';
 import { zoomForSpeed } from '../location/followZoom';
+import { describeError, diag } from './diagnostics';
 import { compassReset, dragged, INITIAL, longPress, tap, type LocationState } from '../location/modes';
 
 /** Fraction of each compass change applied per reading: damps sensor jitter without lagging. */
@@ -78,6 +79,8 @@ export class LocationControl implements maplibregl.IControl {
   private longPressed = false;
   /** The next fix is the first since location was turned on: zoom in to it. */
   private firstFix = false;
+  /** Whether this watch's first fix went into the diagnostics yet. */
+  private fixNoted = false;
   /** A zoom-in in progress: later follow moves (new fixes, heading turns) must keep aiming for it,
    *  or each new easeTo restarts from the half-finished zoom and the zoom-in stalls. */
   private targetZoom: number | null = null;
@@ -256,6 +259,8 @@ export class LocationControl implements maplibregl.IControl {
     if (DOE?.requestPermission) ask(DOE.requestPermission.bind(DOE));
     else listen();
     if (!('geolocation' in navigator)) return this.unavailable('This device has no location service.');
+    diag('location: started');
+    this.fixNoted = false;
     this.watchId = navigator.geolocation.watchPosition(this.onPosition, this.onError, { enableHighAccuracy: true, maximumAge: 5000 });
   }
 
@@ -289,6 +294,7 @@ export class LocationControl implements maplibregl.IControl {
   }
 
   private readonly onError = (err: GeolocationPositionError): void => {
+    diag(`location ${describeError(err)}`);
     if (err.code === err.PERMISSION_DENIED) this.unavailable('Location access is off. Allow it in Settings → Safari → Location.');
     // Other errors (timeout, no signal) are transient: keep watching.
   };
@@ -307,6 +313,10 @@ export class LocationControl implements maplibregl.IControl {
     if (v !== null && Number.isFinite(v)) this.speed = this.speed === null ? v : this.speed + (v - this.speed) * SPEED_SMOOTHING;
     if (this.speed !== null) this.onSpeed?.(this.speed);
     this.onFix?.(at, pos.coords.accuracy);
+    if (!this.fixNoted) {
+      this.fixNoted = true;
+      diag(`location: first fix, ±${Math.round(pos.coords.accuracy)} m`);
+    }
     if (this.firstFix && !this.state.paused) {
       this.firstFix = false;
       this.follow(true, true);

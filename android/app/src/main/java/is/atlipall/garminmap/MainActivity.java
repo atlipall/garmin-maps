@@ -51,6 +51,8 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(true);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        // Tells the page it runs in this app (its Diagnostics then offers the app's log).
+        s.setUserAgentString(s.getUserAgentString() + " GarminMapApp/" + BuildConfig.APPLICATION_ID);
         web.setWebViewClient(new WebViewClient() {
             // The app's own pages stay here; anything else (a link in the guide, Google's sign-in
             // page) opens in the browser.
@@ -58,6 +60,11 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
                 if ("atlipall.github.io".equals(url.getHost())) return false;
+                // The Diagnostics' link to the app's log (intent://log#Intent;scheme=garminmap;…).
+                if ("intent".equals(url.getScheme()) && "log".equals(url.getHost())) {
+                    startActivity(new Intent(MainActivity.this, LogActivity.class));
+                    return true;
+                }
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, url));
                 } catch (ActivityNotFoundException ignored) {

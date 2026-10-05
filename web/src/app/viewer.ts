@@ -19,6 +19,7 @@ import { HeightControl, LocationControl } from './location';
 import { RoutePlanner } from './route';
 import { SavedPanel } from './savedPanel';
 import { DriveSync } from './driveSync';
+import { DiagnosticsPanel } from './diagnostics';
 import { Navigator } from './navigation';
 import { loadSession, saveSession } from './session';
 import { TracksPanel } from './tracks';
@@ -219,7 +220,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   });
   // The panels opened from the menu: focus their heading; Escape or × closes them and focus goes
   // back to the menu button.
-  for (const [panel, close] of [['tracks', 'tracks-close'], ['saved', 'saved-close'], ['sync-panel', 'sync-close']]) {
+  for (const [panel, close] of [['tracks', 'tracks-close'], ['saved', 'saved-close'], ['sync-panel', 'sync-close'], ['diag-panel', 'diag-close']]) {
     $(panel).addEventListener('keydown', (e) => e.key === 'Escape' && $(close).click());
     $(close).addEventListener('click', () => $('menu-button').focus());
   }
@@ -366,6 +367,14 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       focusPanel('sync-panel');
     };
     $('sync-close').onclick = () => ($('sync-panel').hidden = true);
+    // What the app sees on this device (location above all), for a head unit without a console.
+    const diagnostics = new DiagnosticsPanel($('diag-panel'), () => locate.lastFix);
+    $('diag-open').onclick = () => {
+      setMenu(false);
+      diagnostics.show(true);
+      focusPanel('diag-panel');
+    };
+    $('diag-close').onclick = () => diagnostics.show(false);
     $('saved-open').onclick = () => {
       setMenu(false);
       saved.show(true);

@@ -250,6 +250,20 @@ try {
   await page.screenshot({ path: `${OUT}location.png` });
   console.log('location ok:', loc.height);
 
+  // ⋯ → Diagnostics: the permission, a live location test with a fix, and the map's own first fix
+  // noted; no Android log button in a browser; × stops the test.
+  await page.click('#menu-button');
+  await page.click('#diag-open');
+  await gps.send('Emulation.setGeolocationOverride', { latitude: 63.9913, longitude: -19.0605, accuracy: 8 });
+  await page.waitForFunction(() => /fix 1: 63\.99/.test(document.querySelector('#diag-text').textContent), { timeout: 15_000 }).catch(async () => fail(`diagnostics, no fix: ${await page.$eval('#diag-text', (e) => e.textContent)}`));
+  const diagText = await page.$eval('#diag-text', (e) => e.textContent);
+  if (!/Location permission: granted/.test(diagText) || !/location: first fix/.test(diagText)) fail(`diagnostics: ${diagText}`);
+  if (await page.$eval('#diag-android', (e) => !e.hidden)) fail('diagnostics: Android log button in a browser');
+  await page.screenshot({ path: `${OUT}diagnostics.png` });
+  await page.click('#diag-close');
+  if (await page.$eval('#diag-panel', (e) => !e.hidden)) fail('diagnostics: × left it open');
+  console.log('diagnostics ok');
+
   // 3c. GPX: import a track without heights (climb comes from the elevation files) and a bad file
   const pts = Array.from({ length: 30 }, (_, i) => [63.9913 - i * 0.0006, -19.0605 - i * 0.0009]);
   const gpxPath = `${OUT}laugavegur-start.gpx`;
