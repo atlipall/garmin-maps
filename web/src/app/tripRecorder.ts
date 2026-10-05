@@ -15,6 +15,8 @@ const NOTE_MS = 4000;
 const CONFIRM_MS = 3000;
 /** The trail drawn while recording keeps a point about this often (m). */
 const TRAIL_M = 10;
+/** Record asked and no answer from the app in this time: it can't record (an older app). */
+const CONFIRM_START_MS = 10_000;
 
 const RECORD_ICON = '<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="11" cy="11" r="5" fill="#d32f2f"/></svg>';
 const STOP_ICON = '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="2" fill="#fff"/></svg>';
@@ -66,7 +68,9 @@ export interface TripDeps {
 
 /**
  * Recording a trip, in the Android app: the record button by the save-a-pin button asks the app to
- * record (it reads the GPS itself, in the background); while it does, the pill on top shows the
+ * record (it reads the GPS itself, in the background). The app answers in the address after `#`:
+ * `trip-recording=<start>` once it records, `trip-failed=location` without precise location; an
+ * app too old to record lets Chrome fall back to `trip-failed=old-app`. While it records, the pill on top shows the
  * distance and time and the map draws the way so far (from the fixes the map sees), and the button
  * is Stop. On Stop the app opens the map with the whole trip in the address (../tracks/trip.ts):
  * it's kept in Tracks at once under a suggested name, and a card offers to rename or discard it;
@@ -83,6 +87,8 @@ export class TripRecorder implements maplibregl.IControl {
   private autoTimer = 0;
   private noteTimer = 0;
   private confirmTimer = 0;
+  /** Waiting for the app to say it records. */
+  private startTimer = 0;
 
   constructor(private readonly deps: TripDeps) {
     this.container.className = 'maplibregl-ctrl maplibregl-ctrl-group trip-record';
@@ -143,10 +149,10 @@ export class TripRecorder implements maplibregl.IControl {
     return this.rec !== null;
   }
 
+  /** Asks the app to record; the pill shows once it says it does (`receive`). */
   private start(): void {
-    this.rec = { start: (this.deps.now ?? Date.now)(), metres: 0, trail: [] };
-    store(this.rec);
-    this.render();
+    clearTimeout(this.startTimer);
+    this.startTimer = window.setTimeout(() => this.note("The Android app didn't start recording: install its newest version."), CONFIRM_START_MS);
     this.deps.open(this.link('start'));
   }
 
@@ -161,16 +167,34 @@ export class TripRecorder implements maplibregl.IControl {
     this.render();
   }
 
+  /** The app's link; an app without it (too old) has Chrome open the map with `trip-failed=old-app`. */
   private link(what: 'start' | 'stop'): string {
-    return `intent://trip/${what}#Intent;scheme=garminmap;package=${this.deps.app};end`;
+    const back = encodeURIComponent(`${location.origin}${location.pathname}${location.search}#trip-failed=old-app`);
+    return `intent://trip/${what}#Intent;scheme=garminmap;package=${this.deps.app};S.browser_fallback_url=${back};end`;
   }
 
-  /** The trip the app handed over, if the address has one: kept in Tracks and offered for naming. */
+  /** The app's answer in the address, if it has one. A finished trip is kept in Tracks and offered for
+   *  naming. */
   private async receive(hash: string): Promise<void> {
+    const recording = /^#trip-recording=(\d+)$/.exec(hash);
+    const failed = /^#trip-failed=(location|old-app)$/.exec(hash);
     const trip = parseTrip(hash);
-    if (!trip) return;
-    // Tidy the address, so a reload doesn't bring the trip in again.
+    if (!recording && !failed && !trip) return;
+    // Tidy the address, so a reload doesn't bring it in again.
     history.replaceState(history.state, '', location.pathname + location.search);
+    clearTimeout(this.startTimer);
+    if (recording) {
+      const start = Number(recording[1]);
+      if (this.rec?.start !== start) this.rec = { start, metres: 0, trail: [] };
+      store(this.rec);
+      this.render();
+      return;
+    }
+    if (failed) {
+      this.endRecording();
+      return this.note(failed[1] === 'location' ? 'Recording needs precise location: allow it for the app in Android’s settings.' : 'Recording needs the newest version of the Android app.');
+    }
+    if (!trip) return;
     this.endRecording();
     if (trip.points.length < 2) return this.note('Nothing was recorded: the GPS gave no positions.');
     const id = tripId(trip);

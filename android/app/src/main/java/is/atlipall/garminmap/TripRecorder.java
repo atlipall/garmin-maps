@@ -8,7 +8,6 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.location.Location;
@@ -19,27 +18,20 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Looper;
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 /**
- * Records a trip: the unit's GPS, straight from Android, while the map is closed, another app is in
- * front or the screen is off. Started and stopped from the map (TripActivity) or the notification's
- * Stop. Points are thinned to about one every 10 m (sooner on bends) and appended to a file as they
- * come, so a crash or a restart of the app loses nothing: Android starts the service again and it
- * carries on. On Stop the map opens with the trip in its address (Trip.toFragment), and saves it.
+ * Records the trip TripActivity began (TripStore): the unit's GPS, straight from Android, while the
+ * map is closed, another app is in front or the screen is off, behind a notification with Stop and
+ * Open map. Points are thinned to about one every 10 m (sooner on bends) and appended to a file as
+ * they come. If Android kills the service it starts it again and it carries on; where Android won't
+ * let it back into the foreground from there (Android 14 and later, without background location),
+ * the trip so far is kept as a finished trip instead (the log screen can send it to the map).
+ * Stopping is TripActivity's (it ends the trip and hands it to the map).
  */
 public class TripRecorder extends Service implements LocationListener {
-    static final String START = "is.atlipall.garminmap.trip.START";
-    static final String STOP = "is.atlipall.garminmap.trip.STOP";
-    private static final String FILE = "trip.csv";
-    private static final String PREFS = "trip";
     private static final int NOTIFICATION = 2;
     private static final String CHANNEL = "trip";
     /** Fixes rougher than this (m) are skipped. */
@@ -52,67 +44,48 @@ public class TripRecorder extends Service implements LocationListener {
     private long started;
     private long lastNotified;
 
-    /** Whether a trip is being recorded (the map asks before starting another). */
-    static boolean recording(Context c) {
-        return c.getSharedPreferences(PREFS, MODE_PRIVATE).getLong("started", 0) != 0;
-    }
-
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        String action = intent == null ? null : intent.getAction();
-        if (STOP.equals(action)) {
-            stop();
-            return START_NOT_STICKY;
-        }
-        // START, or Android restarting the service after it was killed while recording.
-        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        if (intent == null && prefs.getLong("started", 0) == 0) {
+        if (manager != null) return START_STICKY; // already recording
+        started = TripStore.started(this);
+        if (started == 0) {
+            // Nothing to record (a restart after the trip was stopped).
             stopSelf();
             return START_NOT_STICKY;
         }
-        begin(prefs);
-        return START_STICKY;
-    }
-
-    @SuppressWarnings("MissingPermission")
-    private void begin(SharedPreferences prefs) {
-        if (manager != null) return; // already recording
-        started = prefs.getLong("started", 0);
-        File file = new File(getFilesDir(), FILE);
-        if (started == 0) {
-            started = System.currentTimeMillis();
-            prefs.edit().putLong("started", started).apply();
-            file.delete();
-            App.log(this, "trip: recording started");
-        } else {
-            // Carrying on after a restart: the distance so far from what was written.
-            for (Trip.Point p : read(file)) thinner.accept(p);
-            App.log(this, "trip: recording resumed with " + thinner.count() + " points");
-        }
+        // The distance so far, when carrying on after a restart.
+        for (Trip.Point p : TripStore.read(TripStore.current(this))) thinner.accept(p);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) startForeground(NOTIFICATION, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
             else startForeground(NOTIFICATION, notification());
         } catch (Throwable e) {
-            App.log(this, "trip: couldn't go to the foreground: " + e);
+            App.log(this, "trip: couldn't go to the foreground (" + e + "); kept the trip so far");
+            TripStore.finish(this);
+            stopSelf();
+            return START_NOT_STICKY;
         }
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            App.log(this, "trip: no location permission");
-            return;
+            App.log(this, "trip: no precise location");
+            return START_STICKY;
         }
         manager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         try {
             manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, this, Looper.getMainLooper());
+            App.log(this, "trip: recording" + (thinner.count() > 0 ? ", carrying on after " + thinner.count() + " points" : ""));
         } catch (Throwable e) {
             App.log(this, "trip: GPS failed: " + e);
         }
+        return START_STICKY;
     }
 
     @Override
     public void onLocationChanged(Location l) {
+        // A fix that comes in after Stop ended the trip (the service stops a moment later).
+        if (TripStore.started(this) != started) return;
         if (l.hasAccuracy() && l.getAccuracy() > MAX_ACCURACY_M) return;
         Trip.Point p = new Trip.Point(l.getLatitude(), l.getLongitude(), l.getTime());
         if (!thinner.accept(p)) return;
-        try (FileWriter w = new FileWriter(new File(getFilesDir(), FILE), true)) {
+        try (FileWriter w = new FileWriter(TripStore.current(this), true)) {
             w.write(p.line());
         } catch (IOException e) {
             App.log(this, "trip: couldn't write: " + e);
@@ -125,27 +98,6 @@ public class TripRecorder extends Service implements LocationListener {
         }
     }
 
-    /** Ends the trip: stops listening and hands it to the map. */
-    private void stop() {
-        if (manager != null) manager.removeUpdates(this);
-        manager = null;
-        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        long start = prefs.getLong("started", 0);
-        prefs.edit().remove("started").apply();
-        File file = new File(getFilesDir(), FILE);
-        List<Trip.Point> points = read(file);
-        App.log(this, "trip: stopped, " + points.size() + " points, " + Math.round(thinner.metres()) + " m");
-        stopForeground(true);
-        stopSelf();
-        if (start == 0) return; // not recording
-        // Kept until the next trip starts, in case the map doesn't take it.
-        file.renameTo(new File(getFilesDir(), "trip-last.csv"));
-        Intent open = new Intent(this, ChromeLauncher.class);
-        open.setData(Uri.parse(BuildConfig.START_URL + "#" + Trip.toFragment(start, System.currentTimeMillis(), points)));
-        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(open);
-    }
-
     private Notification notification() {
         NotificationManager nm = getSystemService(NotificationManager.class);
         Notification.Builder n;
@@ -156,7 +108,9 @@ public class TripRecorder extends Service implements LocationListener {
             n = new Notification.Builder(this);
         }
         int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
-        PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, TripRecorder.class).setAction(STOP), flags);
+        // Stop goes through TripActivity, a screen: it may open the map with the trip.
+        Intent stopIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("garminmap://trip/stop"), this, TripActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent stop = PendingIntent.getActivity(this, 1, stopIntent, flags);
         PendingIntent map = PendingIntent.getActivity(this, 2, new Intent(this, ChromeLauncher.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), flags);
         long minutes = (System.currentTimeMillis() - started) / 60_000;
         String so = String.format(Locale.ROOT, "%.1f km so far · %d min", thinner.metres() / 1000, minutes);
@@ -171,23 +125,11 @@ public class TripRecorder extends Service implements LocationListener {
             .build();
     }
 
-    private static List<Trip.Point> read(File file) {
-        List<Trip.Point> out = new ArrayList<>();
-        if (!file.exists()) return out;
-        try {
-            for (String line : Files.readAllLines(file.toPath(), StandardCharsets.UTF_8)) {
-                Trip.Point p = Trip.Point.parse(line);
-                if (p != null) out.add(p);
-            }
-        } catch (IOException ignored) {
-            // what was read so far
-        }
-        return out;
-    }
-
     @Override
     public void onDestroy() {
         if (manager != null) manager.removeUpdates(this);
+        manager = null;
+        stopForeground(true);
         super.onDestroy();
     }
 

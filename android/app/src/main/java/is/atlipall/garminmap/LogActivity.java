@@ -55,6 +55,11 @@ public class LogActivity extends Activity implements LocationListener {
             else stopTest("stopped");
         });
         button(buttons, "Refresh", v -> show());
+        // The last recorded trip to the map again (if it didn't arrive; the map keeps a trip once).
+        button(buttons, "Send last trip", v -> {
+            java.io.File last = TripStore.last(this);
+            if (last != null) TripStore.handOver(this, last);
+        });
         button(buttons, "Clear log", v -> {
             new File(getFilesDir(), App.LOG).delete();
             show();

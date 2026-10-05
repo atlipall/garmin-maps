@@ -1167,9 +1167,23 @@ try {
     return { rec: r('#map .trip-record'), pin: r('#map .save-here') };
   });
   if (!(tripPlace.rec.right <= tripPlace.pin.left + 1 && Math.abs(tripPlace.rec.top - tripPlace.pin.top) < 2)) fail(`record button not left of save-a-pin: ${JSON.stringify(tripPlace)}`);
+  // Record asks the app; nothing shows as recording until the app says it records.
+  const appLink = (what) => `intent://trip/${what}#Intent;scheme=garminmap;package=is.atlipall.garminmap;S.browser_fallback_url=${encodeURIComponent(`http://localhost:${PORT}/#trip-failed=old-app`)};end`;
   await page.click('#map .trip-record-button');
-  const tripStarted = await page.evaluate(() => ({ intent: window.__app.lastIntent, pill: !document.querySelector('#trip-pill').hidden, text: document.querySelector('#trip-pill-text').textContent, label: document.querySelector('#map .trip-record-button').getAttribute('aria-label') }));
-  if (tripStarted.intent !== 'intent://trip/start#Intent;scheme=garminmap;package=is.atlipall.garminmap;end' || !tripStarted.pill || tripStarted.text !== '0.0 km · 0 min' || tripStarted.label !== 'Stop recording') fail(`record: ${JSON.stringify(tripStarted)}`);
+  const recAsked = await page.evaluate(() => ({ intent: window.__app.lastIntent, pill: !document.querySelector('#trip-pill').hidden }));
+  if (recAsked.intent !== appLink('start') || recAsked.pill) fail(`record asked: ${JSON.stringify(recAsked)}`);
+  // No answer (an app that can't record): a note after 10 s.
+  await page.waitForFunction(() => /didn't start recording/.test(document.querySelector('#trip-note-text').textContent) && !document.querySelector('#trip-note').hidden, { timeout: 15_000 }).catch(() => fail('no note when the app did not answer'));
+  // The app's answers: precise location refused; too old (Chrome's fallback); recording.
+  await page.evaluate(() => (location.hash = '#trip-failed=location'));
+  await page.waitForFunction(() => /needs precise location/.test(document.querySelector('#trip-note-text').textContent), { timeout: 5_000 }).catch(() => fail('location refused'));
+  await page.evaluate(() => (location.hash = '#trip-failed=old-app'));
+  await page.waitForFunction(() => /newest version of the Android app/.test(document.querySelector('#trip-note-text').textContent), { timeout: 5_000 }).catch(() => fail('old app'));
+  await page.click('#map .trip-record-button');
+  await page.evaluate((t) => (location.hash = `#trip-recording=${t}`), Date.now());
+  await page.waitForFunction(() => !document.querySelector('#trip-pill').hidden, { timeout: 5_000 }).catch(() => fail('no pill once the app records'));
+  const tripStarted = await page.evaluate(() => ({ text: document.querySelector('#trip-pill-text').textContent, label: document.querySelector('#map .trip-record-button').getAttribute('aria-label'), hash: location.hash }));
+  if (tripStarted.text !== '0.0 km · 0 min' || tripStarted.label !== 'Stop recording' || tripStarted.hash !== '') fail(`recording: ${JSON.stringify(tripStarted)}`);
   for (let k = 1; k <= 6; k++) {
     await gps.send('Emulation.setGeolocationOverride', { latitude: 64.11 + k * 0.0009, longitude: -21.89, accuracy: 8 });
     await new Promise((r) => setTimeout(r, 400));
@@ -1183,7 +1197,7 @@ try {
   await page.waitForSelector('#map .trip-record-button.recording', { timeout: 10_000 }).catch(() => fail('recording state lost on reload'));
   await page.click('#map .trip-record-button');
   const tripStopped = await page.evaluate(() => ({ intent: window.__app.lastIntent, pill: !document.querySelector('#trip-pill').hidden, line: window.__app.map.getStyle().sources['trip-live'].data.features.length }));
-  if (tripStopped.intent !== 'intent://trip/stop#Intent;scheme=garminmap;package=is.atlipall.garminmap;end' || tripStopped.pill || tripStopped.line) fail(`stop: ${JSON.stringify(tripStopped)}`);
+  if (tripStopped.intent !== appLink('stop') || tripStopped.pill || tripStopped.line) fail(`stop: ${JSON.stringify(tripStopped)}`);
   // The app's hand-over: the address fragment Trip.java writes (encoded polyline, %-escaped).
   const tripEnc = (v, out) => { let x = v < 0 ? ~(v * 2) : v * 2; while (x >= 0x20) { out.push(String.fromCharCode((0x20 | (x & 0x1f)) + 63)); x = Math.floor(x / 32); } out.push(String.fromCharCode(x + 63)); };
   const tripHash = (start, n) => {

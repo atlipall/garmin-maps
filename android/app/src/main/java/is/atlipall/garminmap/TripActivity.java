@@ -7,12 +7,17 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import java.io.File;
 
 /**
- * The map's record button lands here (garminmap://trip/start, garminmap://trip/stop): starts or
- * stops the TripRecorder, asking for location first if the app doesn't have it, then gets out of
- * the way (back to the map). Started from the map's tap, the recorder is allowed to use location
- * while in the background without "Allow all the time".
+ * Starting and stopping a trip, from the map's record button (garminmap://trip/start and /stop),
+ * the notification's Stop (garminmap://trip/stop) or the log screen (garminmap://trip/resend: the
+ * last finished trip again). It's a screen, briefly, because only a screen in front may open the
+ * map (Android doesn't let a notification's service do it), and a recorder started from it may use
+ * location in the background without "Allow all the time".
+ *
+ * It answers the map in its address: `#trip-recording=<start>` once the recorder runs,
+ * `#trip-failed=location` when precise location is refused, and `#trip=…` with the finished trip.
  */
 public class TripActivity extends Activity {
     private static final int ASK = 1;
@@ -22,30 +27,44 @@ public class TripActivity extends Activity {
         super.onCreate(saved);
         Uri uri = getIntent().getData();
         String what = uri == null ? "" : uri.getPath();
-        App.log(this, "trip: the map asks " + what);
+        App.log(this, "trip: asked " + what);
         if ("/stop".equals(what)) {
-            startService(new Intent(this, TripRecorder.class).setAction(TripRecorder.STOP));
+            stopService(new Intent(this, TripRecorder.class));
+            File done = TripStore.finish(this);
+            if (done != null) TripStore.handOver(this, done);
             finish();
-        } else if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+        } else if ("/resend".equals(what)) {
+            File last = TripStore.last(this);
+            if (last != null) TripStore.handOver(this, last);
+            finish();
+        } else if (precise()) {
             start();
         } else {
             requestPermissions(new String[] {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, ASK);
         }
     }
 
+    private boolean precise() {
+        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
     @Override
     public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) start();
+        if (precise()) start();
         else {
-            App.log(this, "trip: location refused, not recording");
+            // Refused, or approximate only (no use for a track).
+            App.log(this, "trip: precise location refused, not recording");
+            TripStore.openMap(this, "trip-failed=location");
             finish();
         }
     }
 
     private void start() {
-        Intent i = new Intent(this, TripRecorder.class).setAction(TripRecorder.START);
+        long start = TripStore.begin(this);
+        Intent i = new Intent(this, TripRecorder.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i);
         else startService(i);
+        TripStore.openMap(this, "trip-recording=" + start);
         finish();
     }
 }
