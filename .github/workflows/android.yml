@@ -47,6 +47,9 @@ jobs:
           cp android/app/build/outputs/apk/dev/release/app-dev-release.apk GarminMapDev.apk
           cp GarminMap.apk "GarminMap-$V.apk"
           cp GarminMapDev.apk "GarminMapDev-$V.apk"
-          gh release create "android-$V" GarminMap.apk GarminMapDev.apk "GarminMap-$V.apk" "GarminMapDev-$V.apk" \
-            --title "Android app 1.${{ github.run_number }}" \
+          # A build of another branch (run by hand) is a pre-release: the "latest" links stay on main's.
+          PRE=""; [ "${{ github.ref_name }}" = main ] || PRE="--prerelease"
+          gh release create "android-$V" GarminMap.apk GarminMapDev.apk "GarminMap-$V.apk" "GarminMapDev-$V.apk" $PRE \
+            --target "$GITHUB_SHA" \
+            --title "Android app 1.${{ github.run_number }}${PRE:+ (${{ github.ref_name }})}" \
             --notes "Garmin Map for Android head units: GarminMap.apk loads the app, GarminMapDev.apk the development version (both can be installed). Built from ${GITHUB_SHA::7}."
