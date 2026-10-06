@@ -5,9 +5,10 @@ import { CLASS_CAP_KMH, type RoadClass, type RoadClasses } from './roadClass';
 
 /** Garmin road speed classes (Table A bits 0-2) in km/h, as mkgmap documents them. */
 export const SPEED_CLASS_KMH = [5, 20, 40, 60, 80, 90, 110, 128];
-/** NOD arc lengths are in units of about 2.4 m (straight direct arcs on GPSmap.is: 2.41 m), times
- *  2 to the power of header flag bits 2-4: 0 on GPSmap.is (flags 0x203), 1 on the mkgmap-built OSM
- *  maps (flags 0x227, whose straight arcs measure 4.7 m a unit). */
+/** NOD arc lengths are in units of 2.4 m (mkgmap's UNIT_TO_METER; straight direct arcs on
+ *  GPSmap.is measure 2.41 m), times 2 to the power of header flag bits 5-7 (mkgmap's
+ *  DISTANCE_MULT_SHIFT, `flags |= shift << 5`): 0 on GPSmap.is (flags 0x203), 1 on mkgmap's
+ *  default (0x227: Freizeitkarte, OpenTopoMap, whose straight arcs measure 4.7 m a unit). */
 export const NOD_UNIT_M = 2.4;
 
 /** Table A access bit: closed to cars (mkgmap's TABAACCESS_FLAG_NO_CAR). Footpaths on OSM-based
@@ -15,7 +16,7 @@ export const NOD_UNIT_M = 2.4;
 export const ACCESS_NO_CAR = 0x01;
 
 export function nodUnitM(flags: number): number {
-  return NOD_UNIT_M * 2 ** ((flags >> 2) & 7);
+  return NOD_UNIT_M * 2 ** ((flags >> 5) & 7);
 }
 
 /**

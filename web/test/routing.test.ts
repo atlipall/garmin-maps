@@ -79,10 +79,14 @@ describe('NOD network', () => {
     expect(g.edgeTo.length).toBe(2); // b→c and c→b only
   });
 
-  test('the length unit doubles per step of header flag bits 2-4 (GPSmap.is 0x203, mkgmap OSM maps 0x227)', () => {
+  test('the length unit doubles per step of header flag bits 5-7 (GPSmap.is 0x203, mkgmap OSM maps 0x227)', () => {
     expect(nodUnitM(0x203)).toBeCloseTo(2.4, 9);
     expect(nodUnitM(0x201)).toBeCloseTo(2.4, 9);
     expect(nodUnitM(0x227)).toBeCloseTo(4.8, 9);
+    // mkgmap always sets 0x0004 (bits 2-4 are not the multiplier): shift 0 is 0x207, shift 2 is 0x247.
+    expect(nodUnitM(0x207)).toBeCloseTo(2.4, 9);
+    expect(nodUnitM(0x247)).toBeCloseTo(9.6, 9);
+    expect(nodUnitM(0x327)).toBeCloseTo(4.8, 9); // 0x100: drive on the left
     const b = new GraphBuilder();
     addTileNetwork(b, tile(), new Map([[2, 1]]), 3, nodUnitM(0x227));
     const g = b.build();

@@ -69,7 +69,7 @@ npm run shots                           # retake the guide's screenshots (web/si
   GPSmap.is. "Download free map" on the import screen fetches Freizeitkarte Iceland (OSM-based,
   mkgmap-built, "free for any purposes" with credit) through the download helper and unzips it
   while it streams (`web/src/storage/unzipStream.ts`). Also: NOD length unit from header flag bits
-  2-4 (mkgmap maps use 4.8 m); roads closed to cars (Table A access bit 0x01: footpaths on OSM
+  5-7 (mkgmap's DISTANCE_MULT_SHIFT; its maps use 4.8 m); roads closed to cars (Table A access bit 0x01: footpaths on OSM
   maps, a few closed tracks/pedestrian streets on GPSmap.is) left out of routing; F-roads found by
   any of a road's labels (Freizeitkarte gives the number second); Freizeitkarte's "(Type)" name suffixes cleaned up
   (`web/src/map/freizeitkarte.ts`), credit shown on the map. Next: hill shading from the .img's own
