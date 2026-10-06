@@ -65,15 +65,16 @@ npm run shots                           # retake the guide's screenshots (web/si
 
 ## Open work (update this when it changes)
 
-- **`free-map` branch** (2026-10-06, awaiting the owner's phone test): a free map for people without
-  GPSmap.is. "Download free map" on the import screen fetches Freizeitkarte Iceland (OSM-based,
+- **Shipped 2026-10-06** (merged from `free-map`): a free map for people without GPSmap.is.
+  "Download free map" on the import screen fetches Freizeitkarte Iceland (OSM-based,
   mkgmap-built, "free for any purposes" with credit) through the download helper and unzips it
   while it streams (`web/src/storage/unzipStream.ts`). Also: NOD length unit from header flag bits
-  5-7 (mkgmap's DISTANCE_MULT_SHIFT; its maps use 4.8 m); roads closed to cars (Table A access bit 0x01: footpaths on OSM
-  maps, a few closed tracks/pedestrian streets on GPSmap.is) left out of routing; F-roads found by
-  any of a road's labels (Freizeitkarte gives the number second); Freizeitkarte's "(Type)" name suffixes cleaned up
-  (`web/src/map/freizeitkarte.ts`), credit shown on the map. Next: hill shading from the .img's own
-  DEM subfiles (OSM users have no .hgt files; SRTM stops at 60°N), and maybe telling the
+  5-7 (mkgmap's DISTANCE_MULT_SHIFT; its maps use 4.8 m); roads closed to cars (Table A access bit
+  0x01) left out of routing; F-roads found by any of a road's labels; zooms 7-8 take roads from
+  zoom 9's level; lines at least 1 px (contours 0.5); Freizeitkarte's "(Type)" name suffixes
+  cleaned up (`web/src/map/freizeitkarte.ts`); credit in an (i) on the map. Next ideas: hill
+  shading from the .img's own DEM subfiles (OSM users have no .hgt files; SRTM stops at 60°N);
+  slower rough tracks on Freizeitkarte (it has no GPSmap.is track types); maybe telling the
   Freizeitkarte team.
 - **Shipped 2026-10-05** (merged from `trip-recording`, which held `tracks-nav`): routes saved as
   tracks, the track card and track navigation; renaming tracks and pins; trip recording in the
