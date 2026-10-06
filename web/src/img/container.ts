@@ -178,6 +178,8 @@ export class ImgContainer {
     private readonly pageCache: PageCache,
     private readonly blockSize: number,
     private readonly subfiles: Map<string, SubfileInfo>,
+    /** The map's name from the IMG header, e.g. "Freizeitkarte_ISL (Release 26.09)". */
+    readonly description: string,
   ) {}
 
   static async open(src: ByteSource, cachePages = DEFAULT_CACHE_PAGES): Promise<ImgContainer> {
@@ -208,7 +210,9 @@ export class ImgContainer {
       }
       subfiles.set(key, { size: entry.size, blocks });
     }
-    return new ImgContainer(new PageCache(src, cachePages), blockSize, subfiles);
+    // The description is split over two header fields (20 + 31 bytes), padded with spaces.
+    const description = (ascii(head, 0x49, 0x5d) + ascii(head, 0x65, 0x84)).replace(/\0/g, '').trim();
+    return new ImgContainer(new PageCache(src, cachePages), blockSize, subfiles, description);
   }
 
   tileIds(): string[] {

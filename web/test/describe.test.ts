@@ -14,6 +14,8 @@ describe('placeCategory', () => {
     expect(placeCategory(place('N1 - Hrísey', 'point', 0x2f01))).toBe('Fuel station');
     expect(placeCategory(place('Brekkuvegur', 'line', 0x06))).toBe('Street');
     expect(placeCategory(place('Hólmavík', 'point', 0x0700))).toBe('Town');
+    // What the map's label says the place is (Freizeitkarte) comes before the type's own word.
+    expect(placeCategory({ ...place('Vínbúðin', 'point', 0x2e0a), what: 'Off licence' })).toBe('Off licence');
   });
 
   test('F-roads by name, and generic fallbacks by type family and kind', () => {

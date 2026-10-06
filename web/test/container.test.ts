@@ -219,6 +219,7 @@ describe.skipIf(!hasRealData)('ImgContainer on real data', () => {
     const src = await nodeSource(DETAILED);
     const img = await ImgContainer.open(src);
     expect(img.tileIds()).toEqual(['14057401', '14057402', '14057403', '14057405', '14057406']);
+    expect(img.description).toBe('Íslandskort GPSmap.is 2024.21 OruxMaps Detailed');
     expect(img.size('14057403.RGN')).toBe(17504055);
     const typ = await img.read(img.firstOfType('TYP')!, 0, 12);
     expect(String.fromCharCode(...typ.subarray(2, 12))).toBe('GARMIN TYP');

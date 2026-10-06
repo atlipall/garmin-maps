@@ -7,6 +7,7 @@ const KEY = 'map-key';
 const PLACES: Place[] = [
   { name: 'Landmannalaugar', lon: -19.06, lat: 63.99, kind: 'point', type: 0x2f06 },
   { name: 'Laugavegur', lon: 0, lat: 0, kind: 'line', type: 0x16 },
+  { name: 'Dettifoss', lon: -16.38, lat: 65.81, kind: 'point', type: 0x6508, what: 'Waterfall' },
 ];
 const ROADS: RoadClasses = { t1: [[5, 1], [8, 2]], t2: [[12, 3]] };
 

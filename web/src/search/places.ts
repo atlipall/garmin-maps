@@ -1,7 +1,7 @@
 import { mapUnitsToDeg } from '../img/bytes';
 import type { Kind } from '../img/rgn';
 import { decodeAll } from '../map/decodeAll';
-import { objectName, type GarminMap } from '../map/garminMap';
+import { objectLabel, objectName, type GarminMap } from '../map/garminMap';
 import { CONTOUR_LINE_TYPES, isNumber } from '../map/zoom';
 import { RoadClassCollector, roadClass, type RoadClasses } from '../routing/roadClass';
 import { normalize } from './normalize';
@@ -13,6 +13,8 @@ export interface Place {
   lat: number;
   kind: Kind;
   type: number;
+  /** What the place is, when the map's label says so (Freizeitkarte: "Waterfall"). */
+  what?: string;
 }
 
 const round5 = (v: number) => Math.round(v * 1e5) / 1e5;
@@ -58,7 +60,7 @@ export async function collectIndex(map: GarminMap): Promise<{ places: Place[]; r
   await decodeAll(map, (tile, _sd, obj) => {
     if (obj.kind === 'line' && obj.labelSrc === 'net') roads.add(tile.id, obj.label, roadClass(obj.type, objectName(tile, obj)));
     if (obj.kind === 'line' && CONTOUR_LINE_TYPES.has(obj.type)) return;
-    const name = objectName(tile, obj);
+    const { name, what } = objectLabel(tile, obj);
     if (!name || isNumber(name)) return;
     let lon: number;
     let lat: number;
@@ -76,7 +78,7 @@ export async function collectIndex(map: GarminMap): Promise<{ places: Place[]; r
     const key = `${normalize(name)}|${obj.kind}|${Math.round(lon * 20)}|${Math.round(lat * 20)}`;
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({ name, lon, lat, kind: obj.kind, type: obj.type });
+    out.push(what ? { name, lon, lat, kind: obj.kind, type: obj.type, what } : { name, lon, lat, kind: obj.kind, type: obj.type });
   }, { bits });
   return { places: out, roads: roads.roads };
 }
