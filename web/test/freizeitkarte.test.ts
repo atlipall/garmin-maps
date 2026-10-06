@@ -1,11 +1,17 @@
 import { describe, expect, test } from 'vitest';
-import { isFreizeitkarte, splitTypeSuffix } from '../src/map/freizeitkarte';
+import { conventionsFor } from '../src/map/conventions';
+import { splitTypeSuffix } from '../src/map/freizeitkarte';
 
 describe('Freizeitkarte type suffixes', () => {
-  test('recognises Freizeitkarte maps by their header name only', () => {
-    expect(isFreizeitkarte('Freizeitkarte_ISL (Release 26.09)')).toBe(true);
-    expect(isFreizeitkarte('Íslandskort GPSmap.is 2024.21 OruxMaps Detailed')).toBe(false);
-    expect(isFreizeitkarte('OpenTopoMap Iceland 2026-05-24')).toBe(false);
+  test('only Freizeitkarte maps (by their header name) get its labels and credit', () => {
+    const fzk = conventionsFor('Freizeitkarte_ISL (Release 26.09)');
+    expect(fzk.pointLabel('Dettifoss (Waterfall)')).toEqual({ name: 'Dettifoss', what: 'Waterfall' });
+    expect(fzk.credit).toContain('OpenStreetMap contributors');
+    for (const other of ['Íslandskort GPSmap.is 2024.21 OruxMaps Detailed', 'OpenTopoMap Iceland 2026-05-24']) {
+      const c = conventionsFor(other);
+      expect(c.pointLabel('GILSÁ (TRÖLLADALSÁ)')).toEqual({ name: 'GILSÁ (TRÖLLADALSÁ)' });
+      expect(c.credit).toBeNull();
+    }
   });
 
   test('a type in brackets becomes what the place is', () => {

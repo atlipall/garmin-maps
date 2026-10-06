@@ -4,7 +4,7 @@ import { LabelTable } from '../img/lbl';
 import type { Chunk, RawObject, SubdivisionBytes } from '../img/rgn';
 import type { ByteSource } from '../img/source';
 import { hasData, parseTre, type Subdivision, type Tre } from '../img/tre';
-import { isFreizeitkarte, splitTypeSuffix } from './freizeitkarte';
+import { conventionsFor, type MapConventions } from './conventions';
 import { CONTOUR_LINE_TYPES, contourLabel, EARLY_ROADS_ZOOM, ROADS_LEVEL_ZOOM, zoomBands } from './zoom';
 
 export interface MapTile {
@@ -12,8 +12,8 @@ export interface MapTile {
   tre: Tre;
   labels: LabelTable;
   byLevel: Map<number, Subdivision[]>;
-  /** Point labels end in what the point is, in brackets (Freizeitkarte; see ./freizeitkarte). */
-  typeSuffixes: boolean;
+  /** How the map writes its labels (./conventions). */
+  conventions: MapConventions;
 }
 
 function named(name: string, err: unknown): Error {
@@ -31,7 +31,7 @@ export function objectLabel(tile: MapTile, obj: RawObject): { name: string | nul
   const name = tile.labels.text(obj.label, obj.labelSrc);
   if (!name) return { name };
   if (obj.kind === 'line' && CONTOUR_LINE_TYPES.has(obj.type)) return { name: contourLabel(name) };
-  return obj.kind === 'point' && tile.typeSuffixes ? splitTypeSuffix(name) : { name };
+  return obj.kind === 'point' ? tile.conventions.pointLabel(name) : { name };
 }
 
 export class GarminMap {
@@ -50,7 +50,7 @@ export class GarminMap {
     const ids = img.tileIds();
     if (ids.length === 0) throw new ImgError('no map tiles (TRE subfiles) in IMG');
     const tiles: MapTile[] = [];
-    const typeSuffixes = isFreizeitkarte(img.description);
+    const conventions = conventionsFor(img.description);
     for (const id of ids) {
       for (const ext of ['TRE', 'RGN', 'LBL']) if (!img.has(`${id}.${ext}`)) throw new ImgError(`${id}: missing ${ext} subfile`);
       let tre: Tre;
@@ -74,7 +74,7 @@ export class GarminMap {
         list.push(sd);
         byLevel.set(sd.level.bits, list);
       }
-      tiles.push({ id, tre, labels, byLevel, typeSuffixes });
+      tiles.push({ id, tre, labels, byLevel, conventions });
     }
     const bands = zoomBands(tiles.flatMap((t) => [...t.byLevel.keys()]));
     const bounds: [number, number, number, number] = [

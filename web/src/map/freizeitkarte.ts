@@ -2,11 +2,8 @@
  * Freizeitkarte (freizeitkarte-osm.de), a free OpenStreetMap-based Garmin map, writes what a point is after its name, in
  * brackets: "Dettifoss (Waterfall)", "Vínbúðin (Off Licence)", a peak's height as "Hestur (455)",
  * "N.N. (747)" for an unnamed peak and "(yes)" where OSM had no better word. GPSmap.is uses brackets
- * for alternative names ("GILSÁ (TRÖLLADALSÁ)"), so this applies to Freizeitkarte maps only.
+ * for alternative names ("GILSÁ (TRÖLLADALSÁ)"), so ./conventions applies this to Freizeitkarte only.
  */
-
-/** Freizeitkarte maps, by the name in their IMG header ("Freizeitkarte_ISL (Release 26.09)"). */
-export const isFreizeitkarte = (description: string) => /^Freizeitkarte/i.test(description);
 
 /** The credit its licence asks for: the map data (ODbL), the map's makers, and the contour lines'
  *  sources (CC BY 4.0; the USGS data is public domain). */
