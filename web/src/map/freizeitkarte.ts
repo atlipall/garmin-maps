@@ -1,12 +1,19 @@
 /**
- * Freizeitkarte (an OpenStreetMap-based Garmin map) writes what a point is after its name, in
+ * Freizeitkarte (freizeitkarte-osm.de), a free OpenStreetMap-based Garmin map, writes what a point is after its name, in
  * brackets: "Dettifoss (Waterfall)", "Vínbúðin (Off Licence)", a peak's height as "Hestur (455)",
  * "N.N. (747)" for an unnamed peak and "(yes)" where OSM had no better word. GPSmap.is uses brackets
  * for alternative names ("GILSÁ (TRÖLLADALSÁ)"), so this applies to Freizeitkarte maps only.
  */
 
 /** Freizeitkarte maps, by the name in their IMG header ("Freizeitkarte_ISL (Release 26.09)"). */
-export const hasTypeSuffixes = (description: string) => /^Freizeitkarte/i.test(description);
+export const isFreizeitkarte = (description: string) => /^Freizeitkarte/i.test(description);
+
+/** The credit its licence asks for: the map data (ODbL), the map's makers, and the contour lines'
+ *  sources (CC BY 4.0; the USGS data is public domain). */
+export const FREIZEITKARTE_CREDIT =
+  'Map: <a href="https://www.freizeitkarte-osm.de/garmin/en/" target="_blank" rel="noopener">© FZK project</a>, data ' +
+  '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>; ' +
+  'contours: Sonny\'s LiDAR DTM, JAXA AW3D30 (CC BY 4.0), USGS';
 
 const UNNAMED = 'N.N.';
 

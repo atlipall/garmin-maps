@@ -11,6 +11,7 @@ import { preloadImages } from '../ui/images';
 import { versionLabel } from '../buildInfo';
 import { DEV } from '../channel';
 import { featureNameAt } from '../map/featureName';
+import { FREIZEITKARTE_CREDIT, isFreizeitkarte } from '../map/freizeitkarte';
 import { SaveHere } from './saveHere';
 import { TrackCard } from './trackCard';
 import { TrackNav } from './trackNav';
@@ -188,7 +189,13 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   syncAwake();
   // Location as it was last time: after the line above, so keeping the screen on hears of it.
   if (session) locate.restore(session.location);
-  // Corner controls stack upwards in the order added: the height pill sits above the scale bar.
+  // Corner controls stack upwards in the order added: the height pill sits above the scale bar, and
+  // a map whose licence asks for credit has it (folded into an ⓘ button) below both.
+  if (isFreizeitkarte(meta.description)) {
+    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: FREIZEITKARTE_CREDIT }), 'bottom-left');
+    // MapLibre opens it until the first drag, over the scale and height; start folded instead.
+    map.once('load', () => map.getContainer().querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'));
+  }
   map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
   map.addControl(height, 'bottom-left');
   // The last GPS fix is the reference for search-result distances (the map centre when none is recent).

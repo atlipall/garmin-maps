@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { hasTypeSuffixes, splitTypeSuffix } from '../src/map/typeSuffix';
+import { isFreizeitkarte, splitTypeSuffix } from '../src/map/freizeitkarte';
 
 describe('Freizeitkarte type suffixes', () => {
   test('recognises Freizeitkarte maps by their header name only', () => {
-    expect(hasTypeSuffixes('Freizeitkarte_ISL (Release 26.09)')).toBe(true);
-    expect(hasTypeSuffixes('Íslandskort GPSmap.is 2024.21 OruxMaps Detailed')).toBe(false);
-    expect(hasTypeSuffixes('OpenTopoMap Iceland 2026-05-24')).toBe(false);
+    expect(isFreizeitkarte('Freizeitkarte_ISL (Release 26.09)')).toBe(true);
+    expect(isFreizeitkarte('Íslandskort GPSmap.is 2024.21 OruxMaps Detailed')).toBe(false);
+    expect(isFreizeitkarte('OpenTopoMap Iceland 2026-05-24')).toBe(false);
   });
 
   test('a type in brackets becomes what the place is', () => {

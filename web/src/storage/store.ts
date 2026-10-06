@@ -63,6 +63,9 @@ function runWorker(msg: Record<string, unknown>, onProgress?: (m: string) => voi
 
 export const importFiles = (img: File, hgt: File[], onProgress: (m: string) => void) => runWorker({ type: 'import', img, hgt }, onProgress);
 
+/** Downloads a zipped map and stores it as `imgName`, like an import of that file. */
+export const downloadMap = (url: string, imgName: string, onProgress: (m: string) => void) => runWorker({ type: 'download', url, imgName }, onProgress);
+
 /** Writes a small text file into the current map's directory; rejects when no map is stored. */
 export async function writeText(name: string, text: string): Promise<void> {
   const dir = await currentDirName(await storageRoot());

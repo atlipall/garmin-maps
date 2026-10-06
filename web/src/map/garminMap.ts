@@ -4,7 +4,7 @@ import { LabelTable } from '../img/lbl';
 import type { Chunk, RawObject, SubdivisionBytes } from '../img/rgn';
 import type { ByteSource } from '../img/source';
 import { hasData, parseTre, type Subdivision, type Tre } from '../img/tre';
-import { hasTypeSuffixes, splitTypeSuffix } from './typeSuffix';
+import { isFreizeitkarte, splitTypeSuffix } from './freizeitkarte';
 import { CONTOUR_LINE_TYPES, contourLabel, EARLY_ROADS_ZOOM, zoomBands } from './zoom';
 
 export interface MapTile {
@@ -12,7 +12,7 @@ export interface MapTile {
   tre: Tre;
   labels: LabelTable;
   byLevel: Map<number, Subdivision[]>;
-  /** Point labels end in what the point is, in brackets (Freizeitkarte; see ./typeSuffix). */
+  /** Point labels end in what the point is, in brackets (Freizeitkarte; see ./freizeitkarte). */
   typeSuffixes: boolean;
 }
 
@@ -41,6 +41,8 @@ export class GarminMap {
     readonly bands: Map<number, [number, number]>,
     readonly bounds: [number, number, number, number],
     readonly typ: Uint8Array | null,
+    /** The map's name from the IMG header. */
+    readonly description: string,
   ) {}
 
   static async open(src: ByteSource): Promise<GarminMap> {
@@ -48,7 +50,7 @@ export class GarminMap {
     const ids = img.tileIds();
     if (ids.length === 0) throw new ImgError('no map tiles (TRE subfiles) in IMG');
     const tiles: MapTile[] = [];
-    const typeSuffixes = hasTypeSuffixes(img.description);
+    const typeSuffixes = isFreizeitkarte(img.description);
     for (const id of ids) {
       for (const ext of ['TRE', 'RGN', 'LBL']) if (!img.has(`${id}.${ext}`)) throw new ImgError(`${id}: missing ${ext} subfile`);
       let tre: Tre;
@@ -80,7 +82,7 @@ export class GarminMap {
       Math.max(...tiles.map((t) => t.tre.east)), Math.max(...tiles.map((t) => t.tre.north)),
     ];
     const typName = img.firstOfType('TYP');
-    return new GarminMap(img, tiles, bands, bounds, typName ? await img.read(typName) : null);
+    return new GarminMap(img, tiles, bands, bounds, typName ? await img.read(typName) : null, img.description);
   }
 
   levelForZoom(z: number): number | undefined {

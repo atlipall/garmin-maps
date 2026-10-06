@@ -44,6 +44,7 @@ npm run shots                           # retake the guide's screenshots (web/si
 | Development version | `/garmin-maps/app-dev/` ("Map Dev") | `git push --force origin <branch>:dev`; `dev.yml` re-runs Pages from main, which builds both |
 | Android app | GitHub Releases, `releases/latest/download/GarminMap.apk` | push `main` touching `android/` → `android.yml` |
 | Sign-in helper | garmin-maps-auth.atlipall.workers.dev | `wrangler deploy` in `web/auth-worker/` |
+| Free-map download helper | garmin-maps-download.atlipall.workers.dev | `wrangler deploy` in `web/download-worker/` (passes the Freizeitkarte Iceland zip on with CORS; no secrets) |
 | Asset links | atlipall.github.io/.well-known/assetlinks.json | repo `atlipall/atlipall.github.io` |
 | Development page | atlipall.github.io/garmin-maps/dev/ (APK downloads, short to type on the head unit) | `web/site/dev/index.html`, deployed with the site; update its pinned APK version |
 
@@ -64,6 +65,14 @@ npm run shots                           # retake the guide's screenshots (web/si
 
 ## Open work (update this when it changes)
 
+- **`free-map` branch** (2026-10-06, awaiting the owner's phone test): a free map for people without
+  GPSmap.is. "Download free map" on the import screen fetches Freizeitkarte Iceland (OSM-based,
+  mkgmap-built, "free for any purposes" with credit) through the download helper and unzips it
+  while it streams (`web/src/storage/unzipStream.ts`). Also: NOD length unit from header flag bits
+  2-4 (mkgmap maps use 4.8 m), Freizeitkarte's "(Type)" name suffixes cleaned up
+  (`web/src/map/freizeitkarte.ts`), credit shown on the map. Next: hill shading from the .img's own
+  DEM subfiles (OSM users have no .hgt files; SRTM stops at 60°N), and maybe telling the
+  Freizeitkarte team.
 - **Shipped 2026-10-05** (merged from `trip-recording`, which held `tracks-nav`): routes saved as
   tracks, the track card and track navigation; renaming tracks and pins; trip recording in the
   Android app (TripActivity/TripRecorder/TripStore → `#trip-recording=` / `#trip=` / `#trip-failed=`

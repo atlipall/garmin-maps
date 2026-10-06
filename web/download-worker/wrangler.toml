@@ -1,0 +1,10 @@
+# Passes the free Freizeitkarte map of Iceland through to the app (see worker.ts). Deployed on its
+# own: `wrangler deploy` from this folder. No secrets.
+name = "garmin-maps-download"
+main = "worker.ts"
+compatibility_date = "2026-08-01"
+workers_dev = true
+
+[vars]
+# Pages that may download through it (the app, and the dev server).
+ALLOWED_ORIGINS = "https://atlipall.github.io,http://localhost:5173"
