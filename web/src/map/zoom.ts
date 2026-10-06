@@ -3,9 +3,11 @@ export const MIN_ZOOM = 4;
 export const MAX_ZOOM = 14;
 /** Line types for roads and tracks (Garmin 0x01-0x13; GPSmap.is puts the F-roads at 0x0d, 0x11-0x13). */
 export const isRoadType = (t: number) => t >= 0x01 && t <= 0x13;
-/** From this zoom, the coarsest level takes its roads from the next finer level: the coarsest
- *  level carries only main highways, so the F-roads would otherwise appear only at zoom 9. */
+/** From this zoom up to ROADS_LEVEL_ZOOM, tiles take their roads from ROADS_LEVEL_ZOOM's level:
+ *  the coarser levels carry only main highways (GPSmap.is) or no F-roads at all (Freizeitkarte), so
+ *  the F-roads would otherwise appear only at zoom 9. */
 export const EARLY_ROADS_ZOOM = 7;
+export const ROADS_LEVEL_ZOOM = 9;
 export const CONTOUR_LINE_TYPES = new Set([0x20, 0x21, 0x22, 0x23, 0x24, 0x25]);
 
 /** Python's round(): halves go to the nearest even integer. */

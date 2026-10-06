@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { canArrive, canLeave, EDGE_FROAD, fastestRoute, GraphBuilder, hasNormalRoad, NodeIndex, UNITS_PER_DEG } from '../src/routing/graph';
 import { ROUTE_PREFERENCE } from '../src/routing/plan';
-import { addTileNetwork } from '../src/routing/network';
+import { addTileNetwork, nodUnitM } from '../src/routing/network';
 import type { NodNode } from '../src/routing/nod';
 import { RoadClassCollector, roadClass } from '../src/routing/roadClass';
 
@@ -16,6 +16,9 @@ describe('road classes', () => {
     expect(roadClass(0x13, 'VATNAHJALLALEIÐ')).toBe(3);
     expect(roadClass(0x01, 'Hringvegur')).toBe(0);
     expect(roadClass(0x06, 'Fálkagata')).toBe(0); // starts with F but isn't a road number
+    expect(roadClass(0x04, ['Fjallabaksleið nyrðri', 'F208'])).toBe(1); // the number as a second label
+    expect(roadClass(0x04, ['Hringvegur', '1'])).toBe(0);
+    expect(roadClass(0x04, [])).toBe(0);
   });
 
   test('the collector keeps one entry per NET offset per tile and leaves out normal roads', () => {
@@ -64,6 +67,32 @@ describe('NOD network', () => {
     expect(g.edgeRank[f.edges[0]]).toBe(2);
     expect(fastestRoute(g, bN, c, false)).toBeNull(); // F-roads not allowed
     expect(g.edgeTo.length).toBe(3); // a→b, b→c, c→b (indirect b→d skipped, b→a one-way)
+  });
+
+  test('arcs of roads closed to cars (Table A access bit 0x01) are left out', () => {
+    const t = tile();
+    t.get(0)!.arcs[0].access = 0x01; // a–b: a footpath on an OSM-based map
+    t.get(10)!.arcs[0].access = 0x21; // b–a: no cars, no bikes
+    const b = new GraphBuilder();
+    addTileNetwork(b, t, new Map([[2, 1]]), 3);
+    const g = b.build();
+    expect(g.edgeTo.length).toBe(2); // b→c and c→b only
+  });
+
+  test('the length unit doubles per step of header flag bits 5-7 (GPSmap.is 0x203, mkgmap OSM maps 0x227)', () => {
+    expect(nodUnitM(0x203)).toBeCloseTo(2.4, 9);
+    expect(nodUnitM(0x201)).toBeCloseTo(2.4, 9);
+    expect(nodUnitM(0x227)).toBeCloseTo(4.8, 9);
+    // mkgmap always sets 0x0004 (bits 2-4 are not the multiplier): shift 0 is 0x207, shift 2 is 0x247.
+    expect(nodUnitM(0x207)).toBeCloseTo(2.4, 9);
+    expect(nodUnitM(0x247)).toBeCloseTo(9.6, 9);
+    expect(nodUnitM(0x327)).toBeCloseTo(4.8, 9); // 0x100: drive on the left
+    const b = new GraphBuilder();
+    addTileNetwork(b, tile(), new Map([[2, 1]]), 3, nodUnitM(0x227));
+    const g = b.build();
+    const idx = new NodeIndex(g);
+    const r = fastestRoute(g, idx.nearest(-21.0, 64.0, 100)!.node, idx.nearest(-20.95, 64.0, 100)!.node, true)!;
+    expect(r.metres).toBeCloseTo(4800, 3);
   });
 
   test('nearest(…, accept) skips nodes the predicate rejects; hasNormalRoad spots F-road-only nodes', () => {

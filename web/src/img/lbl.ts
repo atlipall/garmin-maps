@@ -82,6 +82,30 @@ export class LabelTable {
     }
   }
 
+  /** Every label of a road (NET): its name and, on some maps, its number as a second label, e.g.
+   *  "Fjallabaksleið nyrðri" and "F208" (Freizeitkarte). Up to four; the last has bit 23 set. */
+  roadTexts(net: number): string[] {
+    if (!this.net) return [];
+    const out: string[] = [];
+    try {
+      for (let i = 0, at = this.net1 + net * 2 ** this.netShift; i < 4; i++, at += 3) {
+        const v = u24(this.net, at);
+        const off = v & 0x3fffff;
+        if (!(v & 0x400000) && off) {
+          const start = this.lbl1 + off * 2 ** this.shift;
+          let end = this.lbl.indexOf(0, start);
+          if (end < 0) end = this.lbl.length;
+          const t = formatLabel(this.lbl.subarray(start, end), this.decoder);
+          if (t) out.push(t);
+        }
+        if (v & 0x800000) break;
+      }
+    } catch (err) {
+      if (!(err instanceof RangeError)) throw err;
+    }
+    return out;
+  }
+
   private resolve(label: number, src: LabelSrc): number | null {
     if (src === 'poi') return u24(this.lbl, this.poiOff + label * 2 ** this.poiShift) & 0x3fffff;
     if (src === 'net') {

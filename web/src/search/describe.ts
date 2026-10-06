@@ -46,6 +46,7 @@ export const isTownType = (p: Place) => p.kind === 'point' && (p.type >> 8) >= 0
 export function placeCategory(p: Place): string {
   if (p.kind === 'point') {
     if (isTownType(p)) return 'Town';
+    if (p.what) return p.what;
     return POINT[p.type] ?? POINT_FAMILY[p.type >> 8] ?? 'Place';
   }
   if (p.kind === 'line') {

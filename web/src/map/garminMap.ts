@@ -4,13 +4,16 @@ import { LabelTable } from '../img/lbl';
 import type { Chunk, RawObject, SubdivisionBytes } from '../img/rgn';
 import type { ByteSource } from '../img/source';
 import { hasData, parseTre, type Subdivision, type Tre } from '../img/tre';
-import { CONTOUR_LINE_TYPES, contourLabel, EARLY_ROADS_ZOOM, zoomBands } from './zoom';
+import { isFreizeitkarte, splitTypeSuffix } from './freizeitkarte';
+import { CONTOUR_LINE_TYPES, contourLabel, EARLY_ROADS_ZOOM, ROADS_LEVEL_ZOOM, zoomBands } from './zoom';
 
 export interface MapTile {
   id: string;
   tre: Tre;
   labels: LabelTable;
   byLevel: Map<number, Subdivision[]>;
+  /** Point labels end in what the point is, in brackets (Freizeitkarte; see ./freizeitkarte). */
+  typeSuffixes: boolean;
 }
 
 function named(name: string, err: unknown): Error {
@@ -20,8 +23,15 @@ function named(name: string, err: unknown): Error {
 }
 
 export function objectName(tile: MapTile, obj: RawObject): string | null {
+  return objectLabel(tile, obj).name;
+}
+
+/** An object's name, and for a point on a map that labels them so, what it is ("Waterfall"). */
+export function objectLabel(tile: MapTile, obj: RawObject): { name: string | null; what?: string } {
   const name = tile.labels.text(obj.label, obj.labelSrc);
-  return name && obj.kind === 'line' && CONTOUR_LINE_TYPES.has(obj.type) ? contourLabel(name) : name;
+  if (!name) return { name };
+  if (obj.kind === 'line' && CONTOUR_LINE_TYPES.has(obj.type)) return { name: contourLabel(name) };
+  return obj.kind === 'point' && tile.typeSuffixes ? splitTypeSuffix(name) : { name };
 }
 
 export class GarminMap {
@@ -31,6 +41,8 @@ export class GarminMap {
     readonly bands: Map<number, [number, number]>,
     readonly bounds: [number, number, number, number],
     readonly typ: Uint8Array | null,
+    /** The map's name from the IMG header. */
+    readonly description: string,
   ) {}
 
   static async open(src: ByteSource): Promise<GarminMap> {
@@ -38,6 +50,7 @@ export class GarminMap {
     const ids = img.tileIds();
     if (ids.length === 0) throw new ImgError('no map tiles (TRE subfiles) in IMG');
     const tiles: MapTile[] = [];
+    const typeSuffixes = isFreizeitkarte(img.description);
     for (const id of ids) {
       for (const ext of ['TRE', 'RGN', 'LBL']) if (!img.has(`${id}.${ext}`)) throw new ImgError(`${id}: missing ${ext} subfile`);
       let tre: Tre;
@@ -61,7 +74,7 @@ export class GarminMap {
         list.push(sd);
         byLevel.set(sd.level.bits, list);
       }
-      tiles.push({ id, tre, labels, byLevel });
+      tiles.push({ id, tre, labels, byLevel, typeSuffixes });
     }
     const bands = zoomBands(tiles.flatMap((t) => [...t.byLevel.keys()]));
     const bounds: [number, number, number, number] = [
@@ -69,7 +82,7 @@ export class GarminMap {
       Math.max(...tiles.map((t) => t.tre.east)), Math.max(...tiles.map((t) => t.tre.north)),
     ];
     const typName = img.firstOfType('TYP');
-    return new GarminMap(img, tiles, bands, bounds, typName ? await img.read(typName) : null);
+    return new GarminMap(img, tiles, bands, bounds, typName ? await img.read(typName) : null, img.description);
   }
 
   levelForZoom(z: number): number | undefined {
@@ -78,10 +91,11 @@ export class GarminMap {
   }
 
   /** The level whose roads a tile at zoom z shows, when it differs from `levelForZoom(z)`:
-   *  the next finer level, for the coarsest level's zooms from EARLY_ROADS_ZOOM on. */
+   *  ROADS_LEVEL_ZOOM's level, for zooms from EARLY_ROADS_ZOOM up to it. */
   roadLevelForZoom(z: number): number | undefined {
-    const levels = [...this.bands.keys()].sort((a, b) => a - b);
-    return z >= EARLY_ROADS_ZOOM && levels.length > 1 && this.levelForZoom(z) === levels[0] ? levels[1] : undefined;
+    if (z < EARLY_ROADS_ZOOM || z >= ROADS_LEVEL_ZOOM) return undefined;
+    const roads = this.levelForZoom(ROADS_LEVEL_ZOOM);
+    return roads !== this.levelForZoom(z) ? roads : undefined;
   }
 
   async readSubdivision(tile: MapTile, sd: Subdivision): Promise<SubdivisionBytes> {

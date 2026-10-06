@@ -10,9 +10,13 @@ const CONTOURS = [...CONTOUR_LINE_TYPES].sort((a, b) => a - b);
 const byType = (t: number) => ['==', ['get', 't'], t];
 
 function lineLayer(id: string, t: number | null, color: string, width: number, dash: number[] | null, filter?: unknown): LayerSpecification {
+  // Zoomed out, lines thin to 40% of their width, but no thinner than a pixel (as a Garmin draws
+  // them): a map styled with 1-pixel lines would otherwise lose its roads there. Contour lines may
+  // go to half a pixel, so the hills don't crowd out the rest.
+  const min = t !== null && CONTOUR_LINE_TYPES.has(t) ? 0.5 : 1;
   const paint: Record<string, unknown> = {
     'line-color': color,
-    'line-width': ['interpolate', ['linear'], ['zoom'], 8, Math.max(0.5, width * 0.4), 14, Math.max(1, width)],
+    'line-width': ['interpolate', ['linear'], ['zoom'], 8, Math.max(min, width * 0.4), 14, Math.max(1, width)],
   };
   if (dash) paint['line-dasharray'] = dash;
   return {

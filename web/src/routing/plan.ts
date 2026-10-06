@@ -29,6 +29,8 @@ export interface RoadSeg {
   join?: string;
   /** A bend of a trail worth a turn instruction (it has no junctions to go by). */
   bend?: boolean;
+  /** An F-road or a track (the road's class, which on some maps only its second label shows). */
+  highland?: boolean;
 }
 
 /** A graph route drawn along its roads, with its road stretches. */

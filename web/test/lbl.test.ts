@@ -50,6 +50,19 @@ describe('LabelTable', () => {
     expect(new LabelTable(makeLbl([bytesOf('Hringvegur')]), net).text(0, 'net')).toBe('Hringvegur');
   });
 
+  test('all of a road\'s labels: its name and its number (Freizeitkarte gives the number second)', () => {
+    const net = new Uint8Array(0x20 + 9);
+    net.set(bytesOf('GARMIN NET'), 2);
+    new DataView(net.buffer).setUint32(0x15, 0x20, true);
+    // Road 0: labels at offsets 1 and 15 (the last flagged with bit 23); road 6: one label.
+    net.set([1, 0, 0, 15, 0, 0x80, 15, 0, 0x80], 0x20);
+    const table = new LabelTable(makeLbl([bytesOf('Landmannaleid'), bytesOf('F208')]), net);
+    expect(table.roadTexts(0)).toEqual(['Landmannaleid', 'F208']);
+    expect(table.text(0, 'net')).toBe('Landmannaleid');
+    expect(table.roadTexts(6)).toEqual(['F208']);
+    expect(new LabelTable(makeLbl([bytesOf('X')]), null).roadTexts(0)).toEqual([]);
+  });
+
   test('unsupported encoding', () => expect(() => new LabelTable(makeLbl([bytesOf('X')], 6), null)).toThrow(/encoding 6/));
 });
 

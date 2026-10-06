@@ -2,15 +2,15 @@ import type { Kind } from '../img/rgn';
 import type { RoadClasses } from '../routing/roadClass';
 import type { Place } from './places';
 
-/** Compact on-disk form of a `Place`: [name, lon, lat, kindCode, type]. */
-type PackedPlace = [string, number, number, number, number];
+/** Compact on-disk form of a `Place`: [name, lon, lat, kindCode, type, what?]. */
+type PackedPlace = [string, number, number, number, number, string?];
 const KINDS: Kind[] = ['point', 'line', 'polygon'];
 const PLACES_VERSION = 3;
 
 /** Encodes the on-disk `places.json` cache body: the map-file `key`, the places (packed), and the
  *  F-road/track classes keyed by tile id and NET offset. */
 export function encodePlacesCache(key: string, places: Place[], roads: RoadClasses): string {
-  const packed: PackedPlace[] = places.map((p) => [p.name, p.lon, p.lat, KINDS.indexOf(p.kind), p.type]);
+  const packed: PackedPlace[] = places.map((p) => (p.what ? [p.name, p.lon, p.lat, KINDS.indexOf(p.kind), p.type, p.what] : [p.name, p.lon, p.lat, KINDS.indexOf(p.kind), p.type]));
   return JSON.stringify({ key, v: PLACES_VERSION, places: packed, roads });
 }
 
@@ -22,11 +22,12 @@ export function decodePlacesCache(text: string, key: string): { places: Place[];
     if (parsed.key !== key || parsed.v !== PLACES_VERSION || !Array.isArray(parsed.places)) return null;
     const out: Place[] = [];
     for (const row of parsed.places as unknown[]) {
-      if (!Array.isArray(row) || row.length !== 5) return null;
-      const [name, lon, lat, kindCode, type] = row as PackedPlace;
+      if (!Array.isArray(row) || (row.length !== 5 && row.length !== 6)) return null;
+      const [name, lon, lat, kindCode, type, what] = row as PackedPlace;
       const kind = KINDS[kindCode];
       if (typeof name !== 'string' || typeof lon !== 'number' || typeof lat !== 'number' || !kind || typeof type !== 'number') return null;
-      out.push({ name, lon, lat, kind, type });
+      if (row.length === 6 && typeof what !== 'string') return null;
+      out.push(what ? { name, lon, lat, kind, type, what } : { name, lon, lat, kind, type });
     }
     const roads = decodeRoadClasses(parsed.roads);
     if (!roads) return null;

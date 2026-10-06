@@ -5,7 +5,8 @@ import { ImgError } from '../img/bytes';
 import { BlobSource } from '../img/source';
 import { storageRoot } from '../channel';
 import { GarminMap } from '../map/garminMap';
-import { currentDirName, DIR_PREFIX, isCompleteDir, isDataDir, isMissing, listEntries, opfsAdapter, parsePointer, POINTER } from './layout';
+import { currentDirName, DIR_PREFIX, isCompleteDir, isDataDir, isMissing, listEntries, opfsAdapter, parsePointer, POINTER, type StoredMeta } from './layout';
+import { firstEntry } from './unzipStream';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -79,14 +80,7 @@ async function doImport(img: File, hgt: File[]): Promise<void> {
 
   await checkSpace(img.size + parsed.reduce((n, p) => n + p.file.size, 0));
 
-  const root = await storageRoot();
-  let name = `${DIR_PREFIX}${Date.now()}`;
-  const existing = new Set((await listEntries(root)).map((e) => e.name));
-  for (let i = 1; existing.has(name); i++) name = `${DIR_PREFIX}${Date.now()}-${i}`;
-
-  // Everything goes into a fresh directory; the stored map is untouched until the pointer flips.
-  const dir = await root.getDirectoryHandle(name, { create: true });
-  try {
+  await storeMap(async (dir) => {
     await writeBytes(dir, 'map.img', async (h) => {
       for (let off = 0; off < img.size; off += CHUNK) {
         await h.write(new Uint8Array(await img.slice(off, off + CHUNK).arrayBuffer()), { at: off });
@@ -106,10 +100,75 @@ async function doImport(img: File, hgt: File[]): Promise<void> {
       await writeBytes(dir, 'dem-overview.bin', async (h) => void (await h.write(ov, { at: 0 })));
     }
 
-    const meta = {
+    return {
       version: 1, imgName: img.name, imgSize: img.size, imgLastModified: img.lastModified,
       hgtNames: parsed.map((p) => p.name).sort(), hasOverview: parsed.length > 0,
     };
+  });
+}
+
+/** Downloads a zipped map (one .img in a zip) and stores it as `imgName`, unpacking it on the way:
+ *  the phone never holds the whole file in memory. */
+async function doDownload(url: string, imgName: string): Promise<void> {
+  progress('Connecting…');
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch {
+    throw new ImgError('Could not reach the download. Check the internet connection and try again.');
+  }
+  if (!res.ok || !res.body) throw new ImgError(`The download is not available right now (error ${res.status}). Try again later.`);
+  const lastModified = Date.parse(res.headers.get('Last-Modified') ?? '') || Date.now();
+  let shown = -1;
+  const onPacked = (n: number, of: number) => {
+    const pct = Math.floor((n / of) * 100);
+    if (pct !== shown) progress(`Downloading map ${(shown = pct)}% · ${mb(n)} of ${mb(of)}`);
+  };
+  // firstEntry cancels the download itself when the zip can't be read.
+  const entry = await firstEntry(res.body, onPacked);
+  try {
+    if (!/\.img$/i.test(entry.name)) throw new ImgError(`The download holds ${entry.name}, not a map (.img).`);
+    await checkSpace(entry.size);
+  } catch (err) {
+    void entry.stream.cancel().catch(() => {});
+    throw err;
+  }
+
+  await storeMap(async (dir) => {
+    let at = 0;
+    try {
+      await writeBytes(dir, 'map.img', async (h) => {
+        const reader = entry.stream.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await h.write(value, { at });
+          at += value.length;
+        }
+      });
+    } catch (err) {
+      if (err instanceof ImgError) throw err;
+      throw new ImgError(`The download stopped at ${mb(at)} of ${mb(entry.size)}. Try again; nothing was changed. (${err instanceof Error ? err.message : String(err)})`);
+    }
+    if (at !== entry.size) throw new ImgError(`The download stopped at ${mb(at)} of ${mb(entry.size)}. Try again; nothing was changed.`);
+    progress('Checking map file…');
+    await GarminMap.open(new BlobSource(await (await dir.getFileHandle('map.img')).getFile()));
+    return { version: 1, imgName, imgSize: entry.size, imgLastModified: lastModified, hgtNames: [], hasOverview: false };
+  });
+}
+
+/** Writes a new map into a fresh directory (`fill` writes its files and returns its meta) and makes
+ *  it the stored map. The stored map is untouched until the commit pointer flips, and a failure
+ *  removes the new directory; once committed, every other map directory is dropped. */
+async function storeMap(fill: (dir: FileSystemDirectoryHandle) => Promise<StoredMeta>): Promise<void> {
+  const root = await storageRoot();
+  let name = `${DIR_PREFIX}${Date.now()}`;
+  const existing = new Set((await listEntries(root)).map((e) => e.name));
+  for (let i = 1; existing.has(name); i++) name = `${DIR_PREFIX}${Date.now()}-${i}`;
+
+  const dir = await root.getDirectoryHandle(name, { create: true });
+  try {
+    const meta = await fill(dir);
     const text = new TextEncoder().encode(JSON.stringify(meta));
     await writeBytes(dir, 'meta.json', async (h) => void (await h.write(text, { at: 0 })));
 
@@ -156,6 +215,7 @@ self.onmessage = async (e: MessageEvent) => {
   const msg = e.data;
   try {
     if (msg.type === 'import') await doImport(msg.img as File, msg.hgt as File[]);
+    else if (msg.type === 'download') await doDownload(msg.url as string, msg.imgName as string);
     else if (msg.type === 'writeText') await doWriteText(msg.dir as string, msg.name as string, msg.text as string);
     self.postMessage({ type: 'done' });
   } catch (err) {
