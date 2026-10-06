@@ -10,13 +10,18 @@ export const SPEED_CLASS_KMH = [5, 20, 40, 60, 80, 90, 110, 128];
  *  maps (flags 0x227, whose straight arcs measure 4.7 m a unit). */
 export const NOD_UNIT_M = 2.4;
 
+/** Table A access bit: closed to cars (mkgmap's TABAACCESS_FLAG_NO_CAR). Footpaths on OSM-based
+ *  maps carry it; so do a few closed tracks and pedestrian streets on GPSmap.is. */
+export const ACCESS_NO_CAR = 0x01;
+
 export function nodUnitM(flags: number): number {
   return NOD_UNIT_M * 2 ** ((flags >> 2) & 7);
 }
 
 /**
  * Adds one tile's routing nodes to the graph: each direct arc becomes an edge with Garmin's length
- * and speed class (capped by road class), except arcs running against a one-way road. Tiles join
+ * and speed class (capped by road class), except arcs running against a one-way road and arcs of
+ * roads closed to cars. Tiles join
  * where boundary nodes share coordinates (the builder dedupes nodes by position).
  */
 export function addTileNetwork(b: GraphBuilder, nodes: Map<number, NodNode>, classes: Map<number, RoadClass>, tile: number, unitM = NOD_UNIT_M): void {
@@ -25,6 +30,7 @@ export function addTileNetwork(b: GraphBuilder, nodes: Map<number, NodNode>, cla
     for (const a of n.arcs) {
       if (!a.direct) continue;
       if (a.info & 0x08 && !a.forward) continue;
+      if (a.access & ACCESS_NO_CAR) continue;
       const t = nodes.get(a.target);
       if (!t) continue;
       const cls = classes.get(a.net) ?? 0;

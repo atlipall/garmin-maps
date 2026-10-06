@@ -2,7 +2,7 @@ import type { RawObject } from '../img/rgn';
 import type { Subdivision } from '../img/tre';
 import { objectName, type GarminMap, type MapTile } from '../map/garminMap';
 import { paddedSubdivisionBounds } from '../tiles/buildTile';
-import { metresBetween, UNITS_PER_DEG, type NodeIndex, type RoadGraph, type Route } from './graph';
+import { EDGE_FROAD, metresBetween, UNITS_PER_DEG, type NodeIndex, type RoadGraph, type Route } from './graph';
 import type { RoadSeg, Shaped } from './plan';
 import type { RoadClass, RoadClasses } from './roadClass';
 import { followRoad, type RoadLine, type RoadLines } from './snap';
@@ -25,7 +25,10 @@ export async function routeShape(g: RoadGraph, index: NodeIndex, route: Route, l
     const a: [number, number] = [g.nodeX[prev], g.nodeY[prev]];
     const b: [number, number] = [g.nodeX[v], g.nodeY[v]];
     const found = g.edgeNet[e] >= 0 ? await along(lines, index, g.edgeTile[e], g.edgeNet[e], a, v) : null;
-    segs.push({ start: coords.length - 1, name: found?.line.name ?? null, type: found?.line.type ?? 0, junction: isJunction(g, prev), seconds: g.edgeLen[e] / (g.edgeSpeed[e] / 3.6) });
+    segs.push({
+      start: coords.length - 1, name: found?.line.name ?? null, type: found?.line.type ?? 0, junction: isJunction(g, prev), seconds: g.edgeLen[e] / (g.edgeSpeed[e] / 3.6),
+      ...(g.edgeFlags[e] & EDGE_FROAD ? { highland: true } : {}),
+    });
     for (const p of (found?.path ?? [a, b]).slice(1)) coords.push(deg(p));
     prev = v;
   }

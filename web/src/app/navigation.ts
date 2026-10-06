@@ -144,7 +144,8 @@ export class Navigator {
     if (!segs?.length || i === undefined) return false;
     let k = 0;
     while (k + 1 < segs.length && segs[k + 1].start <= i) k++;
-    return roadClass(segs[k].type, segs[k].name) !== 0;
+    // Routes saved before segments carried `highland` go by the road's name and type.
+    return !!segs[k].highland || roadClass(segs[k].type, segs[k].name) !== 0;
   }
 
   get active(): boolean {

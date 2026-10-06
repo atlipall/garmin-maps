@@ -9,10 +9,13 @@ export const CLASS_CAP_KMH: readonly number[] = [Infinity, 40, 25, 20];
 
 const F_NAME = /^F\s?\d+/i;
 
-export function roadClass(type: number, name: string | null): RoadClass {
+/** A road's class from its type and its names: all of a road's labels, since some maps give the
+ *  road number as a second label ("Fjallabaksleið nyrðri" and "F208" on Freizeitkarte). */
+export function roadClass(type: number, names: string | null | readonly string[]): RoadClass {
   if (type === 0x13) return 3;
   if (type === 0x11) return 2;
-  if (type === 0x12 || (name !== null && F_NAME.test(name))) return 1;
+  const list = names === null ? [] : typeof names === 'string' ? [names] : names;
+  if (type === 0x12 || list.some((n) => F_NAME.test(n))) return 1;
   return 0;
 }
 

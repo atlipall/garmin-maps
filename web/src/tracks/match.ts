@@ -78,7 +78,7 @@ export async function matchTrack(coords: LonLat[], lines: RoadLines, times?: Arr
   runs.forEach((r, k) => {
     const end = runEnd(k);
     const trail = r.hit.key === 'trail';
-    segs.push({ start: r.start, name: r.hit.name, type: r.hit.type, junction: k > 0, seconds: 0, ...(trail ? { trail: true } : {}) });
+    segs.push({ start: r.start, name: r.hit.name, type: r.hit.type, junction: k > 0, seconds: 0, ...(trail ? { trail: true } : {}), ...(r.hit.cls ? { highland: true } : {}) });
     if (!trail) return;
     let last = cum[r.start];
     for (let i = r.start + 1; i < end; i++) {
