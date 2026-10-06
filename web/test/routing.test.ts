@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { canArrive, canLeave, EDGE_FROAD, fastestRoute, GraphBuilder, hasNormalRoad, NodeIndex, UNITS_PER_DEG } from '../src/routing/graph';
 import { ROUTE_PREFERENCE } from '../src/routing/plan';
-import { addTileNetwork } from '../src/routing/network';
+import { addTileNetwork, nodUnitM } from '../src/routing/network';
 import type { NodNode } from '../src/routing/nod';
 import { RoadClassCollector, roadClass } from '../src/routing/roadClass';
 
@@ -64,6 +64,18 @@ describe('NOD network', () => {
     expect(g.edgeRank[f.edges[0]]).toBe(2);
     expect(fastestRoute(g, bN, c, false)).toBeNull(); // F-roads not allowed
     expect(g.edgeTo.length).toBe(3); // a→b, b→c, c→b (indirect b→d skipped, b→a one-way)
+  });
+
+  test('the length unit doubles per step of header flag bits 2-4 (GPSmap.is 0x203, mkgmap OSM maps 0x227)', () => {
+    expect(nodUnitM(0x203)).toBeCloseTo(2.4, 9);
+    expect(nodUnitM(0x201)).toBeCloseTo(2.4, 9);
+    expect(nodUnitM(0x227)).toBeCloseTo(4.8, 9);
+    const b = new GraphBuilder();
+    addTileNetwork(b, tile(), new Map([[2, 1]]), 3, nodUnitM(0x227));
+    const g = b.build();
+    const idx = new NodeIndex(g);
+    const r = fastestRoute(g, idx.nearest(-21.0, 64.0, 100)!.node, idx.nearest(-20.95, 64.0, 100)!.node, true)!;
+    expect(r.metres).toBeCloseTo(4800, 3);
   });
 
   test('nearest(…, accept) skips nodes the predicate rejects; hasNormalRoad spots F-road-only nodes', () => {
