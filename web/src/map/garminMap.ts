@@ -5,7 +5,7 @@ import type { Chunk, RawObject, SubdivisionBytes } from '../img/rgn';
 import type { ByteSource } from '../img/source';
 import { hasData, parseTre, type Subdivision, type Tre } from '../img/tre';
 import { isFreizeitkarte, splitTypeSuffix } from './freizeitkarte';
-import { CONTOUR_LINE_TYPES, contourLabel, EARLY_ROADS_ZOOM, zoomBands } from './zoom';
+import { CONTOUR_LINE_TYPES, contourLabel, EARLY_ROADS_ZOOM, ROADS_LEVEL_ZOOM, zoomBands } from './zoom';
 
 export interface MapTile {
   id: string;
@@ -91,10 +91,11 @@ export class GarminMap {
   }
 
   /** The level whose roads a tile at zoom z shows, when it differs from `levelForZoom(z)`:
-   *  the next finer level, for the coarsest level's zooms from EARLY_ROADS_ZOOM on. */
+   *  ROADS_LEVEL_ZOOM's level, for zooms from EARLY_ROADS_ZOOM up to it. */
   roadLevelForZoom(z: number): number | undefined {
-    const levels = [...this.bands.keys()].sort((a, b) => a - b);
-    return z >= EARLY_ROADS_ZOOM && levels.length > 1 && this.levelForZoom(z) === levels[0] ? levels[1] : undefined;
+    if (z < EARLY_ROADS_ZOOM || z >= ROADS_LEVEL_ZOOM) return undefined;
+    const roads = this.levelForZoom(ROADS_LEVEL_ZOOM);
+    return roads !== this.levelForZoom(z) ? roads : undefined;
   }
 
   async readSubdivision(tile: MapTile, sd: Subdivision): Promise<SubdivisionBytes> {

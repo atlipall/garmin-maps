@@ -4,6 +4,7 @@ import { decodeSubdivision, type RawObject } from '../img/rgn';
 import { shiftOf, subdivisionBounds, type Subdivision } from '../img/tre';
 import { objectName, type GarminMap, type MapTile } from '../map/garminMap';
 import { CONTOUR_LINE_TYPES, isRoadType } from '../map/zoom';
+import { isFRoadName } from '../routing/roadClass';
 import { tileBounds } from './tileMath';
 
 export const EXTENT = 4096;
@@ -372,7 +373,9 @@ export async function buildTile(
     // With early roads, the tile's own level supplies everything but roads and the finer road
     // level supplies only roads (so each road is drawn once, from one level).
     const roadBits = map.roadLevelForZoom(z);
-    const isRoad = (o: RawObject) => o.kind === 'line' && isRoadType(o.type);
+    // Roads: the road types, and lines named as F-roads (maps that draw roads in their own types).
+    const isRoad = (tile: MapTile, o: RawObject) =>
+      o.kind === 'line' && (isRoadType(o.type) || (o.label !== 0 && !CONTOUR_LINE_TYPES.has(o.type) && isFRoadName(objectName(tile, o))));
     // Each subdivision is read in one of three views. 'all': the tile's own data. 'roads': only
     // the roads of the finer road level. 'labels': only named polygons, from around the tile, for
     // label context. The partial views are cached as their own (much smaller) entries, derived
@@ -404,7 +407,7 @@ export async function buildTile(
         ? await cache.get(e.key, decode)
         : await cache.get(`${e.key}|${e.view}`, async () =>
           e.view === 'roads'
-            ? (cache.peek(e.key) ?? (await decode())).filter(isRoad)
+            ? (cache.peek(e.key) ?? (await decode())).filter((o) => isRoad(e.tile, o))
               .map((o) => ({ ...o, coords: simplifyLine(o.coords, EARLY_ROAD_TOLERANCE) }))
             : (cache.peek(e.key) ?? (await decode())).filter(isNamedPolygon));
       resolved.set(e, objs);
@@ -415,7 +418,7 @@ export async function buildTile(
       for (const obj of resolved.get(e)!) {
         // With early roads, the tile's own level supplies everything but roads (the road level
         // supplies those, so each road is drawn once).
-        if (e.view === 'all' && roadBits !== undefined && isRoad(obj)) continue;
+        if (e.view === 'all' && roadBits !== undefined && isRoad(tile, obj)) continue;
         const bounds = coordsBounds(obj.coords);
         const inTile = intersects(bounds, query);
         const name = obj.kind === 'polygon' && intersects(bounds, labelQuery) ? objectName(tile, obj) : null;
