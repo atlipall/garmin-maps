@@ -322,7 +322,7 @@ export class LocationControl implements maplibregl.IControl {
       this.follow(true, true);
     } else {
       if (this.autoZoom && !this.state.paused) {
-        const z = zoomForSpeed(this.speed, this.followZoom);
+        const z = zoomForSpeed(this.speed, this.followZoom, at[1]);
         if (z !== this.followZoom) this.followZoom = this.targetZoom = z;
       }
       this.follow(false);
@@ -359,7 +359,7 @@ export class LocationControl implements maplibregl.IControl {
   /** Starts the automatic follow zoom at the zoom for the current speed, unless the map is already
    *  zoomed in closer than that (a closer zoom chosen by the user is kept, without auto zoom). */
   private startZoom(map: maplibregl.Map): void {
-    const z = zoomForSpeed(this.speed, null);
+    const z = zoomForSpeed(this.speed, null, this.fix?.at[1] ?? map.getCenter().lat);
     this.autoZoom = map.getZoom() <= z + 0.01;
     this.followZoom = this.autoZoom ? z : null;
     this.targetZoom = this.autoZoom ? z : this.targetZoom;
