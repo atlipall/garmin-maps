@@ -138,6 +138,22 @@ try {
   if (await page.evaluate(() => document.activeElement?.id !== 'saved-title')) fail('the Saved panel did not take focus');
   await page.keyboard.press('Escape');
   if (await page.evaluate(() => !document.querySelector('#saved').hidden)) fail('Escape did not close the Saved panel');
+  // Opening the menu puts the other panels and cards away: a panel closes, a place card closes.
+  await page.click('#menu-button');
+  await page.click('#saved-open');
+  await page.click('#menu-button');
+  if (await page.evaluate(() => !document.querySelector('#saved').hidden || document.querySelector('#menu').hidden)) fail('opening the menu did not close the Saved panel');
+  await page.keyboard.press('Escape');
+  if (await page.$eval('#topbar', (e) => e.classList.contains('collapsed'))) await page.click('#search-open');
+  await page.focus('#search');
+  await page.type('#search', 'Hekla');
+  await page.waitForFunction(() => document.querySelectorAll('#results li[role="option"]').length > 0);
+  await page.click('#results li[role="option"]');
+  await page.waitForFunction(() => !document.querySelector('#route-card').hidden);
+  await page.click('#menu-button');
+  if (await page.evaluate(() => !document.querySelector('#route-card').hidden)) fail('opening the menu did not close the place card');
+  await page.keyboard.press('Escape');
+  console.log('menu closes other dialogs ok');
   console.log('keyboard ok:', kbTitle);
 
   // 3b. location: a simulated GPS fix at Landmannalaugar; follow, heading up, pause on drag, height
@@ -873,6 +889,9 @@ try {
   }
   const backup = JSON.parse(backupText || '{}');
   if (backup.saved?.length !== 2 || backup.tracks?.length !== 2) fail(`backup file: ${backupText.slice(0, 200)}`);
+  // Opening the menu for the sync panel closed the Saved panel: open it again.
+  await page.click('#menu-button');
+  await page.click('#saved-open');
   for (const left of [1, 0]) {
     await page.click('#saved-list li:first-child .track-delete');
     await page.click('#saved-list li:first-child .track-delete');

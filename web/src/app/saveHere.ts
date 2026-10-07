@@ -90,7 +90,8 @@ export class SaveHere implements maplibregl.IControl {
     this.input.select();
   }
 
-  private close(): void {
+  /** Puts the card away without saving. */
+  close(): void {
     this.at = null;
     this.card.hidden = true;
     document.body.classList.remove('saving-here');

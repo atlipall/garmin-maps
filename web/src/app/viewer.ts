@@ -14,6 +14,7 @@ import { featureNameAt } from '../map/featureName';
 import { conventionsFor } from '../map/conventions';
 import { SaveHere } from './saveHere';
 import { TrackCard } from './trackCard';
+import { Dialogs } from '../ui/dialogs';
 import { TrackNav } from './trackNav';
 import { PerfStats } from '../ui/perf';
 import { browserScreenAwake } from '../location/wakeLock';
@@ -214,7 +215,10 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
   $('topbar').hidden = false;
   collapsibleSearch(map);
   $('menu-button').hidden = false;
+  // Opening the menu puts every other panel and card away (each registers how, below).
+  const dialogs = new Dialogs();
   const setMenu = (open: boolean) => {
+    if (open) dialogs.closeAll();
     $('menu').hidden = !open;
     $('menu-button').setAttribute('aria-expanded', String(open));
   };
@@ -348,6 +352,8 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     tracks.onOpen = (t) => trackCard.open(t);
     tracks.onRenamed = (t) => trackCard.renamed(t);
     app.trackCard = trackCard;
+    dialogs.add('tracks', () => tracks.show(false));
+    dialogs.add('track-card', () => trackCard.close());
     let trip: TripRecorder | null = null;
     locate.onFix = (at, accuracy) => {
       navigator.fix(at, accuracy);
@@ -431,6 +437,14 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       focusPanel('diag-panel');
     };
     $('diag-close').onclick = () => diagnostics.show(false);
+    dialogs.add('saved', () => saved.show(false));
+    dialogs.add('sync', () => ($('sync-panel').hidden = true));
+    dialogs.add('diagnostics', () => diagnostics.show(false));
+    dialogs.add('route', () => routePlanner.putAway());
+    if (saveHere) {
+      const here = saveHere;
+      dialogs.add('save-here', () => here.close());
+    }
     $('saved-open').onclick = () => {
       setMenu(false);
       saved.show(true);
@@ -445,7 +459,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
       places = index.places;
       app.search = (q) => index.search(q);
       app.placesReady = true;
-      wireSearch(map, index, searchFrom, (d) => app.routePlanner?.pick(d), () => app.routePlanner?.clearPlace());
+      wireSearch(map, index, searchFrom, (d) => app.routePlanner?.pick(d), () => app.routePlanner?.clearPlace(), dialogs);
       const input = $<HTMLInputElement>('search');
       input.placeholder = 'Search places';
       input.disabled = false;
@@ -477,6 +491,7 @@ function wireSearch(
   searchFrom: () => { at: [number, number]; gps: boolean },
   onPick: (dest: { name: string | null; lon: number; lat: number }) => void,
   onClear: () => void,
+  dialogs: Dialogs,
 ): void {
   const towns = townsOf(index.places);
   const input = $<HTMLInputElement>('search');
@@ -560,18 +575,27 @@ function wireSearch(
     clearTimeout(timer);
     timer = window.setTimeout(render, 120);
   });
-  // Clear the query, results and result pin, but keep the keyboard up for a new search.
-  clear.addEventListener('pointerdown', (ev) => ev.preventDefault()); // don't steal focus from the input
-  clear.onclick = () => {
+  // Clear the query, results and result pin.
+  const reset = () => {
     clearTimeout(timer);
     input.value = '';
     clear.hidden = true;
     list.replaceChildren();
     showList();
     onClear();
+  };
+  // The ×: keep the keyboard up for a new search.
+  clear.addEventListener('pointerdown', (ev) => ev.preventDefault()); // don't steal focus from the input
+  clear.onclick = () => {
+    reset();
     input.focus();
     syncHint();
   };
+  // Put away for the menu: the search box folds back to its magnifier.
+  dialogs.add('search', () => {
+    if (input.value) reset();
+    input.blur();
+  });
 }
 
 /** The search bar is a magnifier until tapped; it collapses again when left empty (focus moves

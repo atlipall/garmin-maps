@@ -288,6 +288,13 @@ export class RoutePlanner {
     if (!this.started && !this.shown && !this.planning) this.clear();
   }
 
+  /** Out of the way for another dialog (the menu): a place card closes, a route's card folds up. */
+  putAway(): void {
+    if ($('route-card').hidden) return;
+    if (!this.started && !this.shown && !this.planning) this.clear();
+    else this.setMinimized(true);
+  }
+
   /** The route shown, for navigation. */
   navRoute(): NavRoute | null {
     if (!this.last || !this.dest) return null;
