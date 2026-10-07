@@ -308,7 +308,8 @@
       #route-card.min .arrive-part { display: none; }
       .start-pin { cursor: default; filter: drop-shadow(0 1px 2px #0005); }
       /* The menu at a place picked while a route is shown (src/app/placeMenu.ts). */
-      .place-menu .maplibregl-popup-content { display: grid; gap: 6px; min-width: 200px; padding: 10px; border-radius: 14px; box-shadow: 0 6px 22px #1e283c40; }
+      .place-menu .maplibregl-popup-content { min-width: 200px; padding: 10px; border-radius: 14px; box-shadow: 0 6px 22px #1e283c40; }
+      .place-menu [role=menu] { display: grid; gap: 8px; }
       #place-menu-title { padding: 2px 4px 4px; font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
       .place-menu button { width: 100%; min-height: 44px; padding: 0 14px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 600; text-align: left; cursor: pointer; }
       .place-menu button:first-of-type { border-color: var(--accent); background: var(--accent); color: #fff; }

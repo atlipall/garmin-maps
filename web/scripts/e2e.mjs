@@ -628,6 +628,8 @@ try {
   let cs = await confirmState();
   if (cs.confirm || cs.menu.join('|') !== 'Add as waypoint|Save as pin|New route here' || !cs.menuTitle || cs.drawn !== drawnBefore || cs.title !== 'To Landmannalaugar' || cs.markers !== markersWithRoute + 1) fail(`pin over a route: ${JSON.stringify(cs)}`);
   await page.screenshot({ path: `${OUT}place-menu.png` });
+  const menuGap = await page.evaluate(() => { const [a, b] = document.querySelectorAll('.place-menu button'); return b.getBoundingClientRect().top - a.getBoundingClientRect().bottom; });
+  if (menuGap < 6) fail(`place menu buttons ${menuGap} px apart`);
   // A place from search gets the same menu, titled with its name (replacing the pin's).
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Hekla', lon: -19.67, lat: 63.99 }));
   cs = await confirmState();
