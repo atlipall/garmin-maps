@@ -724,6 +724,11 @@ try {
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Hekla', lon: -19.67, lat: 63.99 }));
   await page.click('#route-save');
   if (await page.$eval('#route-save-name', (e) => e.value) !== 'Hekla') fail('save name not prefilled with the place name');
+  // A tap on the suggested name selects all of it (not just a caret where the tap landed).
+  await page.$eval('#route-save-name', (e) => e.setSelectionRange(2, 2));
+  await page.click('#route-save-name');
+  const sel = await page.$eval('#route-save-name', (e) => [e.selectionStart, e.selectionEnd]);
+  if (sel[0] !== 0 || sel[1] !== 5) fail(`a tap on the suggested name selected ${sel}, not all of it`);
   await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-19.67, 63.99], zoom: 11 }); m.once('idle', r); }));
   await page.screenshot({ path: `${OUT}save-form.png` });
   await page.$eval('#route-save-name', (e) => { e.value = 'Hekla view'; });

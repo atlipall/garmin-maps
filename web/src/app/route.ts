@@ -13,6 +13,7 @@ import { newId, type RouteOk, type Saved } from '../saved/saved';
 import { routeAsTrack } from '../gpx/fromRoute';
 import type { Gpx } from '../gpx/parse';
 import type { TrackRoute } from '../gpx/store';
+import { suggestName } from '../ui/rename';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 /** Hold time for a long press: below iOS's own ~0.5 s long-press gestures (selection loupe, callout). */
@@ -482,7 +483,8 @@ export class RoutePlanner {
     if (!open || !this.dest) return;
     const place = this.dest.name ?? this.dest.near ?? coordsText(this.dest);
     const input = $<HTMLInputElement>('route-save-name');
-    input.value = input.placeholder = this.last ? `To ${place}` : this.dest.name ?? this.dest.near ?? `Pin ${place}`;
+    input.placeholder = this.last ? `To ${place}` : this.dest.name ?? this.dest.near ?? `Pin ${place}`;
+    suggestName(input, input.placeholder);
     input.focus();
     input.select();
   }

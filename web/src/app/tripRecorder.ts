@@ -2,7 +2,7 @@ import type * as maplibregl from 'maplibre-gl';
 import { storageName } from '../channel';
 import { formatStats, summarize } from '../gpx/stats';
 import type { StoredTrack } from '../gpx/store';
-import { NAME_MAX } from '../ui/rename';
+import { NAME_MAX, suggestName } from '../ui/rename';
 import { parseTrip, tripGpx, tripId, tripName, type Trip } from '../tracks/trip';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -208,7 +208,7 @@ export class TripRecorder implements maplibregl.IControl {
   private openCard(t: StoredTrack, trip: Trip): void {
     this.saved = t;
     const input = $<HTMLInputElement>('trip-name');
-    input.value = t.name;
+    suggestName(input, t.name);
     input.maxLength = NAME_MAX;
     $('trip-sub').textContent = [formatStats(summarize(t.gpx)), tripName(trip.start, trip.end).replace(/^Drive [^,]+, /, '')].filter(Boolean).join(' · ');
     this.resetDiscard();

@@ -2,6 +2,7 @@ import type * as maplibregl from 'maplibre-gl';
 import { newId, type SavedPin } from '../saved/saved';
 import type { Fix } from './location';
 import { coordsText } from './route';
+import { suggestName } from '../ui/rename';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -83,7 +84,8 @@ export class SaveHere implements maplibregl.IControl {
       if (this.at === fix && h !== null) sub.textContent = `${Math.round(h)} m · ${where}`;
     });
     $('here-error').textContent = '';
-    this.input.value = this.input.placeholder = this.name(fix);
+    this.input.placeholder = this.name(fix);
+    suggestName(this.input, this.input.placeholder);
     this.card.hidden = false;
     document.body.classList.add('saving-here');
     this.input.focus();

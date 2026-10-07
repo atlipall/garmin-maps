@@ -12,6 +12,33 @@ export function renameButton(name: string, onClick: () => void): HTMLButtonEleme
   return b;
 }
 
+/** The parts of a text field `suggestName` uses (a real input, or a stand-in in tests). */
+export type NameField = Pick<HTMLInputElement, 'value' | 'setSelectionRange' | 'addEventListener'>;
+
+const suggested = new WeakMap<NameField, string>();
+
+/**
+ * Fills a name field with a suggested name. While the name is unchanged, focusing or tapping the
+ * field selects all of it, so one press of delete (or just typing) replaces it; a tap would
+ * otherwise only put the caret where it landed. Once edited, the field behaves as usual.
+ */
+export function suggestName(input: NameField, name: string): void {
+  input.value = name;
+  if (!suggested.has(input)) {
+    const unchanged = () => input.value === suggested.get(input);
+    const selectIfSuggested = () => {
+      if (unchanged()) input.setSelectionRange(0, input.value.length);
+    };
+    // After the tap has put its caret (click), and after focus settles (iOS moves the selection
+    // once focus handlers have run). The tap's own caret placement, which the browser may finish
+    // after the click, is cancelled at mouseup.
+    input.addEventListener('mouseup', (e) => unchanged() && e.preventDefault());
+    input.addEventListener('click', selectIfSuggested);
+    input.addEventListener('focus', () => setTimeout(selectIfSuggested, 0));
+  }
+  suggested.set(input, name);
+}
+
 /** The longest name kept (a pasted paragraph is cut there). */
 export const NAME_MAX = 80;
 
@@ -25,7 +52,7 @@ export function editName(row: HTMLElement, current: string, save: (name: string)
   form.className = 'rename-form';
   const input = document.createElement('input');
   input.type = 'text';
-  input.value = current;
+  suggestName(input, current);
   input.maxLength = NAME_MAX;
   input.autocomplete = 'off';
   input.setAttribute('aria-label', 'Name');
