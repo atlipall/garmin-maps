@@ -307,12 +307,17 @@
       #route-card.min.routed #route-sub { font-size: 15px; color: #c9d2e3; }
       #route-card.min .arrive-part { display: none; }
       .start-pin { cursor: default; filter: drop-shadow(0 1px 2px #0005); }
+      /* The menu at a place picked while a route is shown (src/app/placeMenu.ts). */
+      .place-menu .maplibregl-popup-content { display: grid; gap: 6px; min-width: 200px; padding: 10px; border-radius: 14px; box-shadow: 0 6px 22px #1e283c40; }
+      #place-menu-title { padding: 2px 4px 4px; font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+      .place-menu button { width: 100%; min-height: 44px; padding: 0 14px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 600; text-align: left; cursor: pointer; }
+      .place-menu button:first-of-type { border-color: var(--accent); background: var(--accent); color: #fff; }
       /* Car-sized controls: in the Android app on a big screen (a head unit, read at arm's length
          while driving), the controls and cards over the map are drawn 1.5 times bigger (buttons
          66 px; Android Auto asks for 76 dp). The map itself isn't scaled. */
       @media (min-width: 600px) and (min-height: 600px) {
         body.android-app :is(#topbar, #menu-button, #menu, #badge, #update, #tracks, #saved, #sync-panel, #diag-panel, #here-card, #here-toast, #track-card, #trip-card, #trip-pill, #trip-note, #route-card, #nav-banner, #nav-bottom, #import .card),
-        body.android-app #map :is(.maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left) { zoom: 1.5; }
+        body.android-app #map :is(.maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left, .place-menu .maplibregl-popup-content) { zoom: 1.5; }
       }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {
@@ -486,7 +491,7 @@
         </div>
         <div id="route-off"></div>
         <div id="route-msg" role="status"></div>
-        <div id="route-confirm" role="alertdialog" aria-labelledby="route-confirm-text" hidden><div id="route-confirm-text"></div><button id="route-confirm-via" type="button" class="primary" hidden>Add as waypoint</button><button id="route-confirm-yes" type="button" class="primary">Clear route</button><button id="route-confirm-no" type="button">Keep route</button></div>
+        <div id="route-confirm" role="alertdialog" aria-labelledby="route-confirm-text" hidden><div id="route-confirm-text"></div><button id="route-confirm-yes" type="button" class="primary">Clear route</button><button id="route-confirm-no" type="button">Keep route</button></div>
         <button id="route-options-toggle" type="button" aria-expanded="false" aria-controls="route-options" hidden><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" fill="none" stroke="#5b6475" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="#5b6475" stroke-width="2"/><circle cx="10" cy="17" r="2.2" fill="none" stroke="#5b6475" stroke-width="2"/></svg><span class="grow">Route options</span><span id="route-options-sum"></span><svg class="chev" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="#5b6475" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <div id="route-options" hidden>
           <label id="route-switch" hidden><input id="route-froads" type="checkbox" checked /> Allow F-roads and tracks</label>

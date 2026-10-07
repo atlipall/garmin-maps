@@ -14,6 +14,7 @@ import { routeAsTrack } from '../gpx/fromRoute';
 import type { Gpx } from '../gpx/parse';
 import type { TrackRoute } from '../gpx/store';
 import { suggestName } from '../ui/rename';
+import { PlaceMenu, type PlaceMenuItem } from './placeMenu';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 /** Hold time for a long press: below iOS's own ~0.5 s long-press gestures (selection loupe, callout). */
@@ -49,6 +50,7 @@ function startPinElement(): HTMLElement {
 /** Destination card, route panel and route line (route planning without guidance). */
 export class RoutePlanner {
   private pin: maplibregl.Marker | null = null;
+  private readonly placeMenu: PlaceMenu;
   private dest: Place | null = null;
   /** Waypoints between the start and the destination, in route order. */
   private vias: Place[] = [];
@@ -66,7 +68,7 @@ export class RoutePlanner {
   private planning = false;
   /** A question in the card ("clear the current route?", "add as a waypoint?"): what its buttons do,
    *  and the grey marker of the new place it's about (none when it's the × asking). */
-  private pending: { yes: () => void; via: (() => void) | null; marker: maplibregl.Marker | null } | null = null;
+  private pending: { yes: () => void } | null = null;
   /** "Use my location" is waiting for a first fix (a switch change keeps waiting). */
   private waiting = false;
   private seq = 0;
@@ -103,6 +105,7 @@ export class RoutePlanner {
     private readonly searchFrom: () => { at: [number, number]; gps: boolean },
     private readonly useLocation: () => void,
   ) {
+    this.placeMenu = new PlaceMenu(map);
     map.addSource('route', { type: 'geojson', data: EMPTY });
     const kind = (k: string): maplibregl.FilterSpecification => ['==', ['get', 'kind'], k];
     map.addLayer({ id: 'route-casing', type: 'line', source: 'route', filter: kind('route'), layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 5, 15, 11] } });
@@ -119,7 +122,7 @@ export class RoutePlanner {
     $('route-go').onclick = () => void this.route();
     // With a route on the map (or on its way), × asks first; a card with just a place closes.
     $('route-close').onclick = () => {
-      if (this.shown || this.planning) this.ask('Clear the current route?', null, () => this.clear());
+      if (this.shown || this.planning) this.ask('Clear the current route?', () => this.clear());
       else this.clear();
     };
     $('route-min').onclick = (e) => {
@@ -133,11 +136,6 @@ export class RoutePlanner {
       const yes = this.pending?.yes;
       this.dropPending();
       yes?.();
-    };
-    $('route-confirm-via').onclick = () => {
-      const via = this.pending?.via;
-      this.dropPending();
-      via?.();
     };
     $('route-confirm-no').onclick = () => this.dropPending();
     $<HTMLInputElement>('route-prefer').checked = this.prefer;
@@ -188,12 +186,14 @@ export class RoutePlanner {
       const via = map.getLayer('route-via') ? map.queryRenderedFeatures(e.point, { layers: ['route-via'] })[0] : undefined;
       if (via) {
         const n = Number(via.properties.n);
-        this.ask(`Remove waypoint ${n}?`, null, () => this.removeVia(n - 1), { yes: 'Remove', no: 'Keep' });
+        this.ask(`Remove waypoint ${n}?`, () => this.removeVia(n - 1), { yes: 'Remove', no: 'Keep' });
         return;
       }
       // A tap on a saved star opens its card (the Saved panel handles it).
       if (map.getLayer('saved-pins') && map.queryRenderedFeatures(e.point, { layers: ['saved-pins'] }).length) return;
       if (pressed) pressed = false;
+      // A tap elsewhere puts the place menu away (and does nothing else).
+      else if (this.placeMenu.isOpen) this.placeMenu.close();
       else if (this.choosing) this.setStart([e.lngLat.lng, e.lngLat.lat]);
       else if (this.dest && !this.started) this.clear();
     });
@@ -248,12 +248,22 @@ export class RoutePlanner {
   /** Shows the destination card for a place (from search or a long press). */
   pick(dest: Place): void {
     // With a route on the map (or on its way), a new place becomes a waypoint or a new route.
+    // The choice is a menu at the place; the route card stays as it is.
     if (this.shown || this.planning) {
       const marker = new maplibregl.Marker({ color: '#8a8f98' }).setLngLat([dest.lon, dest.lat]).addTo(this.map);
-      this.ask(`Add ${dest.name ?? dest.near ?? 'this pin'} to the route as a waypoint, or start a new route?`, marker, () => {
-        this.clearRoute();
-        this.pick(dest);
-      }, { yes: 'New route', no: 'Cancel', via: () => this.addVia(dest) });
+      const then = (fn: () => void) => () => {
+        marker.remove();
+        fn();
+      };
+      const items: PlaceMenuItem[] = [
+        { id: 'place-menu-via', label: 'Add as waypoint', run: then(() => this.addVia(dest)) },
+        ...(this.onSave ? [{ id: 'place-menu-pin', label: 'Save as pin', run: then(() => void this.savePin(dest)) }] : []),
+        { id: 'place-menu-new', label: 'New route here', run: then(() => {
+          this.clearRoute();
+          this.pick(dest);
+        }) },
+      ];
+      this.placeMenu.open([dest.lon, dest.lat], dest.name ?? dest.near ?? coordsText(dest), items, () => marker.remove());
       return;
     }
     this.dropPending();
@@ -291,6 +301,7 @@ export class RoutePlanner {
 
   /** Out of the way for another dialog (the menu): a place card closes, a route's card folds up. */
   putAway(): void {
+    this.placeMenu.close();
     if ($('route-card').hidden) return;
     if (!this.started && !this.shown && !this.planning) this.clear();
     else this.setMinimized(true);
@@ -333,18 +344,15 @@ export class RoutePlanner {
   }
 
   /** Asks `question` in the card: the `yes` button (label `labels.yes`, "Clear route" by default)
-   *  runs `yes`; with `labels.via`, an "Add as waypoint" button first. `marker`: the new place's grey
-   *  pin. The `no` button ("Keep route") just closes the question. */
-  private ask(question: string, marker: maplibregl.Marker | null, yes: () => void, labels: { yes?: string; no?: string; via?: () => void } = {}): void {
+   *  runs `yes`; the `no` button ("Keep route") just closes the question. */
+  private ask(question: string, yes: () => void, labels: { yes?: string; no?: string } = {}): void {
     this.dropPending();
-    this.pending = { yes, via: labels.via ?? null, marker };
+    this.pending = { yes };
     $('route-confirm-text').textContent = question;
     $('route-confirm-yes').textContent = labels.yes ?? 'Clear route';
     $('route-confirm-no').textContent = labels.no ?? 'Keep route';
-    $('route-confirm-via').hidden = !labels.via;
-    $('route-confirm-yes').classList.toggle('primary', !labels.via);
     // Keyboard and screen readers: the question takes focus (an alertdialog, read out).
-    queueMicrotask(() => (labels.via ? $('route-confirm-via') : $('route-confirm-yes')).focus({ preventScroll: true }));
+    queueMicrotask(() => $('route-confirm-yes').focus({ preventScroll: true }));
     $('route-confirm').hidden = false;
     $('route-card').classList.add('asking');
     $('route-card').hidden = false;
@@ -402,15 +410,15 @@ export class RoutePlanner {
     void this.route();
   }
 
-  /** Closes the "clear the route?" question and removes its grey marker. */
+  /** Closes the card's question. */
   private dropPending(): void {
-    this.pending?.marker?.remove();
     this.pending = null;
     $('route-confirm').hidden = true;
     $('route-card').classList.remove('asking');
   }
 
   clear(): void {
+    this.placeMenu.close();
     this.dropPending();
     this.clearRoute();
     this.pin?.remove();
@@ -503,6 +511,15 @@ export class RoutePlanner {
       this.saved = true;
       this.showSaveForm(false);
       this.showSave();
+    } catch (err) {
+      this.setInfo($('route-info').textContent ?? '', $('route-off').textContent ?? '', `Couldn't save: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** Saves a place as a pin under its name (renamed later in Saved places), leaving the route. */
+  private async savePin(p: Place): Promise<void> {
+    try {
+      await this.onSave?.({ id: newId(), name: p.name ?? p.near ?? `Pin ${coordsText(p)}`, added: Date.now(), kind: 'pin', lon: p.lon, lat: p.lat });
     } catch (err) {
       this.setInfo($('route-info').textContent ?? '', $('route-off').textContent ?? '', `Couldn't save: ${err instanceof Error ? err.message : String(err)}`);
     }

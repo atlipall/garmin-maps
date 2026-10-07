@@ -556,10 +556,10 @@ try {
   await page.click('#nav-end');
   nav = await navState();
   if (nav.on || !nav.card) fail(`End: ${JSON.stringify(nav)}`);
-  // Navigating again: a dropped pin's "New route" ends navigation and shows the new place's card.
+  // Navigating again: a dropped pin's "New route here" ends navigation and shows the new place's card.
   await page.click('#route-start');
   await page.mouse.click(600, 500, { button: 'right' });
-  await page.click('#route-confirm-yes');
+  await page.click('#place-menu-new');
   nav = await navState();
   const newCard = await page.$eval('#route-title', (e) => e.textContent);
   if (nav.on || !nav.card || !/^Dropped pin/.test(newCard)) fail(`New route while navigating: ${JSON.stringify({ ...nav, newCard })}`);
@@ -617,26 +617,34 @@ try {
   console.log('prefer F-roads ok:', await page.$eval('#route-info', (e) => e.textContent));
   await openOptions();
   await page.click('#route-prefer'); // off again (the setting is remembered)
-  // With a route shown, a new pin asks first: Keep route leaves it; Clear route drops the pin.
-  const confirmState = () => page.evaluate(() => ({ confirm: !document.querySelector('#route-confirm').hidden, drawn: window.__app.map.getStyle().sources.route.data.features.length, title: document.querySelector('#route-title').textContent, markers: document.querySelectorAll('.maplibregl-marker').length }));
+  // With a route shown, a new pin opens a menu at the place (not a question in the route card):
+  // Add as waypoint, Save as pin, New route here; a tap elsewhere closes it and drops the pin.
+  const confirmState = () => page.evaluate(() => ({ confirm: !document.querySelector('#route-confirm').hidden, menu: [...document.querySelectorAll('.place-menu button')].map((b) => b.textContent), menuTitle: document.querySelector('#place-menu-title')?.textContent ?? null, drawn: window.__app.map.getStyle().sources.route.data.features.length, title: document.querySelector('#route-title').textContent, markers: document.querySelectorAll('.maplibregl-marker').length }));
   await page.waitForFunction(() => /km · /.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 });
   const drawnBefore = (await confirmState()).drawn;
   if (!drawnBefore) fail('no route drawn before the pin-over-route check');
   const markersWithRoute = await markers();
   await page.mouse.click(600, 500, { button: 'right' });
   let cs = await confirmState();
-  const asked = await page.evaluate(() => ({ q: document.querySelector('#route-confirm-text').textContent, via: !document.querySelector('#route-confirm-via').hidden, yes: document.querySelector('#route-confirm-yes').textContent, no: document.querySelector('#route-confirm-no').textContent }));
-  if (!/^Add .+ to the route as a waypoint, or start a new route\?$/.test(asked.q) || !asked.via || asked.yes !== 'New route' || asked.no !== 'Cancel') fail(`pin over a route asks: ${JSON.stringify(asked)}`);
+  if (cs.confirm || cs.menu.join('|') !== 'Add as waypoint|Save as pin|New route here' || !cs.menuTitle || cs.drawn !== drawnBefore || cs.title !== 'To Landmannalaugar' || cs.markers !== markersWithRoute + 1) fail(`pin over a route: ${JSON.stringify(cs)}`);
+  await page.screenshot({ path: `${OUT}place-menu.png` });
+  // A place from search gets the same menu, titled with its name (replacing the pin's).
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Hekla', lon: -19.67, lat: 63.99 }));
-  const named = await page.$eval('#route-confirm-text', (e) => e.textContent);
-  if (named !== 'Add Hekla to the route as a waypoint, or start a new route?') fail(`question for a named place: ${named}`);
-  await page.click('#route-confirm-no');
+  cs = await confirmState();
+  if (cs.menuTitle !== 'Hekla' || cs.markers !== markersWithRoute + 1) fail(`menu for a named place: ${JSON.stringify(cs)}`);
+  // A tap elsewhere on the map closes it, and only that: the route and its card stay.
+  await page.mouse.click(300, 300);
+  cs = await confirmState();
+  if (cs.menu.length || cs.drawn !== drawnBefore || cs.title !== 'To Landmannalaugar' || cs.markers !== markersWithRoute) fail(`tap away from the place menu: ${JSON.stringify(cs)}`);
+  // Save as pin: a saved place, and the route as it was.
+  const pinsBefore = await page.evaluate(() => window.__app.saved.count);
   await page.mouse.click(600, 500, { button: 'right' });
+  await page.click('#place-menu-pin');
+  await page.waitForFunction((n) => window.__app.saved.count === n + 1, { timeout: 5_000 }, pinsBefore).catch(() => fail('Save as pin saved nothing'));
   cs = await confirmState();
-  if (!cs.confirm || cs.drawn !== drawnBefore || cs.title !== 'To Landmannalaugar' || cs.markers !== markersWithRoute + 1) fail(`pin over a route: ${JSON.stringify(cs)}`);
-  await page.click('#route-confirm-no');
-  cs = await confirmState();
-  if (cs.confirm || cs.drawn !== drawnBefore || cs.markers !== markersWithRoute) fail(`Cancel: ${JSON.stringify(cs)}`);
+  if (cs.menu.length || cs.drawn !== drawnBefore || cs.title !== 'To Landmannalaugar' || cs.markers !== markersWithRoute) fail(`after Save as pin: ${JSON.stringify(cs)}`);
+  // Taken out again, so the saved places later steps count are as before.
+  await page.evaluate(() => window.__app.saved.delete(window.__app.saved.items.at(-1).id));
   // Add as waypoint: Hella, off the direct way; the route goes through it and gets longer. A tap on
   // its numbered circle removes it again.
   const direct = await page.$eval('#route-info', (e) => e.textContent);
@@ -645,7 +653,7 @@ try {
   await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-20.39, 63.845], zoom: 12 }); m.once('idle', r); }));
   const viewBefore = await page.evaluate(() => { const m = window.__app.map; return [m.getCenter().lng, m.getCenter().lat, m.getZoom()]; });
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Near Hella', lon: -20.397, lat: 63.845 }));
-  await page.click('#route-confirm-via');
+  await page.click('#place-menu-via');
   await page.waitForFunction(() => /via 1 waypoint$/.test(document.querySelector('#route-info')?.textContent ?? ''), { timeout: 60_000 }).catch(async () => fail(`no route via the waypoint: ${await page.$eval('#route-msg', (e) => e.textContent)}`));
   const viaInfo = await page.$eval('#route-info', (e) => e.textContent);
   await new Promise((r) => setTimeout(r, 1000));
@@ -675,11 +683,11 @@ try {
   await page.waitForFunction((d) => document.querySelector('#route-info')?.textContent === d, { timeout: 60_000 }, direct).catch(async () => fail(`route after removing the waypoint: ${await page.$eval('#route-info', (e) => e.textContent)} (expected ${direct})`));
   if (await page.evaluate(() => window.__app.map.getStyle().sources['route-vias'].data.features.length)) fail('waypoint circle still shown after removing it');
   console.log('waypoint ok:', viaInfo, '→', direct, `(snapped ${Math.round(snapped.moved)} m onto the road)`);
-  // New route: the pin replaces the route.
+  // New route here: the pin replaces the route.
   await page.mouse.click(600, 500, { button: 'right' });
-  await page.click('#route-confirm-yes');
+  await page.click('#place-menu-new');
   cs = await confirmState();
-  if (cs.confirm || cs.drawn !== 0 || !/^Dropped pin/.test(cs.title) || await page.$eval('#route-go', (e) => e.hidden)) fail(`New route: ${JSON.stringify(cs)}`);
+  if (cs.confirm || cs.menu.length || cs.drawn !== 0 || !/^Dropped pin/.test(cs.title) || await page.$eval('#route-go', (e) => e.hidden)) fail(`New route: ${JSON.stringify(cs)}`);
   console.log('pin-over-route confirm ok');
   // A destination 1.5 km from the nearest road (a highland spot from a user report): a dashed
   // off-road leg and a "+ … off-road at the end" line.
