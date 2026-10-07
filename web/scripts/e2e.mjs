@@ -293,6 +293,8 @@ try {
   const version = await page.$eval('#app-version', (e) => e.textContent);
   if (!/^Version [0-9a-f]{7} · \d{1,2} \w+ \d{4}, \d\d:\d\d$/.test(version)) fail(`menu version: ${version}`);
   console.log('version ok:', version);
+  const browserSize = await page.$eval('#menu-button', (e) => Math.round(e.getBoundingClientRect().width));
+  if (browserSize !== 44) fail(`menu button in a browser: ${browserSize} px, not 44`);
   await page.click('#tracks-open');
   await (await page.$('#gpx-file')).uploadFile(gpxPath, badPath);
   await page.waitForFunction(() => document.querySelectorAll('#track-list .track').length === 1, { timeout: 10_000 });
@@ -1219,6 +1221,12 @@ try {
   await page.reload();
   await waitReady();
   await page.waitForSelector('#map .trip-record-button.recording', { timeout: 10_000 }).catch(() => fail('recording state lost on reload'));
+  // In the Android app on a big screen (a head unit) the controls and cards are drawn 1.5 times
+  // bigger (the map controls' own size depends on a touch screen, which this Chrome isn't).
+  const carZoom = await page.evaluate(() => ['#menu-button', '#map .trip-record-button', '#map .locate-button', '#trip-pill'].map((q) => document.querySelector(q).currentCSSZoom));
+  const menuButton = await page.$eval('#menu-button', (e) => Math.round(e.getBoundingClientRect().width));
+  if (carZoom.some((z) => z !== 1.5) || menuButton !== 66) fail(`car-sized controls in the Android app on a big screen: zoom ${carZoom}, menu button ${menuButton} px`);
+  console.log('car-sized controls ok');
   await page.click('#map .trip-record-button');
   const tripStopped = await page.evaluate(() => ({ intent: window.__app.lastIntent, pill: !document.querySelector('#trip-pill').hidden, line: window.__app.map.getStyle().sources['trip-live'].data.features.length }));
   if (tripStopped.intent !== appLink('stop') || tripStopped.pill || tripStopped.line) fail(`stop: ${JSON.stringify(tripStopped)}`);

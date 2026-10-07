@@ -1,11 +1,14 @@
 import { BUILD } from '../buildInfo';
 import { hasStoredData, loadStored, type Stored } from '../storage/store';
+import { androidApp } from './diagnostics';
 import { showImport } from './importScreen';
 import { showUpdateNotice } from './updateNotice';
 import { browserEnv, UpdateWatcher } from './updates';
 import { startViewer } from './viewer';
 
 export async function startApp(): Promise<void> {
+  // In the Android app (made for car head units) a big screen gets car-sized controls (index.html).
+  document.body.classList.toggle('android-app', androidApp() !== null);
   if ('serviceWorker' in navigator && import.meta.env.PROD) {
     void new UpdateWatcher(BUILD, showUpdateNotice, browserEnv(new URL('./sw.js', document.baseURI))).start();
   }
