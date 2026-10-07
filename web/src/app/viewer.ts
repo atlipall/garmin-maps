@@ -69,7 +69,12 @@ function tileWorkerCount(): number {
   return Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
 }
 
-export async function startViewer(stored: Stored): Promise<void> {
+export interface ViewerOptions {
+  /** Loads the newest version of the app from the server (the Android app's menu item). */
+  reloadFromServer(): Promise<'offline' | 'reloading'>;
+}
+
+export async function startViewer(stored: Stored, opts: ViewerOptions): Promise<void> {
   const pool = new TilePool({ file: stored.img, hgt: stored.hgt, overview: stored.overview }, tileWorkerCount());
   let meta: OpenMeta;
   try {
@@ -79,7 +84,7 @@ export async function startViewer(stored: Stored): Promise<void> {
     throw err;
   }
   try {
-    mountViewer(stored, pool, meta);
+    mountViewer(stored, pool, meta, opts);
   } catch (err) {
     // e.g. no WebGL: don't leave tile workers (holding the map file) running behind the error.
     pool.dispose();
@@ -87,7 +92,7 @@ export async function startViewer(stored: Stored): Promise<void> {
   }
 }
 
-function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
+function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: ViewerOptions): void {
   const debug = new URLSearchParams(location.search).has('debug');
   const perf = new PerfStats($('perf'));
   $('perf').hidden = !debug;
@@ -240,6 +245,19 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta): void {
     $(close).addEventListener('click', () => $('menu-button').focus());
   }
   const focusPanel = (panel: string) => $(panel).querySelector<HTMLElement>('h2')?.focus();
+  // In the Android app (which has no address bar to reload from): load the newest version.
+  const reloadButton = $<HTMLButtonElement>('reload-app');
+  reloadButton.hidden = androidApp() === null;
+  reloadButton.onclick = async () => {
+    reloadButton.disabled = true;
+    reloadButton.textContent = 'Loading the newest version…';
+    if ((await opts.reloadFromServer()) === 'reloading') return;
+    reloadButton.textContent = 'Offline: connect to reload';
+    setTimeout(() => {
+      reloadButton.textContent = 'Reload from the server';
+      reloadButton.disabled = false;
+    }, 3000);
+  };
   // Moving the map by hand closes the menu; the app's own moves (following you, turning heading up)
   // don't.
   map.on('movestart', (e) => {

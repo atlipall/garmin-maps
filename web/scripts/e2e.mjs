@@ -295,6 +295,7 @@ try {
   console.log('version ok:', version);
   const browserSize = await page.$eval('#menu-button', (e) => Math.round(e.getBoundingClientRect().width));
   if (browserSize !== 44) fail(`menu button in a browser: ${browserSize} px, not 44`);
+  if (await page.$eval('#reload-app', (e) => !e.hidden)) fail('"Reload from the server" shown in a browser (it is for the Android app)');
   await page.click('#tracks-open');
   await (await page.$('#gpx-file')).uploadFile(gpxPath, badPath);
   await page.waitForFunction(() => document.querySelectorAll('#track-list .track').length === 1, { timeout: 10_000 });
@@ -1227,6 +1228,12 @@ try {
   const menuButton = await page.$eval('#menu-button', (e) => Math.round(e.getBoundingClientRect().width));
   if (carZoom.some((z) => z !== 1.5) || menuButton !== 66) fail(`car-sized controls in the Android app on a big screen: zoom ${carZoom}, menu button ${menuButton} px`);
   console.log('car-sized controls ok');
+  // The Android app's "Reload from the server": the page loads again, into the map.
+  await page.click('#menu-button');
+  if (await page.$eval('#reload-app', (e) => e.hidden)) fail('no "Reload from the server" in the Android app');
+  await Promise.all([page.waitForNavigation({ timeout: 60_000 }), page.click('#reload-app')]);
+  await waitReady();
+  console.log('reload from the server ok');
   await page.click('#map .trip-record-button');
   const tripStopped = await page.evaluate(() => ({ intent: window.__app.lastIntent, pill: !document.querySelector('#trip-pill').hidden, line: window.__app.map.getStyle().sources['trip-live'].data.features.length }));
   if (tripStopped.intent !== appLink('stop') || tripStopped.pill || tripStopped.line) fail(`stop: ${JSON.stringify(tripStopped)}`);
