@@ -65,6 +65,11 @@ npm run shots                           # retake the guide's screenshots (web/si
 
 ## Open work (update this when it changes)
 
+- **Shipped 2026-10-07**: the menu puts other panels away (`web/src/ui/dialogs.ts`); a tap on a
+  suggested name selects it (`suggestName`); car-sized controls in the Android app on screens
+  ≥600 px each way (CSS zoom 1.5, `body.android-app`); "Reload from the server" in the Android
+  app's menu; follow zoom by speed after Organic Maps' scale table (`web/src/location/followZoom.ts`);
+  a menu at a place picked over a route (`web/src/app/placeMenu.ts`). Not yet tried in the car.
 - **Shipped 2026-10-06** (merged from `free-map`): a free map for people without GPSmap.is.
   "Download free map" on the import screen fetches Freizeitkarte Iceland (OSM-based,
   mkgmap-built, "free for any purposes" with credit) through the download helper and unzips it
