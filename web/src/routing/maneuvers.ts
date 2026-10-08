@@ -14,6 +14,9 @@ export interface Maneuver {
   turn?: Turn;
   /** The roundabout exit to take (1 = first). */
   exit?: number;
+  /** A roundabout's way out relative to the way in (degrees, right positive: 0 straight on, 90 the
+   *  exit to the right, ±180 back the way you came), for drawing it. */
+  exitAngle?: number;
   /** The waypoint's number, for a 'via'. */
   via?: number;
   /** The road taken, as shown ("road 26", "F26", "Sigtún"), or null when it has no name. */
@@ -65,12 +68,20 @@ function pointFrom(coords: LonLat[], cum: number[], k: number, dir: 1 | -1, dist
   return [coords[i][0] + (coords[j][0] - coords[i][0]) * t, coords[i][1] + (coords[j][1] - coords[i][1]) * t];
 }
 
+const angleBetween = (into: number, out: number) => ((out - into + 540) % 360) - 180;
+
 /** The change of direction at point k (degrees, right positive), from the way in over the last
  *  30 m to the way out over the next 30 m. */
 export function turnAngle(coords: LonLat[], cum: number[], k: number): number {
+  return exitAngle(coords, cum, k, k);
+}
+
+/** The change of direction from the way in to point `k` (over its last 30 m) to the way out of
+ *  point `e` (over the next 30 m); `k` = `e` is a turn, a roundabout's entry and exit its way out. */
+export function exitAngle(coords: LonLat[], cum: number[], k: number, e: number): number {
   const into = bearing(pointFrom(coords, cum, k, -1, 30), coords[k]);
-  const out = bearing(coords[k], pointFrom(coords, cum, k, 1, 30));
-  return ((out - into + 540) % 360) - 180;
+  const out = bearing(coords[e], pointFrom(coords, cum, e, 1, 30));
+  return angleBetween(into, out);
 }
 
 function classify(a: number): Turn {
@@ -137,7 +148,8 @@ export function maneuvers(coords: LonLat[], segs: RoadSeg[], dest: string): Mane
       while (j < segs.length && segs[j].type === ROUNDABOUT) j++;
       const exit = j - i;
       const road = label(segs[j]);
-      add({ index: k, kind: 'roundabout', exit, road, text: `At the roundabout, take the ${ordinal(exit)} exit${onto(road)}` });
+      const off = segs[j]?.start ?? coords.length - 1;
+      add({ index: k, kind: 'roundabout', exit, exitAngle: Math.round(exitAngle(coords, cum, k, off)), road, text: `At the roundabout, take the ${ordinal(exit)} exit${onto(road)}` });
       // The way off the roundabout needs no turn of its own, but may be where a waypoint is.
       if (segs[j]?.via) add({ index: segs[j].start, kind: 'via', via: segs[j].via, road, text: `Waypoint ${segs[j].via}` });
       i = j;

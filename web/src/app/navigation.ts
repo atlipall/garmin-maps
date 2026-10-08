@@ -3,6 +3,7 @@ import type { LonLat } from '../routing/plan';
 import { Progress, type Where } from '../routing/progress';
 import type { JoinedRoute } from '../routing/waypoints';
 import { roadClass } from '../routing/roadClass';
+import { roundaboutIcon } from '../ui/roundaboutIcon';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -60,6 +61,7 @@ const ARROWS: Record<Turn, string> = {
   'sharp-right': svg('<path d="M18 50V16l24 22M42 22v16H26"/>'),
   uturn: svg('<path d="M38 50V22a10 10 0 0 0-20 0v16M8 30l10 10 10-10"/>'),
 };
+/** A roundabout whose exit direction isn't known. */
 const ROUNDABOUT = svg('<circle cx="28" cy="25" r="9"/><path d="M28 50V34M36 17l9-9M46 18V7H35"/>');
 const FLAG = svg('<path d="M14 50V8M14 10h26l-6 9 6 9H14"/>');
 const PIN = '<svg viewBox="0 0 56 56"><path d="M28 4C18.6 4 11 11.6 11 21c0 13 17 31 17 31s17-18 17-31C45 11.6 37.4 4 28 4z" fill="currentColor"/><circle cx="28" cy="21" r="6.5" fill="#1d3f8f"/></svg>';
@@ -73,7 +75,7 @@ function bearing(a: LonLat, b: LonLat): number {
 }
 
 function icon(m: Maneuver): string {
-  if (m.kind === 'roundabout') return ROUNDABOUT;
+  if (m.kind === 'roundabout') return m.exitAngle === undefined ? ROUNDABOUT : roundaboutIcon(m.exitAngle);
   if (m.kind === 'via' || m.kind === 'join') return FLAG;
   if (m.kind === 'arrive') return PIN;
   if (m.kind === 'depart' || m.kind === 'continue') return ARROWS.straight;

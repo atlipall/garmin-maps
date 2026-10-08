@@ -45,6 +45,18 @@ describe('maneuvers', () => {
     ]);
   });
 
+  test('a roundabout instruction knows where its exit points, relative to the way in', () => {
+    // North into the roundabout; off it heading east (right), north (straight) or west (left).
+    const at = (exitTo: LonLat): number | undefined => {
+      const coords: LonLat[] = [[0, 0], [0, 0.002], [0.0002, 0.0022], [0.0002 + exitTo[0], 0.0022 + exitTo[1]]];
+      const segs = [seg(0, '1'), seg(1, null, { type: ROUNDABOUT }), seg(2, '35', { junction: false })];
+      return maneuvers(coords, segs, 'X').find((m) => m.kind === 'roundabout')?.exitAngle;
+    };
+    expect(at([0.002, 0])).toBe(90);
+    expect(at([0, 0.002])).toBe(0);
+    expect(at([-0.002, 0])).toBe(-90);
+  });
+
   test('the same road bending at a junction needs no instruction; a real turn to stay on it does', () => {
     const bend: LonLat[] = [[0, 0], [0, 0.002], [0.001, 0.004]]; // ~27° right
     expect(kinds(maneuvers(bend, [seg(0, '1'), seg(1, '1')], 'X')).map((k) => k.split(':')[0])).toEqual(['depart', 'arrive']);
