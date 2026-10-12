@@ -511,7 +511,9 @@ try {
   await new Promise((r) => setTimeout(r, 1200));
   await page.screenshot({ path: `${OUT}nav-headunit.png` });
   const youX = await page.evaluate((p) => window.__app.map.project(p).x, third);
-  if (youX < 700 || youX > 1000) fail(`head unit: your position at x=${Math.round(youX)}, not in the map area right of the guidance`);
+  const column = await page.evaluate(() => Math.max(...['#nav-banner', '#nav-bottom'].map((q) => document.querySelector(q).getBoundingClientRect().right)));
+  // In the middle of the map right of the column (as drawn, whatever size the cards are).
+  if (Math.abs(youX - (column + 16 + 1280) / 2) > 40) fail(`head unit: your position at x=${Math.round(youX)}, not centred right of the guidance (which ends at ${Math.round(column)})`);
   await page.setViewport({ width: 1024, height: 1024 });
   // Off the route in the highlands (on an F-road or track) with "Ask before rerouting in the
   // highlands" on, ~330 m north of it for three fixes: the question. Keep going: quiet until back.

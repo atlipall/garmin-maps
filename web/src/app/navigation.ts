@@ -19,6 +19,8 @@ const ROUGH_FIX_M = 60;
 const ARRIVED_M = 30;
 /** Screens that show the guidance as a column on the left (matches the CSS). */
 const WIDE = '(min-width: 900px) and (orientation: landscape)';
+/** Map kept clear to the right of the guidance column (px). */
+const COLUMN_GAP = 16;
 
 /** What navigation needs from the route planner. */
 export interface NavRoute {
@@ -107,9 +109,17 @@ export class Navigator {
   /** The instruction last announced to screen readers. */
   private said = '';
 
+  /** On a wide screen the guidance is a column on the left: how much of the map's width it takes
+   *  (as drawn, so car-sized cards count at their size), for the map to centre in the rest. */
+  private columnWidth(): number {
+    if (!matchMedia(WIDE).matches) return 0;
+    const right = Math.max(...['nav-banner', 'nav-bottom'].map((id) => $(id).getBoundingClientRect().right));
+    return Math.ceil(right) + COLUMN_GAP;
+  }
+
   constructor(private readonly hooks: NavHooks) {
     // Turning a phone, or a head unit's screen changing size, moves the guidance column.
-    matchMedia(WIDE).addEventListener('change', (e) => this.nav && this.hooks.keepClear(e.matches ? 412 : 0));
+    matchMedia(WIDE).addEventListener('change', () => this.nav && this.hooks.keepClear(this.columnWidth()));
     $('nav-end').onclick = () => this.end();
     $('nav-keep').onclick = () => {
       this.quiet = true;
@@ -170,13 +180,13 @@ export class Navigator {
     this.lastOn = null;
     this.ask(false);
     document.body.classList.add('navigating');
-    // On a wide landscape screen (a car head unit) the guidance is a column on the left: the map
-    // centres on you in the space to its right.
-    this.hooks.keepClear(matchMedia(WIDE).matches ? 412 : 0);
     $('nav-banner').hidden = false;
     $('nav-bottom').hidden = false;
     $('nav-to').textContent = nav.title;
     this.show({ along: 0, off: 0, index: 0 });
+    // On a wide landscape screen (a car head unit) the guidance is a column on the left: the map
+    // centres on you in the space to its right (measured now the column is shown).
+    this.hooks.keepClear(this.columnWidth());
     if (fix) this.fix(fix.at, fix.accuracy);
   }
 

@@ -314,11 +314,14 @@
       .place-menu button { width: 100%; min-height: 44px; padding: 0 14px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 600; text-align: left; cursor: pointer; }
       .place-menu button:first-of-type { border-color: var(--accent); background: var(--accent); color: #fff; }
       /* Car-sized controls: in the Android app on a big screen (a head unit, read at arm's length
-         while driving), the controls and cards over the map are drawn 1.5 times bigger (buttons
-         66 px; Android Auto asks for 76 dp). The map itself isn't scaled. */
+         while driving), the controls over the map are drawn 1.5 times bigger (buttons 66 px; Android
+         Auto asks for 76 dp) and the cards 1.25 times. The map itself isn't scaled. */
       @media (min-width: 600px) and (min-height: 600px) {
-        body.android-app :is(#topbar, #menu-button, #menu, #badge, #update, #tracks, #saved, #sync-panel, #diag-panel, #here-card, #here-toast, #track-card, #trip-card, #trip-pill, #trip-note, #route-card, #nav-banner, #nav-bottom, #import .card),
+        body.android-app :is(#topbar, #menu-button, #menu, #badge, #update, #tracks, #saved, #sync-panel, #diag-panel, #trip-pill, #import .card),
         body.android-app #map :is(.maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left, .place-menu .maplibregl-popup-content) { zoom: 1.5; }
+        /* The cards beside the map less so (at 1.5 the route and guidance cards took half the screen),
+           and the notes that show in their place at the same size, so neither covers the other. */
+        body.android-app :is(#route-card, #nav-banner, #nav-bottom, #here-card, #track-card, #trip-card, #here-toast, #trip-note) { zoom: 1.25; }
       }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {

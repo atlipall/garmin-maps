@@ -722,8 +722,14 @@ export class RoutePlanner {
       if (lat > n) n = lat;
     }
     if (!fit) return;
+    // The route fits in the map the card leaves: above it, or beside it where the card is a column
+    // on the left of a wide screen (it then covers more of the map's width than its height).
     const card = $('route-card').getBoundingClientRect();
-    const bottom = this.map.getContainer().getBoundingClientRect().bottom - card.top + 20;
-    this.map.fitBounds([[w, s], [e, n]], { padding: { top: 80, bottom: Math.max(60, bottom), left: 40, right: 40 }, maxZoom: 15, duration: 800 });
+    const box = this.map.getContainer().getBoundingClientRect();
+    const beside = (card.right - box.left) / box.width < 0.6 && (box.bottom - card.top) / box.height > 0.5;
+    const padding = beside
+      ? { top: 80, bottom: 60, left: card.right - box.left + 30, right: 40 }
+      : { top: 80, bottom: Math.max(60, box.bottom - card.top + 20), left: 40, right: 40 };
+    this.map.fitBounds([[w, s], [e, n]], { padding, maxZoom: 15, duration: 800 });
   }
 }
