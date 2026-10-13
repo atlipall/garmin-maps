@@ -154,6 +154,12 @@ try {
   if (await page.evaluate(() => !document.querySelector('#route-card').hidden)) fail('opening the menu did not close the place card');
   await page.keyboard.press('Escape');
   console.log('menu closes other dialogs ok');
+  // Diagnostics says why the route card closed (for a device with no console), and that the page loaded.
+  await page.click('#menu-button');
+  await page.click('#diag-open');
+  await page.waitForFunction(() => /route card closed: the menu opened/.test(document.querySelector('#diag-text')?.textContent ?? '') && /page loaded/.test(document.querySelector('#diag-text').textContent), { timeout: 5_000 })
+    .catch(async () => fail(`Diagnostics without why the route card closed: ${(await page.$eval('#diag-text', (e) => e.textContent)).slice(-400)}`));
+  await page.click('#diag-close');
   console.log('keyboard ok:', kbTitle);
 
   // 3b. location: a simulated GPS fix at Landmannalaugar; follow, heading up, pause on drag, height

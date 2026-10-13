@@ -9,9 +9,19 @@ import { DEV, storageName } from '../channel';
  * all on the clipboard.
  */
 
-/** Things worth knowing that the app otherwise keeps quiet about (location errors), newest last. */
-const notes: { time: number; text: string; times: number }[] = [];
+/** Things worth knowing that the app otherwise keeps quiet about (location errors, why the route
+ *  card closed), newest last. Kept over a reload of the page (session storage), so a reload that
+ *  lost something shows in them too. */
+const NOTES_KEY = storageName('diag-notes');
 const NOTES_KEEP = 40;
+const notes: { time: number; text: string; times: number }[] = (() => {
+  try {
+    const kept = JSON.parse(sessionStorage.getItem(NOTES_KEY) ?? '[]');
+    return Array.isArray(kept) ? kept : [];
+  } catch {
+    return [];
+  }
+})();
 
 const clock = (t = Date.now()) => new Date(t).toLocaleTimeString('en-GB', { hour12: false });
 
@@ -21,10 +31,20 @@ export function diag(text: string): void {
   if (last?.text === text) {
     last.times++;
     last.time = Date.now();
+    keepNotes();
     return;
   }
   notes.push({ time: Date.now(), text, times: 1 });
   if (notes.length > NOTES_KEEP) notes.shift();
+  keepNotes();
+}
+
+function keepNotes(): void {
+  try {
+    sessionStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+  } catch {
+    // Storage off or full: the notes still show until the page reloads.
+  }
 }
 
 const APP_KEY = storageName('android-app');

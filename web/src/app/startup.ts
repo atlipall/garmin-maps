@@ -1,12 +1,13 @@
 import { BUILD } from '../buildInfo';
 import { hasStoredData, loadStored, type Stored } from '../storage/store';
-import { androidApp } from './diagnostics';
+import { androidApp, diag } from './diagnostics';
 import { showImport } from './importScreen';
 import { showUpdateNotice } from './updateNotice';
 import { browserEnv, UpdateWatcher } from './updates';
 import { startViewer } from './viewer';
 
 export async function startApp(): Promise<void> {
+  diag('page loaded');
   // In the Android app (made for car head units) a big screen gets car-sized controls (index.html).
   document.body.classList.toggle('android-app', androidApp() !== null);
   const updates = 'serviceWorker' in navigator && import.meta.env.PROD

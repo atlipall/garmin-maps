@@ -15,6 +15,7 @@ import type { Gpx } from '../gpx/parse';
 import type { TrackRoute } from '../gpx/store';
 import { suggestName } from '../ui/rename';
 import { PlaceMenu, type PlaceMenuItem } from './placeMenu';
+import { diag } from './diagnostics';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 /** Hold time for a long press: below iOS's own ~0.5 s long-press gestures (selection loupe, callout). */
@@ -122,8 +123,8 @@ export class RoutePlanner {
     $('route-go').onclick = () => void this.route();
     // With a route on the map (or on its way), × asks first; a card with just a place closes.
     $('route-close').onclick = () => {
-      if (this.shown || this.planning) this.ask('Clear the current route?', () => this.clear());
-      else this.clear();
+      if (this.shown || this.planning) this.ask('Clear the current route?', () => this.clear('its × (route cleared)'));
+      else this.clear('its ×');
     };
     $('route-min').onclick = (e) => {
       e.stopPropagation();
@@ -195,7 +196,7 @@ export class RoutePlanner {
       // A tap elsewhere puts the place menu away (and does nothing else).
       else if (this.placeMenu.isOpen) this.placeMenu.close();
       else if (this.choosing) this.setStart([e.lngLat.lng, e.lngLat.lat]);
-      else if (this.dest && !this.started) this.clear();
+      else if (this.dest && !this.started) this.clear('a tap on the map');
     });
     let timer = 0;
     let startXY: [number, number] | null = null;
@@ -296,15 +297,18 @@ export class RoutePlanner {
 
   /** The search box's ×: drops a place card it opened, but never a route (the card's × asks). */
   clearPlace(): void {
-    if (!this.started && !this.shown && !this.planning) this.clear();
+    if (!this.started && !this.shown && !this.planning) this.clear('the search box cleared');
   }
 
   /** Out of the way for another dialog (the menu): a place card closes, a route's card folds up. */
   putAway(): void {
     this.placeMenu.close();
     if ($('route-card').hidden) return;
-    if (!this.started && !this.shown && !this.planning) this.clear();
-    else this.setMinimized(true);
+    if (!this.started && !this.shown && !this.planning) this.clear('the menu opened');
+    else {
+      diag('route card folded: the menu opened');
+      this.setMinimized(true);
+    }
   }
 
   /** The route shown, for navigation. */
@@ -417,7 +421,9 @@ export class RoutePlanner {
     $('route-card').classList.remove('asking');
   }
 
-  clear(): void {
+  /** Closes the card and drops its place and route; `why` goes to the Diagnostics log. */
+  clear(why: string): void {
+    if (!$('route-card').hidden) diag(`route card closed: ${why}`);
     this.placeMenu.close();
     this.dropPending();
     this.clearRoute();
@@ -437,6 +443,7 @@ export class RoutePlanner {
    *  (unless it was opened again by hand). */
   moving(mps: number): void {
     if (mps < MOVING_MPS || !this.started || this.minimized || this.keepOpen || this.pending || this.choosing || !$('route-choices').hidden || !$('route-save-form').hidden) return;
+    diag(`route card folded: moving (${Math.round(mps * 3.6)} km/h)`);
     this.setMinimized(true);
   }
 
