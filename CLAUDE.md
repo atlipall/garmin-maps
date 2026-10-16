@@ -65,6 +65,14 @@ npm run shots                           # retake the guide's screenshots (web/si
 
 ## Open work (update this when it changes)
 
+- **Shipped 2026-10-16** (an Apple HIG review): one accent colour (`--accent #1d3f8f`; the icon,
+  guide and Android bar keep #2c5a85); every button at least 44 pt; End shows "Guidance ended ·
+  Undo" for 8 s (`TrackNav.resume` brings a track's guidance back); a Settings panel (⋯ →
+  Settings: the map, Load another map, the two switches, Diagnostics, Reload, version) so the menu
+  keeps to Tracks, Saved places, Sync and Settings; round ✕ close buttons everywhere; drawn file
+  pickers on the import screen; keyboard focus rings; text follows the iPhone's Text Size (font
+  sizes are `calc(N * var(--px))`, held to about 14–23 px body; inputs never below 16 px). Next:
+  **dark mode on a branch**, which needs the colours as variables and a night map style.
 - **Shipped 2026-10-07**: the menu puts other panels away (`web/src/ui/dialogs.ts`); a tap on a
   suggested name selects it (`suggestName`); car-sized controls in the Android app on screens
   ≥600 px each way (CSS zoom 1.5, `body.android-app`); "Reload from the server" in the Android

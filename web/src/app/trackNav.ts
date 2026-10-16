@@ -38,6 +38,9 @@ interface Active {
  */
 export class TrackNav {
   private active_: Active | null = null;
+  /** The way drawn now, and the navigation last ended with what it drew (for Undo of End). */
+  private drawn: LonLat[] = [];
+  private last: { a: Active; drawn: LonLat[] } | null = null;
   /** Matched stretches per track and direction, for this session. */
   private readonly matched = new Map<string, Promise<RoadSeg[]>>();
 
@@ -83,8 +86,18 @@ export class TrackNav {
 
   /** Navigation ended. */
   ended(): void {
+    this.last = this.active_ ? { a: this.active_, drawn: this.drawn } : null;
     this.active_ = null;
     this.draw([]);
+  }
+
+  /** Undo of End: the track navigation that ended is back, drawn as it was (false: it wasn't one). */
+  resume(): boolean {
+    if (!this.last) return false;
+    this.active_ = this.last.a;
+    this.draw(this.last.drawn);
+    this.last = null;
+    return true;
   }
 
   private async go(fromAlong: number): Promise<void> {
@@ -111,6 +124,7 @@ export class TrackNav {
   /** The route being navigated, drawn like a planned route: the way to the track and the track
    *  from where it joins to its end (the part behind the join stays in the track's colour). */
   private draw(coords: LonLat[]): void {
+    this.drawn = coords;
     (this.deps.map.getSource('track-nav') as maplibregl.GeoJSONSource).setData({
       type: 'FeatureCollection',
       features: coords.length > 1 ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }] : [],

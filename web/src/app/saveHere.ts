@@ -9,7 +9,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 /** How long "Saved … · Undo" stays up. */
 const TOAST_MS = 6000;
 
-const PIN_PLUS_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 12 3.5M12 21s6.5-5.6 6.5-11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 2.5v6M13 5.5h6" stroke="#2c5a85" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="10" r="2.2" fill="currentColor"/></svg>';
+const PIN_PLUS_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 12 3.5M12 21s6.5-5.6 6.5-11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 2.5v6M13 5.5h6" stroke="#1d3f8f" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="10" r="2.2" fill="currentColor"/></svg>';
 
 export interface SaveHereDeps {
   /** Your position, if there is a recent fix. */

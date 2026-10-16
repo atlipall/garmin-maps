@@ -43,7 +43,12 @@ export interface NavHooks {
   askInHighlands(): boolean;
   /** Navigation ended (the route stays). */
   ended(): void;
+  /** Undo of End: navigation along `nav` is about to start again (a track's, say, is put back). */
+  resumed(nav: NavRoute): void;
 }
+
+/** How long "Guidance ended · Undo" stays (ms). */
+const UNDO_MS = 8000;
 
 const fmtDist = (m: number) => (m < 950 ? `${Math.max(10, Math.round(m / 10) * 10)} m` : m < 9950 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 1000)} km`);
 function fmtLeft(s: number): string {
@@ -108,6 +113,11 @@ export class Navigator {
   private noRoute = false;
   /** The instruction last announced to screen readers. */
   private said = '';
+  /** The last GPS fix, for guidance started again by Undo. */
+  private lastFix: { at: LonLat; accuracy: number } | null = null;
+  /** The guidance End just stopped, while its Undo is offered. */
+  private undoable: NavRoute | null = null;
+  private undoTimer = 0;
 
   /** On a wide screen the guidance is a column on the left: how much of the map's width it takes
    *  (as drawn, so car-sized cards count at their size), for the map to centre in the rest. */
@@ -120,7 +130,20 @@ export class Navigator {
   constructor(private readonly hooks: NavHooks) {
     // Turning a phone, or a head unit's screen changing size, moves the guidance column.
     matchMedia(WIDE).addEventListener('change', () => this.nav && this.hooks.keepClear(this.columnWidth()));
-    $('nav-end').onclick = () => this.end();
+    // End stops at once (a tap that misses on a bumpy road shouldn't need a new route planned):
+    // "Guidance ended · Undo" starts it again for a few seconds.
+    $('nav-end').onclick = () => {
+      const nav = this.nav;
+      this.end();
+      if (nav) this.offerUndo(nav);
+    };
+    $('nav-undo-button').onclick = () => {
+      const nav = this.undoable;
+      this.dropUndo();
+      if (!nav) return;
+      this.hooks.resumed(nav);
+      this.start(nav, this.lastFix);
+    };
     $('nav-keep').onclick = () => {
       this.quiet = true;
       this.ask(false);
@@ -166,6 +189,7 @@ export class Navigator {
 
   /** Starts guidance along `nav` (or carries on along a route planned again). */
   start(nav: NavRoute, fix: { at: LonLat; accuracy: number } | null): void {
+    this.dropUndo();
     this.nav = nav;
     const r = nav.route;
     const segs = r.segs?.length ? r.segs : [{ start: 0, name: null, type: 0, junction: false, seconds: r.seconds }];
@@ -199,6 +223,7 @@ export class Navigator {
   }
 
   end(): void {
+    this.dropUndo();
     if (!this.nav) return;
     this.nav = null;
     this.progress = null;
@@ -209,8 +234,22 @@ export class Navigator {
     this.hooks.ended();
   }
 
+  /** Shows "Guidance ended · Undo" (under the search row). */
+  private offerUndo(nav: NavRoute): void {
+    this.undoable = nav;
+    $('nav-undo').hidden = false;
+    this.undoTimer = window.setTimeout(() => this.dropUndo(), UNDO_MS);
+  }
+
+  private dropUndo(): void {
+    clearTimeout(this.undoTimer);
+    this.undoable = null;
+    $('nav-undo').hidden = true;
+  }
+
   /** A GPS fix: where on the route, what's next; off the route for a while asks to plan again. */
   fix(at: LonLat, accuracy: number): void {
+    this.lastFix = { at, accuracy };
     if (!this.progress || !this.nav) return;
     const where = this.progress.locate(at);
     // Arrived: guidance is done (walking the last bit off the road to a hut isn't "off route").

@@ -16,8 +16,24 @@
     <link rel="icon" href="./icons/icon-192.png" />
     <title>Garmin Map</title>
     <style>
-      :root { --ink: #1d2a38; --paper: #f4f0e4; --accent: #2c5a85; }
-      html, body { margin: 0; height: 100%; font: 15px -apple-system, system-ui, sans-serif; color: var(--ink); background: var(--paper); }
+      :root { --ink: #1d2a38; --paper: #f4f0e4; --accent: #1d3f8f; --accent-soft: #eef3fb; }
+      /* Text follows the iPhone's text size (Settings → Display → Text Size): the root takes the
+         system body size (17 px by default), and every size is written as "N * var(--px)", N being
+         its size at the default; held between about 14 and 23 px body so the cards still fit over
+         the map. Only iOS: Safari on a Mac would make the root 13 px, other browsers keep 17 px. */
+      html { font-size: 17px; }
+      @supports (-webkit-touch-callout: none) { html { font: -apple-system-body; } }
+      :root { --px: clamp(0.82px, calc(1rem / 17), 1.35px); }
+      html, body { margin: 0; height: 100%; color: var(--ink); background: var(--paper); }
+      body { font: calc(15 * var(--px)) -apple-system, system-ui, sans-serif; }
+      /* Keyboard focus (on a Mac): a ring in the accent colour, white on the dark panels. Headings
+         are focused by the app when a panel opens, not by the user: no ring. */
+      :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      :is(#nav-panel, #nav-banner, #here-toast, #nav-undo, #route-card.routed #route-head, #route-card.min) :focus-visible { outline-color: #fff; }
+      [tabindex="-1"]:focus-visible { outline: none; }
+      /* A round close button with an ✕ (cards and panels alike). */
+      .close { width: var(--btn); height: var(--btn); flex: none; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: #eef0f3; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      .close svg { display: block; }
       /* The body is the positioning box for the map and every overlay. */
       body { position: fixed; top: 0; left: 0; right: 0; overflow: hidden; }
       #map { position: absolute; inset: 0; }
@@ -34,33 +50,32 @@
       #topbar { transition: max-width 0.2s ease; }
       #topbar.collapsed { max-width: var(--btn); }
       #topbar.collapsed .search-row, #topbar.collapsed #results, #topbar.collapsed #search-hint { visibility: hidden; }
-      #search-hint { padding: 8px 12px; border-top: 1px solid #0001; font-size: 13px; color: #667; }
+      #search-hint { padding: 8px 12px; border-top: 1px solid #0001; font-size: calc(13 * var(--px)); color: #667; }
       #search-hint[hidden] { display: none; }
       #search-open { display: none; }
       #topbar.collapsed #search-open { display: grid; place-items: center; position: absolute; inset: 0; z-index: 1; width: var(--btn); height: var(--btn); padding: 0; border: 0; border-radius: 10px; background: none; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
       @media (prefers-reduced-motion: reduce) { #topbar { transition: none; } }
-      #search { width: 100%; height: var(--btn); box-sizing: border-box; padding: 0 var(--btn) 0 12px; font-size: 16px; border: 0; border-radius: 10px; background: transparent; }
+      #search { width: 100%; height: var(--btn); box-sizing: border-box; padding: 0 var(--btn) 0 12px; font-size: max(16px, calc(16 * var(--px))); border: 0; border-radius: 10px; background: transparent; }
       /* Our own clear button (iOS shows none); hide the browser's so desktop doesn't show two. */
       #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
-      #search-clear { position: absolute; top: 0; right: 0; width: var(--btn); height: var(--btn); border: 0; background: none; font-size: 22px; line-height: 1; color: #667; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      #search-clear { position: absolute; top: 0; right: 0; width: var(--btn); height: var(--btn); padding: 0; display: grid; place-items: center; border: 0; background: none; color: #8a909a; cursor: pointer; -webkit-tap-highlight-color: transparent; }
       #results { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow: auto; }
       #results li { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 8px 12px; border-top: 1px solid #0001; cursor: pointer; }
       #results .name { grid-column: 1; font-weight: 600; overflow-wrap: anywhere; }
-      #results .detail { grid-column: 1; font-size: 13px; color: #667; }
-      #results .dist { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 13px; color: #445; white-space: nowrap; }
-      #menu-button { position: absolute; z-index: 3; top: var(--top); right: calc(env(safe-area-inset-right) + var(--gap)); width: var(--btn); height: var(--btn); border: 0; font-size: 22px; line-height: 1; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      #results .detail { grid-column: 1; font-size: calc(13 * var(--px)); color: #667; }
+      #results .dist { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: calc(13 * var(--px)); color: #445; white-space: nowrap; }
+      #menu-button { position: absolute; z-index: 3; top: var(--top); right: calc(env(safe-area-inset-right) + var(--gap)); width: var(--btn); height: var(--btn); padding: 0; display: grid; place-items: center; border: 0; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
       #menu { position: absolute; z-index: 4; background: #fff; top: calc(var(--top) + var(--btn) + 6px); right: calc(env(safe-area-inset-right) + var(--gap)); min-width: 200px; padding: 4px 0; max-height: calc(100% - var(--top) - var(--btn) - 20px); overflow-y: auto; overscroll-behavior: contain; }
-      #menu button { display: block; width: 100%; padding: 12px 16px; border: 0; background: none; font-size: 16px; text-align: left; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
-      #map-name { display: grid; gap: 1px; padding: 10px 16px 10px; border-bottom: 1px solid #0001; margin-bottom: 4px; max-width: 280px; }
-      #map-name .label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #667; }
+      #menu button { display: block; width: 100%; padding: 12px 16px; border: 0; background: none; font-size: calc(16 * var(--px)); text-align: left; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      #map-name { display: grid; gap: 1px; padding: 4px 0 10px; }
       #map-file { font-weight: 600; overflow-wrap: anywhere; }
-      #map-dem { font-size: 13px; color: #667; }
+      #map-dem { font-size: calc(13 * var(--px)); color: #667; }
       #map-dem:empty { display: none; }
-      #app-version { padding: 8px 16px 6px; margin-top: 4px; border-top: 1px solid #0001; font-size: 12px; color: #667; font-variant-numeric: tabular-nums; }
-      #menu [role="switch"] { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
-      #menu [role="switch"]::after { content: ""; flex: none; width: 40px; height: 24px; border-radius: 12px; background: #c9ccd1 radial-gradient(circle at 12px 12px, #fff 9px, transparent 10px); transition: background-position 0.15s; }
-      #menu [role="switch"][aria-checked="true"]::after { background: #1f7ae0 radial-gradient(circle at 28px 12px, #fff 9px, transparent 10px); }
-      #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 64px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: 13px; color: #8a3b00; }
+      #app-version { padding: 12px 0 2px; font-size: calc(12 * var(--px)); color: #667; font-variant-numeric: tabular-nums; }
+      #settings .item[role="switch"] { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+      #settings .item[role="switch"]::after { content: ""; flex: none; width: 40px; height: 24px; border-radius: 12px; background: #c9ccd1 radial-gradient(circle at 12px 12px, #fff 9px, transparent 10px); transition: background-position 0.15s; }
+      #settings .item[role="switch"][aria-checked="true"]::after { background: #1f7ae0 radial-gradient(circle at 28px 12px, #fff 9px, transparent 10px); }
+      #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 64px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: calc(13 * var(--px)); color: #8a3b00; }
       /* Save my location: the button left of the locate button, its card (in the route card's place,
          which waits meanwhile) and "Saved … · Undo" (placed above whatever is at the bottom, see
          saveHere.ts). */
@@ -72,30 +87,32 @@
       body.navigating #track-card { display: none; }
       #here-head, #track-card-head, #trip-head { display: flex; align-items: center; gap: 6px; padding-top: 6px; }
       #here-head-text, #track-card-text, #trip-head-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
-      #here-title, #track-card-title, #trip-title { font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
-      #here-sub, #track-card-stats, #trip-sub { font-size: 13px; color: #555f6d; font-variant-numeric: tabular-nums; }
+      #here-title, #track-card-title, #trip-title { font-size: calc(17 * var(--px)); font-weight: 700; overflow-wrap: anywhere; }
+      #here-sub, #track-card-stats, #trip-sub { font-size: calc(13 * var(--px)); color: #555f6d; font-variant-numeric: tabular-nums; }
       #track-card-swatch { width: 14px; height: 14px; flex: none; border-radius: 50%; margin-right: 4px; }
-      #track-card-note { margin: 0; padding: 10px 12px; border-radius: 12px; background: #f3f5f8; font-size: 14px; color: #3d4754; }
+      #track-card-note { margin: 0; padding: 10px 12px; border-radius: 12px; background: #f3f5f8; font-size: calc(14 * var(--px)); color: #3d4754; }
       #track-card-note:empty { display: none; }
-      #track-navigate { min-height: 52px; border: 0; border-radius: 14px; background: #1d3f8f; color: #fff; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+      #track-navigate { min-height: 52px; border: 0; border-radius: 14px; background: var(--accent); color: #fff; font-size: calc(17 * var(--px)); font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
       #track-navigate:disabled { opacity: 0.6; }
       .track-card-row { display: flex; gap: 10px; }
-      .track-card-row button { flex: 1; min-height: 46px; border: 1.5px solid #d4d9e1; border-radius: 12px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
-      #track-reverse[aria-pressed="true"] { border-color: #1d3f8f; background: #eef3fb; color: #1d3f8f; }
-      #here-close, #track-card-close, #trip-close { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: #eef0f3; color: var(--ink); cursor: pointer; }
-      #here-form, #trip-form { display: flex; gap: 8px; }
-      #here-name, #trip-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid #d4d9e1; border-radius: 10px; font-size: 16px; }
-      #here-form button, #trip-form button { min-height: 44px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+      .track-card-row button { flex: 1; min-height: 46px; border: 1.5px solid #d4d9e1; border-radius: 12px; background: #fff; color: var(--ink); font-size: calc(15 * var(--px)); font-weight: 600; cursor: pointer; }
+      #track-reverse[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+            #here-form, #trip-form { display: flex; gap: 8px; }
+      #here-name, #trip-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid #d4d9e1; border-radius: 10px; font-size: max(16px, calc(16 * var(--px))); }
+      #here-form button, #trip-form button { min-height: 44px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: calc(15 * var(--px)); font-weight: 600; cursor: pointer; }
       #here-form button.primary, #trip-form button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
-      #here-error { color: #b3261e; font-size: 14px; }
+      #here-error { color: #b3261e; font-size: calc(14 * var(--px)); }
       #here-error:empty { display: none; }
-      #here-toast { position: absolute; z-index: 6; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; min-height: 52px; border-radius: 14px; background: #1d2a38; color: #fff; font-size: 15px; box-shadow: 0 6px 20px #0a142859; }
-      #here-toast[hidden] { display: none; }
+      #here-toast, #nav-undo { position: absolute; z-index: 6; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; min-height: 52px; border-radius: 14px; background: #1d2a38; color: #fff; font-size: calc(15 * var(--px)); box-shadow: 0 6px 20px #0a142859; }
+      #here-toast[hidden], #nav-undo[hidden] { display: none; }
+      /* Undo after End goes on top, under the search row: the cards that come back after guidance
+         (the route's, a track's) are at the bottom; search results and the menu go over it. */
+      #nav-undo { z-index: 2; top: calc(var(--top) + var(--btn) + var(--gap)); bottom: auto; }
       /* Recording a trip (Android app): the button by save-a-pin, red while recording; the pill on top
          (hidden while navigating, where the turn banner is); Discard asks again in red. */
       #map .trip-record-button { display: grid; place-items: center; color: var(--ink); border-radius: inherit; }
       #map .trip-record-button.recording { background: #c62828; }
-      #trip-pill { position: absolute; z-index: 3; top: var(--top); left: 50%; transform: translateX(-50%); height: var(--btn); box-sizing: border-box; padding: 0 18px 0 14px; display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 22px; box-shadow: 0 2px 10px #0003; font-size: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      #trip-pill { position: absolute; z-index: 3; top: var(--top); left: 50%; transform: translateX(-50%); height: var(--btn); box-sizing: border-box; padding: 0 18px 0 14px; display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 22px; box-shadow: 0 2px 10px #0003; font-size: calc(16 * var(--px)); white-space: nowrap; font-variant-numeric: tabular-nums; }
       #trip-pill[hidden], body.navigating #trip-pill { display: none; }
       #trip-pill b { color: #a3191f; }
       .trip-dot { width: 12px; height: 12px; border-radius: 50%; background: #d32f2f; }
@@ -104,18 +121,17 @@
       #trip-form #trip-name { flex: 1 1 100%; }
       #trip-form button { flex: 1; }
       #trip-form #trip-discard.confirm { border-color: #b00020; background: #b00020; color: #fff; }
-      #trip-note { position: absolute; z-index: 6; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: min(420px, calc(100% - 2 * var(--gap))); box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 12px; background: #1d2a38e6; color: #fff; font-size: 14px; }
+      #trip-note { position: absolute; z-index: 6; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: min(420px, calc(100% - 2 * var(--gap))); box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 12px; background: #1d2a38e6; color: #fff; font-size: calc(14 * var(--px)); }
       #trip-note[hidden] { display: none; }
-      #here-toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-      #here-undo { min-height: 40px; padding: 0 14px; border: 0; border-radius: 10px; background: #ffffff1f; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+      #here-toast-text, #nav-undo-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+      #here-undo, #nav-undo-button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: #ffffff1f; color: #fff; font-size: calc(15 * var(--px)); font-weight: 600; cursor: pointer; }
       #here-undo[hidden] { display: none; }
       /* "A new version is ready": under the top row, below its search results, the menu and panels; hidden while navigating
          (see updateNotice.ts) and under the import screen, where a reload would lose an import. */
-      #update { position: absolute; z-index: 2; top: calc(var(--top) + var(--btn) + var(--gap)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; max-width: calc(100% - 2 * var(--gap)); box-sizing: border-box; padding: 4px 4px 4px 14px; font-size: 14px; white-space: nowrap; }
+      #update { position: absolute; z-index: 2; top: calc(var(--top) + var(--btn) + var(--gap)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; max-width: calc(100% - 2 * var(--gap)); box-sizing: border-box; padding: 4px 4px 4px 14px; font-size: calc(14 * var(--px)); white-space: nowrap; }
       #update[hidden], body.navigating #update { display: none; }
       #update span { overflow: hidden; text-overflow: ellipsis; }
-      #update-reload { margin-left: 6px; padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
-      #update-close { width: 36px; height: 36px; border: 0; background: none; font-size: 20px; line-height: 1; color: #667; cursor: pointer; }
+      #update-reload { margin-left: 6px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: calc(14 * var(--px)); font-weight: 600; cursor: pointer; }
       #perf { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); top: calc(var(--top) + var(--btn) + var(--gap)); padding: 6px 8px; font: 11px ui-monospace, monospace; white-space: pre; }
       /* MapLibre's corner controls, kept clear of the notch / home indicator and our top row.
          '#map' raises specificity above maplibre-gl.css, which loads after this sheet. */
@@ -140,60 +156,63 @@
       #map .locate-button[data-state="north"], #map .locate-button[data-state="paused"] { color: #1f7ae0; }
       #map .locate-button[data-state="heading"] { color: #fff; background: #1f7ae0; }
       #map .locate-button.unavailable { opacity: 0.45; }
-      #map .height-pill { padding: 3px 10px; border-radius: 999px; background: #fff; box-shadow: 0 1px 4px #0003; font: 600 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink); }
+      #map .height-pill { padding: 3px 10px; border-radius: 999px; background: #fff; box-shadow: 0 1px 4px #0003; font: 600 calc(13 * var(--px))/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink); }
       /* Tracks panel (⋯ → Tracks): below the top row, scrolls when long. */
-      #tracks, #saved, #sync-panel, #diag-panel { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
+      #tracks, #saved, #sync-panel, #diag-panel, #settings { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
       .tracks-head { display: flex; align-items: center; justify-content: space-between; }
-      .tracks-head h2 { margin: 0; font-size: 18px; }
-      #tracks-close, #saved-close, #sync-close, #diag-close { width: var(--btn); height: var(--btn); margin-right: -10px; border: 0; background: none; font-size: 26px; color: #667; cursor: pointer; }
-      #tracks-empty, #saved-empty { margin: 4px 0 8px; color: #556; font-size: 14px; }
+      .tracks-head h2 { margin: 0; font-size: calc(18 * var(--px)); }
+      /* Settings (⋯ → Settings): groups of rows, each group under a small heading. */
+      #settings h3 { margin: 14px 0 2px; font-size: calc(12 * var(--px)); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #667; }
+      #settings .item { display: block; width: 100%; min-height: 48px; padding: 12px 0; border: 0; border-top: 1px solid #0001; background: none; font-size: calc(16 * var(--px)); text-align: left; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      .tracks-head .close { margin-right: -4px; }
+      #tracks-empty, #saved-empty { margin: 4px 0 8px; color: #556; font-size: calc(14 * var(--px)); }
       #track-list, #saved-list { list-style: none; margin: 0; padding: 0; }
       .track { display: grid; grid-template-columns: 14px 1fr auto auto auto; align-items: center; gap: 8px; border-top: 1px solid #0001; }
       /* A row being renamed: the name field with Save and Cancel across the whole row. */
       .track.renaming { display: block; padding: 8px 0; }
       .rename-form { display: flex; gap: 8px; }
-      .rename-form input { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid var(--accent); border-radius: 10px; font-size: 16px; }
-      .rename-form button { min-height: 44px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+      .rename-form input { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid var(--accent); border-radius: 10px; font-size: max(16px, calc(16 * var(--px))); }
+      .rename-form button { min-height: 44px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: calc(15 * var(--px)); font-weight: 600; cursor: pointer; }
       .rename-form button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
-      #sync { margin-top: 4px; display: grid; gap: 8px; font-size: 14px; color: #556; }
+      #sync { margin-top: 4px; display: grid; gap: 8px; font-size: calc(14 * var(--px)); color: #556; }
       #sync[hidden] { display: none; }
-      #sync-menu-status { display: block; font-size: 12px; color: #667; }
+      #sync-menu-status { display: block; font-size: calc(12 * var(--px)); color: #667; }
       #sync-menu-status:empty { display: none; }
       #sync p { margin: 0; }
       #diag-panel .backup-buttons { margin: 4px 0 8px; }
-      #diag-text { margin: 0; font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; color: #334; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+      #diag-text { margin: 0; font: calc(12 * var(--px))/1.45 ui-monospace, "SF Mono", Menlo, monospace; color: #334; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
       #sync-connect { border-color: var(--accent) !important; background: var(--accent) !important; color: #fff !important; }
-      #backup { margin-top: 12px; padding-top: 10px; border-top: 1px solid #0001; display: grid; gap: 8px; font-size: 14px; color: #556; }
+      #backup { margin-top: 12px; padding-top: 10px; border-top: 1px solid #0001; display: grid; gap: 8px; font-size: calc(14 * var(--px)); color: #556; }
       #backup p { margin: 0; }
-      #sync h3, #backup h3 { margin: 0; font-size: 15px; color: var(--ink); }
+      #sync h3, #backup h3 { margin: 0; font-size: calc(15 * var(--px)); color: var(--ink); }
       .backup-buttons { display: flex; gap: 8px; }
-      .backup-buttons button { flex: 1; min-height: 44px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+      .backup-buttons button { flex: 1; min-height: 44px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: calc(15 * var(--px)); font-weight: 600; cursor: pointer; }
       #backup-status:empty { display: none; }
       #backup-status { color: #1d5e2a; }
       .saved-item { grid-template-columns: 18px 1fr auto auto; }
-      .saved-icon { display: grid; place-items: center; font-size: 17px; color: #d49b00; }
-      .saved-icon.route { color: #1d3f8f; }
+      .saved-icon { display: grid; place-items: center; font-size: calc(17 * var(--px)); color: #d49b00; }
+      .saved-icon.route { color: var(--accent); }
       .track .swatch { width: 14px; height: 14px; border-radius: 50%; }
       .track-info { display: grid; gap: 1px; min-width: 0; padding: 8px 0; border: 0; background: none; text-align: left; color: var(--ink); cursor: pointer; font: inherit; }
       .track-info .name { font-weight: 600; overflow-wrap: anywhere; }
-      .track-info .stats { font-size: 13px; color: #667; }
-      .track-rename, .track-eye, .track-delete { min-width: 40px; height: 40px; border: 0; border-radius: 8px; background: none; color: #445; cursor: pointer; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
+      .track-info .stats { font-size: calc(13 * var(--px)); color: #667; }
+      .track-rename, .track-eye, .track-delete { min-width: 44px; height: 44px; border: 0; border-radius: 8px; background: none; color: #445; cursor: pointer; display: grid; place-items: center; -webkit-tap-highlight-color: transparent; }
       .track-eye[aria-pressed="false"] { color: #778; }
-      .track-delete.confirm { padding: 0 10px; background: #b00020; color: #fff; font-size: 14px; font-weight: 600; }
-      #tracks-error, #saved-error { color: #b00020; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .track-delete.confirm { padding: 0 10px; background: #b00020; color: #fff; font-size: calc(14 * var(--px)); font-weight: 600; }
+      #tracks-error, #saved-error { color: #b00020; font-size: calc(14 * var(--px)); white-space: pre-wrap; overflow-wrap: anywhere; }
       #tracks-error:not(:empty), #saved-error:not(:empty) { margin-top: 8px; }
-      #import-gpx { margin-top: 10px; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 16px; cursor: pointer; }
+      #import-gpx { margin-top: 10px; min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: calc(16 * var(--px)); cursor: pointer; }
       .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
       #results li[aria-selected="true"] { background: #eef3ff; }
       /* Turn-by-turn: the turn banner on top, the off-route question and the trip panel at the
          bottom; on a wide landscape screen (a car head unit) both in a column on the left. */
       #nav-banner { position: absolute; z-index: 5; left: calc(env(safe-area-inset-left) + 10px); right: calc(env(safe-area-inset-right) + 10px); top: calc(env(safe-area-inset-top) + 8px); max-width: 520px; border-radius: 20px; overflow: hidden; color: #fff; box-shadow: 0 8px 24px #0a14284d; }
-      #nav-main { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: #1d3f8f; }
+      #nav-main { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--accent); }
       #nav-icon svg { display: block; width: 56px; height: 56px; }
       .nav-text { display: grid; gap: 2px; min-width: 0; }
-      #nav-dist { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
-      #nav-text { font-size: 19px; font-weight: 600; overflow-wrap: anywhere; }
-      #nav-then { display: flex; align-items: center; gap: 10px; padding: 9px 16px; background: #152e6b; color: #d7e1f7; font-size: 15px; font-weight: 600; }
+      #nav-dist { font-size: calc(34 * var(--px)); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+      #nav-text { font-size: calc(19 * var(--px)); font-weight: 600; overflow-wrap: anywhere; }
+      #nav-then { display: flex; align-items: center; gap: 10px; padding: 9px 16px; background: #152e6b; color: #d7e1f7; font-size: calc(15 * var(--px)); font-weight: 600; }
       #nav-then[hidden] { display: none; }
       #nav-then-icon svg { display: block; width: 20px; height: 20px; }
       #nav-then-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -203,21 +222,21 @@
       #nav-bottom { position: absolute; z-index: 5; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; display: flex; flex-direction: column; gap: 10px; }
       #nav-bottom[hidden], #nav-banner[hidden], #nav-prompt[hidden] { display: none; }
       #nav-prompt { background: #fff; color: var(--ink); border-radius: 20px; padding: 16px; display: grid; gap: 10px; box-shadow: 0 8px 28px #0000004d; }
-      .nav-q { font-size: 18px; font-weight: 800; }
-      #nav-prompt p { margin: 0; font-size: 14px; color: #4b5466; }
+      .nav-q { font-size: calc(18 * var(--px)); font-weight: 800; }
+      #nav-prompt p { margin: 0; font-size: calc(14 * var(--px)); color: #4b5466; }
       .nav-row { display: flex; align-items: center; gap: 8px; }
-      #nav-prompt button { flex: 1; min-height: 50px; border: 1.5px solid #d4d9e1; border-radius: 14px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 700; cursor: pointer; }
-      #nav-prompt button.primary { border-color: #1d3f8f; background: #1d3f8f; color: #fff; }
+      #nav-prompt button { flex: 1; min-height: 50px; border: 1.5px solid #d4d9e1; border-radius: 14px; background: #fff; color: var(--ink); font-size: calc(16 * var(--px)); font-weight: 700; cursor: pointer; }
+      #nav-prompt button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
       #nav-panel { background: #161c28f0; color: #fff; border-radius: 20px; padding: 12px 12px 14px 18px; display: grid; gap: 6px; box-shadow: 0 8px 28px #0000004d; }
-      #nav-to { font-size: 14px; font-weight: 600; color: #aab4c6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #nav-to { font-size: calc(14 * var(--px)); font-weight: 600; color: #aab4c6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .nav-arrive { display: grid; padding-right: 12px; border-right: 1px solid #ffffff24; }
-      .nav-arrive .label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8fa0bd; }
-      #nav-arrive { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+      .nav-arrive .label { font-size: calc(12 * var(--px)); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8fa0bd; }
+      #nav-arrive { font-size: calc(34 * var(--px)); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
       .nav-left { flex: 1; display: grid; gap: 2px; }
-      #nav-time { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-      #nav-km { font-size: 15px; color: #c9d2e3; font-variant-numeric: tabular-nums; }
+      #nav-time { font-size: calc(20 * var(--px)); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      #nav-km { font-size: calc(15 * var(--px)); color: #c9d2e3; font-variant-numeric: tabular-nums; }
       #nav-save { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: #ffffff1f; color: #fff; cursor: pointer; }
-      #nav-end { min-width: 60px; min-height: 48px; padding: 0 12px; border: 0; border-radius: 24px; background: #ff8a8029; color: #ff8a80; font-size: 15px; font-weight: 700; cursor: pointer; }
+      #nav-end { min-width: 60px; min-height: 48px; padding: 0 12px; border: 0; border-radius: 24px; background: #ff8a8029; color: #ff8a80; font-size: calc(15 * var(--px)); font-weight: 700; cursor: pointer; }
       /* While navigating the banner takes the top of a phone screen; the route card waits (it comes
          back for a question, such as adding a waypoint). */
       body.navigating #topbar, body.navigating #menu-button, body.navigating #map .maplibregl-ctrl-top-right { display: none !important; }
@@ -226,8 +245,8 @@
         #nav-banner { left: calc(env(safe-area-inset-left) + 16px); right: auto; top: 16px; width: 380px; }
         #nav-icon svg { width: 72px; height: 72px; }
         #nav-main { flex-direction: column; align-items: flex-start; padding: 20px; gap: 10px; }
-        #nav-dist { font-size: 52px; }
-        #nav-text { font-size: 26px; font-weight: 700; }
+        #nav-dist { font-size: calc(52 * var(--px)); }
+        #nav-text { font-size: calc(26 * var(--px)); font-weight: 700; }
         #nav-bottom { left: calc(env(safe-area-inset-left) + 16px); right: auto; width: 380px; }
         body.navigating #map .maplibregl-ctrl-top-right { display: block !important; }
       }
@@ -236,58 +255,58 @@
       #route-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; background: #fff; border-radius: 18px; box-shadow: 0 8px 28px #1e283c38; overflow: hidden; display: flex; flex-direction: column; }
       #route-head { display: flex; align-items: center; gap: 6px; padding: 10px 8px 6px 16px; }
       #route-head-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
-      #route-title { font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+      #route-title { font-size: calc(17 * var(--px)); font-weight: 700; overflow-wrap: anywhere; }
       #route-time, #route-sub, #route-arrive-box { display: none; }
       #route-min, #route-close { flex: none; width: var(--btn); height: var(--btn); display: grid; place-items: center; border: 0; border-radius: 50%; background: #f1f3f6; color: #3a4252; cursor: pointer; }
       #route-close svg, #route-min svg { display: block; }
-      #route-card.routed #route-head { background: #1d3f8f; color: #fff; padding: 14px 10px 14px 18px; }
-      #route-card.routed #route-title { font-size: 14px; font-weight: 600; color: #d7e1f7; }
-      #route-card.routed #route-time { display: block; font-size: 30px; font-weight: 800; line-height: 1.05; }
-      #route-card.routed #route-sub { display: block; font-size: 15px; color: #d7e1f7; }
+      #route-card.routed #route-head { background: var(--accent); color: #fff; padding: 14px 10px 14px 18px; }
+      #route-card.routed #route-title { font-size: calc(14 * var(--px)); font-weight: 600; color: #d7e1f7; }
+      #route-card.routed #route-time { display: block; font-size: calc(30 * var(--px)); font-weight: 800; line-height: 1.05; }
+      #route-card.routed #route-sub { display: block; font-size: calc(15 * var(--px)); color: #d7e1f7; }
       #route-card.routed #route-min, #route-card.routed #route-close { background: #ffffff24; color: #fff; }
       #route-card.routed #route-info { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
       #route-body { display: grid; gap: 10px; padding: 6px 16px 14px; }
-      #route-info { font-size: 15px; }
+      #route-info { font-size: calc(15 * var(--px)); }
       #route-info:empty, #route-off:empty, #route-msg:empty { display: none; }
-      #route-msg { font-size: 14px; color: #8a3b00; }
-      #route-off { font-size: 13px; color: #5b6475; }
+      #route-msg { font-size: calc(14 * var(--px)); color: #8a3b00; }
+      #route-off { font-size: calc(13 * var(--px)); color: #5b6475; }
       /* The stops: a dot, pin or number on a line, a small label and the place. */
       .stop { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; column-gap: 12px; min-height: 48px; }
       .stop-mark { justify-self: center; display: grid; place-items: center; }
-      .stop-mark.from { width: 12px; height: 12px; border: 3px solid #1d3f8f; border-radius: 50%; box-sizing: border-box; }
-      .stop-mark.via { width: 20px; height: 20px; border-radius: 50%; background: #1d3f8f; color: #fff; font-size: 11px; font-weight: 700; }
+      .stop-mark.from { width: 12px; height: 12px; border: 3px solid var(--accent); border-radius: 50%; box-sizing: border-box; }
+      .stop-mark.via { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; }
       .stop-text { display: grid; min-width: 0; }
-      .stop-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5b6475; }
-      .stop-name { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .stop-label { font-size: calc(12 * var(--px)); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5b6475; }
+      .stop-name { font-size: calc(16 * var(--px)); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       #route-stops { display: grid; }
       #route-stops .stop + .stop, #route-stops .stop + #route-choices + .stop, #route-via-list .stop { border-top: 1px solid #eef0f3; }
-      #route-change { min-height: 40px; padding: 0 4px; border: 0; background: none; color: var(--accent); font-size: 15px; font-weight: 700; cursor: pointer; }
-      .via-remove { width: 40px; height: 40px; margin: -2px 0; border: 0; border-radius: 50%; background: #f1f3f6; color: #5b6475; display: grid; place-items: center; cursor: pointer; }
+      #route-change { min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--accent); font-size: calc(15 * var(--px)); font-weight: 700; cursor: pointer; }
+      .via-remove { width: 44px; height: 44px; margin: -4px 0; border: 0; border-radius: 50%; background: #f1f3f6; color: #5b6475; display: grid; place-items: center; cursor: pointer; }
       #route-stop-to[hidden] { display: none; }
       #route-choices, #route-confirm { display: flex; flex-wrap: wrap; gap: 8px; }
       #route-choices { padding: 0 0 8px 34px; }
       #route-confirm { align-items: center; padding: 10px; border-radius: 12px; background: #fdecea; }
       #route-confirm > div { flex-basis: 100%; font-weight: 600; }
       #route-choices[hidden], #route-confirm[hidden] { display: none; }
-      #route-choices button, #route-confirm button, #route-save-form button { min-height: 40px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+      #route-choices button, #route-confirm button, #route-save-form button { min-height: 44px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: calc(15 * var(--px)); font-weight: 600; cursor: pointer; }
       #route-choices button.primary, #route-confirm button.primary, #route-save-form button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
-      #route-options-toggle { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0; border: 0; border-top: 1px solid #eef0f3; background: none; color: var(--ink); font-size: 15px; font-weight: 500; text-align: left; cursor: pointer; }
+      #route-options-toggle { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0; border: 0; border-top: 1px solid #eef0f3; background: none; color: var(--ink); font-size: calc(15 * var(--px)); font-weight: 500; text-align: left; cursor: pointer; }
       #route-options-toggle .grow { flex: 1; }
-      #route-options-sum { font-size: 14px; color: #5b6475; }
+      #route-options-sum { font-size: calc(14 * var(--px)); color: #5b6475; }
       #route-options-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
       #route-options { display: grid; gap: 6px; padding-left: 30px; }
       #route-options[hidden] { display: none; }
-      #route-switch, #route-prefer-switch { display: flex; align-items: center; gap: 10px; min-height: 36px; font-size: 15px; }
-      #route-switch input, #route-prefer-switch input { width: 20px; height: 20px; accent-color: #1d3f8f; }
-      #route-start { min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 14px; background: #1d3f8f; color: #fff; font-size: 18px; font-weight: 800; cursor: pointer; }
+      #route-switch, #route-prefer-switch { display: flex; align-items: center; gap: 10px; min-height: 36px; font-size: calc(15 * var(--px)); }
+      #route-switch input, #route-prefer-switch input { width: 20px; height: 20px; accent-color: var(--accent); }
+      #route-start { min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 14px; background: var(--accent); color: #fff; font-size: calc(18 * var(--px)); font-weight: 800; cursor: pointer; }
       #route-start[hidden] { display: none; }
       #route-actions { display: flex; gap: 10px; }
-      #route-actions > button { flex: 1; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 12px; background: #fff; color: var(--ink); font-size: 15px; font-weight: 700; cursor: pointer; }
+      #route-actions > button { flex: 1; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: 1.5px solid #d4d9e1; border-radius: 12px; background: #fff; color: var(--ink); font-size: calc(15 * var(--px)); font-weight: 700; cursor: pointer; }
       #route-actions > button[hidden] { display: none; }
       #route-go { border-color: var(--accent) !important; background: var(--accent) !important; color: #fff !important; }
       #route-save:disabled { color: #8a6d00; border-color: #e3c75a; background: #fff8dc; cursor: default; }
       #route-save-form { display: flex; gap: 8px; }
-      #route-save-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid #d4d9e1; border-radius: 10px; font-size: 16px; }
+      #route-save-name { flex: 1; min-width: 0; padding: 8px 10px; border: 1.5px solid #d4d9e1; border-radius: 10px; font-size: max(16px, calc(16 * var(--px))); }
       /* Minimized (C): a dark glance panel with the arrival time, drive time and distance; a tap on
          it opens the card again. */
       #route-card.min { background: #161c28f0; color: #fff; box-shadow: 0 8px 28px #0000004d; cursor: pointer; }
@@ -297,31 +316,31 @@
       #route-card.min #route-body { padding: 0 16px 8px; }
       #route-card.min #route-min { background: #ffffff1f; color: #fff; }
       #route-card.min #route-min svg { transform: rotate(180deg); }
-      #route-card.min #route-title { font-size: 14px; font-weight: 600; color: #aab4c6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #route-card.min #route-title { font-size: calc(14 * var(--px)); font-weight: 600; color: #aab4c6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #route-card.min.routed #route-head-text { grid-template-columns: auto 1fr; column-gap: 16px; align-items: center; }
       #route-card.min.routed #route-title { grid-column: 1 / -1; }
       #route-card.min.routed #route-arrive-box { display: grid; padding-right: 16px; border-right: 1px solid #ffffff24; }
-      #route-arrive-box .label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8fa0bd; }
-      #route-arrive { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
-      #route-card.min.routed #route-time { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
-      #route-card.min.routed #route-sub { font-size: 15px; color: #c9d2e3; }
+      #route-arrive-box .label { font-size: calc(12 * var(--px)); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8fa0bd; }
+      #route-arrive { font-size: calc(34 * var(--px)); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+      #route-card.min.routed #route-time { font-size: calc(20 * var(--px)); font-weight: 700; font-variant-numeric: tabular-nums; }
+      #route-card.min.routed #route-sub { font-size: calc(15 * var(--px)); color: #c9d2e3; }
       #route-card.min .arrive-part { display: none; }
       .start-pin { cursor: default; filter: drop-shadow(0 1px 2px #0005); }
       /* The menu at a place picked while a route is shown (src/app/placeMenu.ts). */
       .place-menu .maplibregl-popup-content { min-width: 200px; padding: 10px; border-radius: 14px; box-shadow: 0 6px 22px #1e283c40; }
       .place-menu [role=menu] { display: grid; gap: 8px; }
-      #place-menu-title { padding: 2px 4px 4px; font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
-      .place-menu button { width: 100%; min-height: 44px; padding: 0 14px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 600; text-align: left; cursor: pointer; }
+      #place-menu-title { padding: 2px 4px 4px; font-weight: 700; font-size: calc(15 * var(--px)); overflow-wrap: anywhere; }
+      .place-menu button { width: 100%; min-height: 44px; padding: 0 14px; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: calc(16 * var(--px)); font-weight: 600; text-align: left; cursor: pointer; }
       .place-menu button:first-of-type { border-color: var(--accent); background: var(--accent); color: #fff; }
       /* Car-sized controls: in the Android app on a big screen (a head unit, read at arm's length
          while driving), the controls over the map are drawn 1.5 times bigger (buttons 66 px; Android
          Auto asks for 76 dp) and the cards 1.25 times. The map itself isn't scaled. */
       @media (min-width: 600px) and (min-height: 600px) {
-        body.android-app :is(#topbar, #menu-button, #menu, #badge, #update, #tracks, #saved, #sync-panel, #diag-panel, #trip-pill, #import .card),
+        body.android-app :is(#topbar, #menu-button, #menu, #badge, #update, #tracks, #saved, #sync-panel, #diag-panel, #settings, #trip-pill, #import .card),
         body.android-app #map :is(.maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left, .place-menu .maplibregl-popup-content) { zoom: 1.5; }
         /* The cards beside the map less so (at 1.5 the route and guidance cards took half the screen),
            and the notes that show in their place at the same size, so neither covers the other. */
-        body.android-app :is(#route-card, #nav-banner, #nav-bottom, #here-card, #track-card, #trip-card, #here-toast, #trip-note) { zoom: 1.25; }
+        body.android-app :is(#route-card, #nav-banner, #nav-bottom, #here-card, #track-card, #trip-card, #here-toast, #nav-undo, #trip-note) { zoom: 1.25; }
       }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {
@@ -335,19 +354,25 @@
       #import .card { margin: auto; width: 100%; max-width: 440px; box-sizing: border-box; padding: 20px; }
       #import h2 { margin: 0 0 8px; }
       #import p { margin: 0 0 8px; }
-      #import label { display: block; margin: 14px 0 4px; font-weight: 600; }
-      #import input[type=file] { display: block; width: 100%; font-size: 16px; }
+      #import .field-label { margin: 14px 0 6px; font-weight: 600; }
+      /* A file picker as a button and the chosen file's name; the input itself is hidden but still
+         takes keyboard focus (its ring goes on the button). */
+      .file-pick { display: flex; align-items: center; gap: 12px; min-width: 0; }
+      .file-input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+      .file-button { flex: none; min-height: 44px; padding: 0 14px; display: inline-flex; align-items: center; box-sizing: border-box; border: 1.5px solid #d4d9e1; border-radius: 10px; background: #fff; color: var(--ink); font-size: calc(15 * var(--px)); font-weight: 600; cursor: pointer; }
+      .file-input:focus-visible + .file-button { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .file-name { min-width: 0; font-size: calc(14 * var(--px)); color: #556; overflow-wrap: anywhere; }
       #import .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
-      #import button { padding: 10px 16px; font-size: 16px; border: 0; border-radius: 8px; background: var(--accent); color: white; }
+      #import button { min-height: 44px; padding: 0 16px; font-size: calc(16 * var(--px)); border: 0; border-radius: 8px; background: var(--accent); color: white; }
       #import button:disabled { opacity: 0.6; }
       #import button.secondary { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
       #import button.danger { background: transparent; color: #b00020; padding-left: 0; padding-right: 0; }
-      #home-hint { font-size: 13px; color: #556; }
+      #home-hint { font-size: calc(13 * var(--px)); color: #556; }
       #free-map { margin-top: 22px; padding-top: 16px; border-top: 1px solid #0002; }
-      #free-map h3 { margin: 0 0 6px; font-size: 17px; }
+      #free-map h3 { margin: 0 0 6px; font-size: calc(17 * var(--px)); }
       #import-error { color: #b00020; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 12px; }
       #import-progress { margin-top: 12px; }
-      @media (max-width: 400px), (max-height: 500px) { #import { padding-left: calc(env(safe-area-inset-left) + 8px); padding-right: calc(env(safe-area-inset-right) + 8px); } #import .card { padding: 16px; } #import label { margin-top: 10px; } }
+      @media (max-width: 400px), (max-height: 500px) { #import { padding-left: calc(env(safe-area-inset-left) + 8px); padding-right: calc(env(safe-area-inset-right) + 8px); } #import .card { padding: 16px; } #import .field-label { margin-top: 10px; } }
       [hidden] { display: none !important; }
     </style>
   </head>
@@ -359,31 +384,41 @@
       </button>
       <div class="search-row">
         <input id="search" type="search" placeholder="Loading places…" aria-label="Search places" disabled autocomplete="off" enterkeyhint="search" role="combobox" aria-autocomplete="list" aria-controls="results" aria-expanded="false" />
-        <button id="search-clear" type="button" aria-label="Clear search" hidden>×</button>
+        <button id="search-clear" type="button" aria-label="Clear search" hidden><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="currentColor"/><path d="M6.8 6.8l6.4 6.4M13.2 6.8l-6.4 6.4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </div>
       <ul id="results" role="listbox" aria-label="Places found"></ul>
       <div id="search-hint" hidden></div>
     </div>
     <div id="badge" class="panel" role="status" aria-live="polite" hidden></div>
-    <button id="menu-button" class="panel" aria-label="Menu" aria-controls="menu" aria-expanded="false" hidden>⋯</button>
+    <button id="menu-button" class="panel" aria-label="Menu" aria-controls="menu" aria-expanded="false" hidden><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg></button>
     <div id="menu" class="panel" hidden>
-      <div id="map-name"><span class="label">Map</span><span id="map-file"></span><span id="map-dem"></span></div>
       <button id="tracks-open">Tracks</button>
       <button id="saved-open">Saved places</button>
       <button id="sync-open">Sync and backup<span id="sync-menu-status"></span></button>
-      <button id="keep-awake" role="switch" aria-checked="true">Keep screen on while locating</button>
-      <button id="ask-highlands" role="switch" aria-checked="false">Ask before rerouting in the highlands</button>
-      <button id="replace">Load another map</button>
-      <button id="diag-open">Diagnostics</button>
-      <button id="reload-app" hidden>Reload from the server</button>
-      <div id="app-version"></div>
+      <button id="settings-open">Settings</button>
     </div>
+    <section id="settings" class="panel" aria-labelledby="settings-title" hidden>
+      <div class="tracks-head">
+        <h2 id="settings-title" tabindex="-1">Settings</h2>
+        <button id="settings-close" class="close" type="button" aria-label="Close settings"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      </div>
+      <h3>Map</h3>
+      <div id="map-name"><span id="map-file"></span><span id="map-dem"></span></div>
+      <button id="replace" class="item">Load another map</button>
+      <h3>Location and guidance</h3>
+      <button id="keep-awake" class="item" role="switch" aria-checked="true">Keep screen on while locating</button>
+      <button id="ask-highlands" class="item" role="switch" aria-checked="false">Ask before rerouting in the highlands</button>
+      <h3>App</h3>
+      <button id="diag-open" class="item">Diagnostics</button>
+      <button id="reload-app" class="item" hidden>Reload from the server</button>
+      <div id="app-version"></div>
+    </section>
     <div id="perf" class="panel" hidden></div>
-    <div id="update" class="panel" role="status" hidden><span>A new version is ready</span><button id="update-reload" type="button">Reload</button><button id="update-close" type="button" aria-label="Not now">×</button></div>
+    <div id="update" class="panel" role="status" hidden><span>A new version is ready</span><button id="update-reload" type="button">Reload</button><button id="update-close" class="close" type="button" aria-label="Not now"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button></div>
     <section id="tracks" class="panel" aria-labelledby="tracks-title" hidden>
       <div class="tracks-head">
         <h2 id="tracks-title" tabindex="-1">Tracks</h2>
-        <button id="tracks-close" type="button" aria-label="Close tracks">×</button>
+        <button id="tracks-close" class="close" type="button" aria-label="Close tracks"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       </div>
       <p id="tracks-empty">No tracks yet. Save a route as a track from its card, or import GPX files, for example ones recorded with another app.</p>
       <ul id="track-list"></ul>
@@ -393,8 +428,8 @@
     </section>
     <section id="saved" class="panel" aria-labelledby="saved-title" hidden>
       <div class="tracks-head">
-        <h2 id="saved-title" tabindex="-1">Saved</h2>
-        <button id="saved-close" type="button" aria-label="Close saved">×</button>
+        <h2 id="saved-title" tabindex="-1">Saved places</h2>
+        <button id="saved-close" class="close" type="button" aria-label="Close saved places"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       </div>
       <p id="saved-empty">Nothing saved yet. Tap <b>Save</b> on a place or route card to keep it here.</p>
       <ul id="saved-list"></ul>
@@ -403,7 +438,7 @@
     <section id="sync-panel" class="panel" aria-labelledby="sync-title" hidden>
       <div class="tracks-head">
         <h2 id="sync-title" tabindex="-1">Sync and backup</h2>
-        <button id="sync-close" type="button" aria-label="Close sync and backup">×</button>
+        <button id="sync-close" class="close" type="button" aria-label="Close sync and backup"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       </div>
       <div id="sync" hidden>
         <h3>Google Drive</h3>
@@ -421,7 +456,7 @@
     <section id="diag-panel" class="panel" aria-labelledby="diag-title" hidden>
       <div class="tracks-head">
         <h2 id="diag-title" tabindex="-1">Diagnostics</h2>
-        <button id="diag-close" type="button" aria-label="Close diagnostics">×</button>
+        <button id="diag-close" class="close" type="button" aria-label="Close diagnostics"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       </div>
       <div class="backup-buttons"><button id="diag-test" type="button">Test location</button><button id="diag-android" type="button" hidden>Android app's log</button><button id="diag-copy" type="button">Copy</button></div>
       <pre id="diag-text"></pre>
@@ -450,7 +485,7 @@
     <section id="here-card" aria-labelledby="here-title" hidden>
       <div id="here-head">
         <div id="here-head-text"><div id="here-title">Your location</div><div id="here-sub"></div></div>
-        <button id="here-close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+        <button id="here-close" class="close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       </div>
       <form id="here-form"><input id="here-name" type="text" maxlength="80" aria-label="Name" autocomplete="off" /><button type="submit" class="primary">Save</button><button id="here-cancel" type="button">Cancel</button></form>
       <div id="here-error" role="alert"></div>
@@ -459,18 +494,19 @@
       <div id="track-card-head">
         <span id="track-card-swatch" aria-hidden="true"></span>
         <div id="track-card-text"><div id="track-card-title"></div><div id="track-card-stats"></div></div>
-        <button id="track-card-close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+        <button id="track-card-close" class="close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       </div>
       <p id="track-card-note" role="status"></p>
       <button id="track-navigate" type="button"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8 19-8-4.5L4 21z" fill="currentColor"/></svg>Navigate</button>
       <div class="track-card-row"><button id="track-reverse" type="button" aria-pressed="false">Reverse</button><button id="track-export" type="button">Export GPX</button></div>
     </section>
     <div id="here-toast" role="status" hidden><span id="here-toast-text"></span><button id="here-undo" type="button">Undo</button></div>
+    <div id="nav-undo" role="status" hidden><span id="nav-undo-text">Guidance ended</span><button id="nav-undo-button" type="button">Undo</button></div>
     <div id="trip-pill" role="status" hidden><span class="trip-dot" aria-hidden="true"></span><b>Recording</b><span id="trip-pill-text"></span></div>
     <section id="trip-card" aria-labelledby="trip-title" hidden>
       <div id="trip-head">
         <div id="trip-head-text"><div id="trip-title">Save the trip to Tracks</div><div id="trip-sub"></div></div>
-        <button id="trip-close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+        <button id="trip-close" class="close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       </div>
       <form id="trip-form"><input id="trip-name" type="text" aria-label="Name" autocomplete="off" /><button type="submit" class="primary">Save to Tracks</button><button id="trip-discard" type="button">Discard</button></form>
     </section>
@@ -510,10 +546,10 @@
       <div class="card panel">
         <h2>Load your map</h2>
         <p>Pick the Garmin <code>.img</code> map file. Add the <code>.hgt</code> elevation files for hillshading (optional). They are stored on this device only.</p>
-        <label for="img-file">Map (.img)</label>
-        <input id="img-file" type="file" />
-        <label for="hgt-files">Elevation (.hgt, select all)</label>
-        <input id="hgt-files" type="file" multiple />
+        <div class="field-label" id="img-label">Map (.img)</div>
+        <div class="file-pick"><input id="img-file" class="file-input" type="file" aria-labelledby="img-label" /><label for="img-file" class="file-button">Choose file…</label><span class="file-name" id="img-file-name">No file chosen</span></div>
+        <div class="field-label" id="hgt-label">Elevation (.hgt, select all)</div>
+        <div class="file-pick"><input id="hgt-files" class="file-input" type="file" multiple aria-labelledby="hgt-label" /><label for="hgt-files" class="file-button">Choose files…</label><span class="file-name" id="hgt-files-name">No files chosen</span></div>
         <div class="actions"><button id="import-button">Import</button><button id="import-cancel" class="secondary" hidden>Cancel</button></div>
         <div id="free-map">
           <h3>No Garmin map?</h3>

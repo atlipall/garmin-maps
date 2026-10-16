@@ -240,11 +240,20 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: Viewe
   });
   // The panels opened from the menu: focus their heading; Escape or × closes them and focus goes
   // back to the menu button.
-  for (const [panel, close] of [['tracks', 'tracks-close'], ['saved', 'saved-close'], ['sync-panel', 'sync-close'], ['diag-panel', 'diag-close']]) {
+  for (const [panel, close] of [['tracks', 'tracks-close'], ['saved', 'saved-close'], ['sync-panel', 'sync-close'], ['diag-panel', 'diag-close'], ['settings', 'settings-close']]) {
     $(panel).addEventListener('keydown', (e) => e.key === 'Escape' && $(close).click());
     $(close).addEventListener('click', () => $('menu-button').focus());
   }
   const focusPanel = (panel: string) => $(panel).querySelector<HTMLElement>('h2')?.focus();
+  // Settings (the map, the switches, diagnostics, the version): a panel of its own, so the menu
+  // keeps to places to go.
+  $('settings-open').onclick = () => {
+    setMenu(false);
+    $('settings').hidden = false;
+    focusPanel('settings');
+  };
+  $('settings-close').onclick = () => ($('settings').hidden = true);
+  dialogs.add('settings', () => ($('settings').hidden = true));
   // In the Android app (which has no address bar to reload from): load the newest version.
   const reloadButton = $<HTMLButtonElement>('reload-app');
   reloadButton.hidden = androidApp() === null;
@@ -269,6 +278,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: Viewe
     // reloads straight back into it). Stop the workers and the map to free memory for the import.
     closed = true;
     setMenu(false);
+    $('settings').hidden = true;
     pool.dispose();
     map.remove();
     for (const id of ['topbar', 'menu-button', 'badge', 'perf']) $(id).hidden = true;
@@ -337,6 +347,10 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: Viewe
       keepClear: (left) => map.setPadding({ top: 0, bottom: 0, right: 0, left }),
       askInHighlands: () => askInHighlands,
       ended: () => trackNav.ended(),
+      resumed: (nav) => {
+        if (nav.track) trackNav.resume();
+        locate.navigate();
+      },
     });
     // A fix from the last two minutes (an old one would start guidance from the wrong place).
     const fresh = () => { const f = locate.lastFix; return f && Date.now() - f.time < 120_000 ? f : null; };
@@ -451,6 +465,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: Viewe
     const diagnostics = new DiagnosticsPanel($('diag-panel'), () => locate.lastFix);
     $('diag-open').onclick = () => {
       setMenu(false);
+      $('settings').hidden = true;
       diagnostics.show(true);
       focusPanel('diag-panel');
     };

@@ -29,6 +29,17 @@ export function showImport(error = '', opts: ImportOptions = {}): void {
   const busy = (on: boolean) => [button, cancel, remove, download].forEach((b) => (b.disabled = on));
   busy(false);
 
+  // The pickers show the chosen file's name (or how many) beside their button.
+  for (const [id, none] of [['img-file', 'No file chosen'], ['hgt-files', 'No files chosen']]) {
+    const input = $<HTMLInputElement>(id);
+    const show = () => {
+      const files = [...(input.files ?? [])];
+      $(`${id}-name`).textContent = files.length === 0 ? none : files.length === 1 ? files[0].name : `${files.length} files`;
+    };
+    input.onchange = show;
+    show();
+  }
+
   cancel.hidden = !opts.canCancel;
   cancel.onclick = () => location.reload();
 

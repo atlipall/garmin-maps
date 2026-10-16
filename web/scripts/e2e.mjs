@@ -156,6 +156,7 @@ try {
   console.log('menu closes other dialogs ok');
   // Diagnostics says why the route card closed (for a device with no console), and that the page loaded.
   await page.click('#menu-button');
+  await page.click('#settings-open');
   await page.click('#diag-open');
   await page.waitForFunction(() => /route card closed: the menu opened/.test(document.querySelector('#diag-text')?.textContent ?? '') && /page loaded/.test(document.querySelector('#diag-text').textContent), { timeout: 5_000 })
     .catch(async () => fail(`Diagnostics without why the route card closed: ${(await page.$eval('#diag-text', (e) => e.textContent)).slice(-400)}`));
@@ -194,6 +195,7 @@ try {
   let w = await wake();
   if (w.requests !== 1 || !w.held) fail(`screen wake lock not held while locating: ${JSON.stringify(w)}`);
   await page.click('#menu-button');
+  await page.click('#settings-open');
   await page.click('#keep-awake'); // switch off: released
   await new Promise((r) => setTimeout(r, 200));
   w = await wake();
@@ -202,7 +204,7 @@ try {
   await new Promise((r) => setTimeout(r, 200));
   w = await wake();
   if (w.requests !== 2 || !w.held) fail(`keep-awake on did not re-request: ${JSON.stringify(w)}`);
-  await page.click('#menu-button');
+  await page.click('#settings-close');
   // A compass reading of 40° (alpha counts counter-clockwise): the cone shows, and heading-up turns the map.
   const compass = () => page.evaluate(() => window.dispatchEvent(new DeviceOrientationEvent('deviceorientationabsolute', { alpha: 320, beta: 0, gamma: 0, absolute: true })));
   await compass();
@@ -275,6 +277,7 @@ try {
   // ⋯ → Diagnostics: the permission, a live location test with a fix, and the map's own first fix
   // noted; no Android log button in a browser; × stops the test.
   await page.click('#menu-button');
+  await page.click('#settings-open');
   await page.click('#diag-open');
   await gps.send('Emulation.setGeolocationOverride', { latitude: 63.9913, longitude: -19.0605, accuracy: 8 });
   await page.waitForFunction(() => /fix 1: 63\.99/.test(document.querySelector('#diag-text').textContent), { timeout: 15_000 }).catch(async () => fail(`diagnostics, no fix: ${await page.$eval('#diag-text', (e) => e.textContent)}`));
@@ -294,14 +297,19 @@ try {
     <wpt lat="63.9913" lon="-19.0605"><name>Hut</name></wpt><trk><trkseg>${pts.map(([la, lo]) => `<trkpt lat="${la}" lon="${lo}"/>`).join('')}</trkseg></trk></gpx>`);
   await writeFile(badPath, '<kml></kml>');
   await page.click('#menu-button');
+  await page.click('#settings-open');
+  if (await page.evaluate(() => document.activeElement?.id !== 'settings-title')) fail('the Settings panel did not take focus');
   const mapName = await page.$eval('#map-name', (e) => e.innerText.replace(/\s+/g, ' ').trim());
-  if (!mapName.includes('Iceland GPSmap.is 2024.21 Detailed') || !mapName.includes('48 elevation files')) fail(`menu map name: ${mapName}`);
+  if (!mapName.includes('Iceland GPSmap.is 2024.21 Detailed') || !mapName.includes('48 elevation files')) fail(`settings map name: ${mapName}`);
   const version = await page.$eval('#app-version', (e) => e.textContent);
-  if (!/^Version [0-9a-f]{7} · \d{1,2} \w+ \d{4}, \d\d:\d\d$/.test(version)) fail(`menu version: ${version}`);
+  if (!/^Version [0-9a-f]{7} · \d{1,2} \w+ \d{4}, \d\d:\d\d$/.test(version)) fail(`settings version: ${version}`);
   console.log('version ok:', version);
+  if (await page.$eval('#reload-app', (e) => !e.hidden)) fail('"Reload from the server" shown in a browser (it is for the Android app)');
+  await page.keyboard.press('Escape');
+  if (await page.$eval('#settings', (e) => !e.hidden)) fail('Escape did not close Settings');
   const browserSize = await page.$eval('#menu-button', (e) => Math.round(e.getBoundingClientRect().width));
   if (browserSize !== 44) fail(`menu button in a browser: ${browserSize} px, not 44`);
-  if (await page.$eval('#reload-app', (e) => !e.hidden)) fail('"Reload from the server" shown in a browser (it is for the Android app)');
+  await page.click('#menu-button');
   await page.click('#tracks-open');
   await (await page.$('#gpx-file')).uploadFile(gpxPath, badPath);
   await page.waitForFunction(() => document.querySelectorAll('#track-list .track').length === 1, { timeout: 10_000 });
@@ -564,6 +572,12 @@ try {
   await page.click('#nav-end');
   nav = await navState();
   if (nav.on || !nav.card) fail(`End: ${JSON.stringify(nav)}`);
+  // Undo after End: the same guidance again; End again.
+  if (await page.$eval('#nav-undo', (e) => e.hidden)) fail('no Undo after End');
+  await page.click('#nav-undo-button');
+  nav = await navState();
+  if (!nav.on || (await page.$eval('#nav-undo', (e) => !e.hidden))) fail(`Undo after End: ${JSON.stringify(nav)}`);
+  await page.click('#nav-end');
   // Navigating again: a dropped pin's "New route here" ends navigation and shows the new place's card.
   await page.click('#route-start');
   await page.mouse.click(600, 500, { button: 'right' });
@@ -858,7 +872,12 @@ try {
   await page.screenshot({ path: `${OUT}track-nav.png` });
   console.log('to the track:', trackNavState.steps.slice(0, 4).join(' · '));
   await page.click('#nav-end');
-  if (await page.evaluate(() => window.__app.map.getStyle().sources['track-nav'].data.features.length)) fail('the way to the track still drawn after End');
+  const trackNavDrawn = () => page.evaluate(() => window.__app.map.getStyle().sources['track-nav'].data.features.length);
+  if (await trackNavDrawn()) fail('the way to the track still drawn after End');
+  // Undo puts the track's guidance back, drawn as it was.
+  await page.click('#nav-undo-button');
+  if (!(await page.evaluate(() => document.body.classList.contains('navigating'))) || !(await trackNavDrawn())) fail('Undo after End did not bring back the track navigation');
+  await page.click('#nav-end');
   // An imported trail: on it from its start; 150 m off it, the way back is pointed out (no road
   // route planned to a hillside).
   const trail = await page.evaluate(() => window.__app.tracks.all.find((x) => !x.route).gpx.lines[0].points.slice(0, 2).map((p) => [p.lat, p.lon]));
@@ -1092,6 +1111,7 @@ try {
   console.log('OPFS before re-import:', JSON.stringify(before));
   if (!before.pointer || !before.names.includes(`${before.pointer.dir}/`)) fail(`no committed map dir: ${JSON.stringify(before)}`);
   await page.click('#menu-button');
+  await page.click('#settings-open');
   await page.click('#replace');
   await page.waitForSelector('#import:not([hidden])', { timeout: 30_000 });
   if (await page.$('#import-cancel[hidden]')) fail('Cancel button hidden on "Load another map"');
@@ -1105,6 +1125,7 @@ try {
 
   // 7. re-import the IMG only (no HGT): the new map replaces the old one, leaving one data dir
   await page.click('#menu-button');
+  await page.click('#settings-open');
   await page.click('#replace');
   await page.waitForSelector('#import:not([hidden])', { timeout: 30_000 });
   await (await page.$('#img-file')).uploadFile(IMG);
@@ -1144,6 +1165,7 @@ try {
   if (await page.$('#import:not([hidden])')) fail('legacy garmin/ map not loaded');
   console.log('legacy layout loads:', JSON.stringify(await opfs()));
   await page.click('#menu-button');
+  await page.click('#settings-open');
   await page.click('#replace');
   await page.waitForSelector('#import:not([hidden])', { timeout: 30_000 });
   await (await page.$('#img-file')).uploadFile(IMG);
@@ -1248,6 +1270,7 @@ try {
   console.log('car-sized controls ok');
   // The Android app's "Reload from the server": the page loads again, into the map.
   await page.click('#menu-button');
+  await page.click('#settings-open');
   if (await page.$eval('#reload-app', (e) => e.hidden)) fail('no "Reload from the server" in the Android app');
   await Promise.all([page.waitForNavigation({ timeout: 60_000 }), page.click('#reload-app')]);
   await waitReady();

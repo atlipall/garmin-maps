@@ -139,9 +139,12 @@ try {
   await shot('saved');
   await tap('#saved-close');
 
-  // The menu, and sync.
+  // Settings (kept as menu.webp, which the guide shows), and sync.
   await tap('#menu-button');
+  await tap('#settings-open');
   await shot('menu');
+  await tap('#settings-close');
+  await tap('#menu-button');
   await tap('#sync-open');
   await shot('sync');
 } finally {
