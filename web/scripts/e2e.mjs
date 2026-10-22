@@ -528,6 +528,12 @@ try {
   const column = await page.evaluate(() => Math.max(...['#nav-banner', '#nav-bottom'].map((q) => document.querySelector(q).getBoundingClientRect().right)));
   // In the middle of the map right of the column (as drawn, whatever size the cards are).
   if (Math.abs(youX - (column + 16 + 1280) / 2) > 40) fail(`head unit: your position at x=${Math.round(youX)}, not centred right of the guidance (which ends at ${Math.round(column)})`);
+  // A long turn that wraps onto three lines pushes nothing under the trip panel (it did in the car).
+  const stack = await page.evaluate(() => {
+    document.querySelector('#nav-text').textContent = 'Turn right onto Háaleitisbraut and keep on it past the roundabout at Kringlumýrarbraut';
+    return { banner: document.querySelector('#nav-banner').getBoundingClientRect().bottom, panel: document.querySelector('#nav-bottom').getBoundingClientRect().top };
+  });
+  if (stack.banner > stack.panel) fail(`head unit: the turn banner (to ${Math.round(stack.banner)}) covers the trip panel (from ${Math.round(stack.panel)})`);
   await page.setViewport({ width: 1024, height: 1024 });
   // Off the route in the highlands (on an F-road or track) with "Ask before rerouting in the
   // highlands" on, ~330 m north of it for three fixes: the question. Keep going: quiet until back.

@@ -221,6 +221,9 @@
       #nav-banner.arrived #nav-main { background: #1d6b3a; }
       #nav-bottom { position: absolute; z-index: 5; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; display: flex; flex-direction: column; gap: 10px; }
       #nav-bottom[hidden], #nav-banner[hidden], #nav-prompt[hidden] { display: none; }
+      /* On a phone the banner and the bottom cards are placed on their own; on a wide screen they are
+         one column, so a turn that wraps onto more lines pushes nothing under the trip panel. */
+      #nav-column { display: contents; }
       #nav-prompt { background: #fff; color: var(--ink); border-radius: 20px; padding: 16px; display: grid; gap: 10px; box-shadow: 0 8px 28px #0000004d; }
       .nav-q { font-size: calc(18 * var(--px)); font-weight: 800; }
       #nav-prompt p { margin: 0; font-size: calc(14 * var(--px)); color: #4b5466; }
@@ -242,12 +245,17 @@
       body.navigating #topbar, body.navigating #menu-button, body.navigating #map .maplibregl-ctrl-top-right { display: none !important; }
       body.navigating #route-card:not(.asking) { display: none !important; }
       @media (min-width: 900px) and (orientation: landscape) {
-        #nav-banner { left: calc(env(safe-area-inset-left) + 16px); right: auto; top: 16px; width: 380px; }
-        #nav-icon svg { width: 72px; height: 72px; }
-        #nav-main { flex-direction: column; align-items: flex-start; padding: 20px; gap: 10px; }
+        #nav-column { display: flex; flex-direction: column; gap: 10px; position: absolute; z-index: 5; left: calc(env(safe-area-inset-left) + 16px); top: 16px; bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); pointer-events: none; }
+        #nav-column > * { pointer-events: auto; }
+        #nav-banner { position: static; flex: none; width: 380px; max-width: none; }
+        /* The arrow beside the distance, the instruction under both: two lines of street name fit. */
+        #nav-icon svg { width: 64px; height: 64px; }
+        #nav-main { display: grid; grid-template-columns: auto 1fr; align-items: center; padding: 16px 20px; gap: 6px 14px; }
+        #nav-main .nav-text { display: contents; }
+        #nav-text { grid-column: 1 / -1; }
         #nav-dist { font-size: calc(52 * var(--px)); }
         #nav-text { font-size: calc(26 * var(--px)); font-weight: 700; }
-        #nav-bottom { left: calc(env(safe-area-inset-left) + 16px); right: auto; width: 380px; }
+        #nav-bottom { position: static; margin-top: auto; width: 380px; max-width: none; }
         body.navigating #map .maplibregl-ctrl-top-right { display: block !important; }
       }
       /* Route card (B): a header that turns into a blue summary band once routed, the stops as a
@@ -462,6 +470,7 @@
       <pre id="diag-text"></pre>
     </section>
     <div id="nav-say" class="sr-only" aria-live="polite"></div>
+    <div id="nav-column">
     <section id="nav-banner" aria-label="Next turn" hidden>
       <div id="nav-main"><div id="nav-icon" aria-hidden="true"></div><div class="nav-text"><div id="nav-dist"></div><div id="nav-text"></div></div></div>
       <div id="nav-then" hidden><span>Then</span><span id="nav-then-icon" aria-hidden="true"></span><span id="nav-then-text"></span><span id="nav-then-dist"></span></div>
@@ -481,6 +490,7 @@
           <button id="nav-end" type="button">End</button>
         </div>
       </section>
+    </div>
     </div>
     <section id="here-card" aria-labelledby="here-title" hidden>
       <div id="here-head">
