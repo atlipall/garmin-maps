@@ -61,3 +61,30 @@ describe('planSync', () => {
     expect(merged.deleted).toEqual({ c: 3 });
   });
 });
+
+describe('photos in the sync file', () => {
+  const photo = (id: string, added: number, updated?: number) => ({ id, added, ...(updated ? { updated } : {}), lon: -19, lat: 64, alt: null, taken: null, camera: '', width: 10, height: 10, bytes: 100, name: `${id}.jpg` });
+
+  test('a device that syncs photos merges them like everything else', () => {
+    const remote = makeBackup([], [], { gone: 5 }, new Date(), [photo('b', 2), photo('gone', 1)]);
+    const p = planSync({ saved: [], tracks: [], deleted: {}, photos: [photo('a', 1), photo('gone', 1)] }, remote);
+    expect(ids(p.putPhotos)).toEqual(['b']);
+    expect(p.removePhotos).toEqual(['gone']);
+    expect(ids(p.upload!.photos!)).toEqual(['a', 'b']);
+  });
+
+  test('a device that doesn’t passes the file’s photos on untouched, and changes nothing here', () => {
+    const remote = makeBackup([pin('x', 1)], [], {}, new Date(), [photo('b', 2), photo('c', 3)]);
+    const p = planSync({ saved: [pin('x', 1), pin('y', 2)], tracks: [], deleted: {} }, remote);
+    expect([p.putPhotos, p.removePhotos]).toEqual([[], []]);
+    expect(ids(p.upload!.photos!)).toEqual(['b', 'c']);
+    // Nothing else changed: no upload just for the photos.
+    expect(planSync({ saved: [pin('x', 1)], tracks: [], deleted: {} }, remote).upload).toBeNull();
+  });
+
+  test('photos survive two sync files being merged', () => {
+    const a = makeBackup([], [], {}, new Date(), [photo('a', 1)]);
+    const b = makeBackup([], [], {}, new Date(), [photo('b', 2)]);
+    expect(ids(mergeFiles(a, b).photos!)).toEqual(['a', 'b']);
+  });
+});

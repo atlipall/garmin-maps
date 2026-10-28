@@ -1,5 +1,6 @@
 import type { StoredTrack } from '../gpx/store';
 import { isSaved, type Saved } from './saved';
+import { isPhoto, type Photo } from '../photos/photo';
 
 /** A backup of everything the user keeps on the device besides the map: saved pins and routes,
  *  and GPX tracks. Also the shape of the Google Drive sync file (with deletions). */
@@ -11,6 +12,9 @@ export interface Backup {
   exported: string;
   saved: Saved[];
   tracks: StoredTrack[];
+  /** Photos (their details; each picture is a file of its own in Drive), when a device syncs
+   *  photos. Not in backup files. */
+  photos?: Photo[];
   /** Deleted items: id → when (ms), so a deletion reaches other devices when syncing. */
   deleted?: Record<string, number>;
 }
@@ -54,8 +58,8 @@ export function isTrack(v: unknown): v is StoredTrack {
     && g.waypoints.every((w) => isPoint(w) && isStrOrNull(w.name));
 }
 
-export function makeBackup(saved: Saved[], tracks: StoredTrack[], deleted: Record<string, number> = {}, now = new Date()): Backup {
-  return { app: 'garmin-map', kind: 'backup', version: 1, exported: now.toISOString(), saved, tracks, deleted };
+export function makeBackup(saved: Saved[], tracks: StoredTrack[], deleted: Record<string, number> = {}, now = new Date(), photos?: Photo[]): Backup {
+  return { app: 'garmin-map', kind: 'backup', version: 1, exported: now.toISOString(), saved, tracks, deleted, ...(photos?.length ? { photos } : {}) };
 }
 
 /** A backup file's contents; throws with a message for the user when it isn't one. Items that
@@ -75,6 +79,7 @@ export function parseBackup(text: string): Backup {
     ...b,
     saved: Array.isArray(b.saved) ? b.saved.filter(isSaved) : [],
     tracks: Array.isArray(b.tracks) ? b.tracks.filter(isTrack) : [],
+    photos: Array.isArray(b.photos) ? b.photos.filter(isPhoto) : [],
     deleted,
   };
 }
