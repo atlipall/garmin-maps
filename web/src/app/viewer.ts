@@ -14,6 +14,7 @@ import { featureNameAt } from '../map/featureName';
 import { conventionsFor } from '../map/conventions';
 import { takenText } from '../photos/photo';
 import { SaveHere } from './saveHere';
+import { PhotoHere } from './photoHere';
 import { TrackCard } from './trackCard';
 import { Dialogs } from '../ui/dialogs';
 import { TrackNav } from './trackNav';
@@ -187,12 +188,15 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: Viewe
   };
   /** Saving a pin where you are (made once the map has loaded, with the saved items). */
   let saveHere: SaveHere | null = null;
+  /** Adding a photo where you are (its button left of save-a-pin). */
+  let photoHere: PhotoHere | null = null;
   /** The map's named places once the place index is loaded (for naming a pin where you are). */
   let places: Place[] = [];
   locate.onActiveChange = (active) => {
     locating = active;
     syncAwake();
     saveHere?.setAvailable(active);
+    photoHere?.setAvailable(active);
   };
   syncAwake();
   // Location as it was last time: after the line above, so keeping the screen on hears of it.
@@ -426,6 +430,11 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: Viewe
         return nearCache.get(k)!;
       },
       routeTo: (p) => routePlanner.pick({ name: `Photo, ${takenText(p.taken, true)}`, lon: p.lon, lat: p.lat }),
+      here: () => {
+        if (!locating) return null;
+        const f = fresh();
+        return f ? { lon: f.at[0], lat: f.at[1], alt: null } : null;
+      },
       changed: () => sync.changed(),
     });
     photos.onList = () => sync.photosChanged();
@@ -459,6 +468,10 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: Viewe
     });
     map.addControl(saveHere, 'bottom-right');
     saveHere.setAvailable(locating);
+    // Adding photos from the map: left of save-a-pin. The picker offers Take Photo too.
+    photoHere = new PhotoHere(() => photos.pick());
+    map.addControl(photoHere, 'bottom-right');
+    photoHere.setAvailable(locating);
     // Recording a trip, in the Android app only (it records in the background): its button goes
     // left of save-a-pin. A trip the app hands over comes in once the stored tracks are read.
     const android = androidApp();

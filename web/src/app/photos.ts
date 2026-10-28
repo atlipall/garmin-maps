@@ -20,6 +20,13 @@ const CHECK_SHOWN = 6;
 export const mb = (bytes: number) => (bytes < 1e6 ? `${Math.max(1, Math.round(bytes / 1e3))} kB` : `${Math.round(bytes / 1e6)} MB`);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/** Where a photo goes on the map. */
+export interface Spot {
+  lon: number;
+  lat: number;
+  alt: number | null;
+}
+
 export interface PhotosDeps {
   map: maplibregl.Map;
   /** "Near Landmannalaugar" for a spot. */
@@ -28,6 +35,8 @@ export interface PhotosDeps {
   routeTo: (p: Photo) => void;
   /** Called after a change here (added, described, deleted), for syncing. */
   changed: () => void;
+  /** Where you are, when location is on and has a recent fix (offered for photos without one). */
+  here: () => Spot | null;
 }
 
 /**
@@ -47,6 +56,8 @@ export class Photos {
   private shared: { key: string; file: Promise<File> } | null = null;
   /** Called with the photos whenever they change (the sync panel counts them). */
   onList: ((photos: Photo[]) => void) | null = null;
+
+  private opened = 0;
 
   constructor(private readonly deps: PhotosDeps) {
     this.layer = new PhotoLayer(deps.map, (id) => this.thumb(id), (list) => this.viewer.show(list));
@@ -73,17 +84,13 @@ export class Photos {
       this.layer.show(on);
     };
     $('photos-close').onclick = () => this.show(false);
-    let opened = 0;
-    $('photos-add').onclick = () => {
-      opened = Date.now();
-      $<HTMLInputElement>('photo-files').click();
-    };
+    $('photos-add').onclick = () => this.pick();
     $<HTMLInputElement>('photo-files').onchange = () => {
       const input = $<HTMLInputElement>('photo-files');
       const files = [...(input.files ?? [])];
       input.value = '';
       // What the picker handed over and how long it took, for when it's slow (Diagnostics).
-      if (files.length) diag(pickedText(files, opened ? Date.now() - opened : null));
+      if (files.length) diag(pickedText(files, this.opened ? Date.now() - this.opened : null));
       if (files.length) void this.add(files);
     };
     $('photo-note-undo').onclick = () => {
@@ -206,8 +213,15 @@ export class Photos {
     this.undo = null;
   }
 
-  /** Adding photos: read what each says, show the ones with no location (they're left out), then
-   *  copy the rest in, showing them on the map as they come. */
+  /** The photo picker (Add photos, and the map's photo button); the iPhone offers Take Photo too. */
+  pick(): void {
+    if (this.busy) return;
+    this.opened = Date.now();
+    $<HTMLInputElement>('photo-files').click();
+  }
+
+  /** Adding photos: read what each says, show the ones with no location (left out, or put where
+   *  you are if you choose), then copy the rest in, showing them on the map as they come. */
   async add(files: File[]): Promise<void> {
     if (this.busy) return;
     this.busy = true;
@@ -220,26 +234,34 @@ export class Photos {
         read.push(await inspect(f).catch(() => ({ file: f, info: null, segments: [], description: null })));
       }
       this.hideNote();
+      const spots = new Map<Inspected, Spot>();
+      for (const x of read) {
+        if (hasLocation(x)) spots.set(x, { lon: x.info!.lon!, lat: x.info!.lat!, alt: x.info!.alt });
+      }
       // Already here: the same original (name, time and place).
       const key = (name: string, taken: string | null, lat: number, lon: number) => `${name}|${taken}|${lat.toFixed(6)}|${lon.toFixed(6)}`;
       const have = new Set(this.photos.map((p) => key(p.name, p.taken, p.lat, p.lon)));
-      const placed = read.filter(hasLocation);
-      const fresh = placed.filter((x) => !have.has(key(x.file.name, x.info!.taken, x.info!.lat!, x.info!.lon!)));
-      const already = placed.length - fresh.length;
-      const missing = read.filter((x) => !hasLocation(x));
+      const isNew = (x: Inspected) => !have.has(key(x.file.name, x.info?.taken ?? null, spots.get(x)!.lat, spots.get(x)!.lon));
+      const missing = read.filter((x) => !spots.has(x));
       if (missing.length) {
-        const choice = await this.check(missing, fresh.length);
+        const here = this.deps.here();
+        const choice = await this.check(missing, read.filter((x) => spots.has(x) && isNew(x)).length, here !== null);
         if (choice === 'cancel') return;
         if (choice === 'again') {
           $<HTMLInputElement>('photo-files').click();
           return;
         }
+        // Where you are now: the position when the step was shown (you may walk on while deciding).
+        if (choice === 'here' && here) for (const x of missing) spots.set(x, here);
       }
+      const placed = read.filter((x) => spots.has(x));
+      const fresh = placed.filter(isNew);
+      const already = placed.length - fresh.length;
       if (!fresh.length) {
         if (already) this.note(`${already === 1 ? 'That photo is' : `All ${already} are`} already on the map`);
         return;
       }
-      this.fit(fresh);
+      this.fit(fresh.map((x) => spots.get(x)!));
       const added: Photo[] = [];
       const failed: string[] = [];
       for (const [i, x] of fresh.entries()) {
@@ -249,10 +271,8 @@ export class Photos {
           const p: Photo = {
             id: newId(),
             added: Date.now(),
-            lon: x.info!.lon!,
-            lat: x.info!.lat!,
-            alt: x.info!.alt,
-            taken: x.info!.taken,
+            ...spots.get(x)!,
+            taken: x.info?.taken ?? null,
             camera: cameraOf(x),
             width: copy.width,
             height: copy.height,
@@ -295,23 +315,26 @@ export class Photos {
   }
 
   /** Moves the map to show where the photos being added were taken. */
-  private fit(xs: Inspected[]): void {
+  private fit(xs: Spot[]): void {
     const map = this.deps.map;
-    const lons = xs.map((x) => x.info!.lon!);
-    const lats = xs.map((x) => x.info!.lat!);
+    const lons = xs.map((x) => x.lon);
+    const lats = xs.map((x) => x.lat);
     const b: [[number, number], [number, number]] = [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]];
     if (b[0][0] === b[1][0] && b[0][1] === b[1][1]) map.easeTo({ center: b[0], zoom: Math.max(map.getZoom(), 13), duration: 600 });
     else map.fitBounds(b, { padding: 80, maxZoom: 15, duration: 600 });
   }
 
   /** The "no location" step: those photos, and what happens to the others. */
-  private check(missing: Inspected[], others: number): Promise<'go' | 'cancel' | 'again'> {
+  private check(missing: Inspected[], others: number, canPlace: boolean): Promise<'go' | 'cancel' | 'again' | 'here'> {
     const n = missing.length;
     const none = others === 0;
     $('photo-check-title').textContent = none ? (n === 1 ? "This photo doesn't have a location" : 'None of these photos have a location') : `${plural(n, 'photo')} ${n === 1 ? "doesn't" : "don't"} have a location`;
     $('photo-check-text').textContent = none
       ? `${n === 1 ? 'It' : 'They'} can't be added, because there's no place to show ${n === 1 ? 'it' : 'them'} on the map. Location may have been off for the Camera, or removed when ${n === 1 ? 'it was' : 'they were'} shared.`
       : `${n === 1 ? 'It' : 'They'} won't be added, because there's no place to show ${n === 1 ? 'it' : 'them'} on the map. The other ${others === 1 ? 'one' : others} will be.`;
+    if (canPlace) $('photo-check-text').textContent += ` Or put ${n === 1 ? 'it' : 'them'} where you are now.`;
+    $('photo-check-here-row').hidden = !canPlace;
+    $('photo-check-here').textContent = n === 1 ? 'Put it where I am' : `Put ${n === 2 ? 'both' : `all ${n}`} where I am`;
     const go = $('photo-check-go');
     go.textContent = none ? 'Choose other photos' : others === 1 ? 'Add the other one' : `Add the other ${others}`;
     const shown = n > CHECK_SHOWN ? CHECK_SHOWN - 1 : n;
@@ -345,7 +368,7 @@ export class Photos {
     $('photo-check').hidden = false;
     go.focus();
     return new Promise((resolve) => {
-      const done = (r: 'go' | 'cancel' | 'again') => {
+      const done = (r: 'go' | 'cancel' | 'again' | 'here') => {
         $('photo-scrim').hidden = true;
         $('photo-check').hidden = true;
         for (const u of urls) URL.revokeObjectURL(u);
@@ -354,6 +377,7 @@ export class Photos {
       };
       go.onclick = () => done(none ? 'again' : 'go');
       $('photo-check-cancel').onclick = () => done('cancel');
+      $('photo-check-here').onclick = () => done('here');
       $('photo-check').onkeydown = (e) => e.key === 'Escape' && done('cancel');
     });
   }

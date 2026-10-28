@@ -965,6 +965,37 @@ try {
   await page.keyboard.press('Escape');
   if (!(await page.$eval('#photo-viewer', (e) => e.hidden))) fail('Escape did not close the viewer');
   await page.evaluate(() => (document.querySelector('#photo-note').hidden = true));
+  // The map's photo button (left of save-a-pin, while location is on). Photos without a location
+  // go where you are only when you choose it in the "no location" step.
+  const locWas = await page.$eval('.locate-button', (b) => b.dataset.state);
+  if (locWas === 'off') await page.click('.locate-button');
+  await new Promise((r) => setTimeout(r, 1500)); // still at Selfoss (63.936, -21.0) from the routing steps
+  const buttons = await page.evaluate(() => {
+    const box = (q) => { const e = document.querySelector(q); return e && !e.closest('[hidden]') ? e.getBoundingClientRect() : null; };
+    const p = box('#map .photo-here-button');
+    const s = box('#map .save-here-button');
+    return { photo: p && { x: p.x, w: p.width }, save: s && { x: s.x, w: s.width } };
+  });
+  if (!buttons.photo || !buttons.save || buttons.photo.x >= buttons.save.x || buttons.photo.w !== buttons.save.w) fail(`photo button: ${JSON.stringify(buttons)}`);
+  const clock = new Date();
+  const two = (n) => String(n).padStart(2, '0');
+  const nowExif = `${clock.getFullYear()}:${two(clock.getMonth() + 1)}:${two(clock.getDate())} ${two(clock.getHours())}:${two(clock.getMinutes())}:${two(clock.getSeconds())}`;
+  const camera = await makePhoto('CAMERA.jpg', 1200, 900, null, nowExif, 1, 60);
+  const old = await makePhoto('OLD.jpg', 800, 600, null, '2026:08:12 09:20:00', 1, 90);
+  const [chooser] = await Promise.all([page.waitForFileChooser({ timeout: 5_000 }), page.click('#map .photo-here-button')]);
+  await chooser.accept([camera, old]);
+  await page.waitForFunction(() => !document.querySelector('#photo-check').hidden, { timeout: 15_000 }).catch(() => fail('photo button: no "no location" step'));
+  const hereCheck = await page.evaluate(() => ({ here: document.querySelector('#photo-check-here').closest('[hidden]') ? null : document.querySelector('#photo-check-here').textContent, go: document.querySelector('#photo-check-go').textContent }));
+  await page.screenshot({ path: `${OUT}photos-check-here.png` });
+  if (hereCheck.here !== 'Put both where I am' || hereCheck.go !== 'Choose other photos') fail(`photo button: check offers ${JSON.stringify(hereCheck)}`);
+  await page.click('#photo-check-here');
+  await page.waitForFunction(() => window.__app.photos.all.length === 5, { timeout: 15_000 }).catch(() => fail('photo button: the photos were not added where you are'));
+  const placedHere = await page.evaluate(() => window.__app.photos.all.filter((p) => p.name === 'CAMERA.jpg' || p.name === 'OLD.jpg').map((p) => [p.lat, p.lon]));
+  if (placedHere.length !== 2 || placedHere.some(([lat, lon]) => Math.abs(lat - 63.936) > 1e-5 || Math.abs(lon + 21.0) > 1e-5)) fail(`photo button: placed at ${JSON.stringify(placedHere)}`);
+  await page.waitForFunction(() => document.querySelector('#photo-note-text').textContent === 'Added 2 photos', { timeout: 10_000 }).catch(() => {});
+  await page.click('#photo-note-undo');
+  await page.waitForFunction(() => window.__app.photos.all.length === 3, { timeout: 5_000 }).catch(() => fail('photo button: Undo did not take the photo back'));
+  for (let i = 0; i < 4 && (await page.$eval('.locate-button', (b) => b.dataset.state)) !== locWas; i++) await page.click('.locate-button');
   console.log('photos ok:', panel.foot.split('.')[0]);
 
   // 4. reload opens straight from storage, where the app was: view, location mode and route

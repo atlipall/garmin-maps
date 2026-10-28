@@ -79,8 +79,8 @@
       /* Save my location: the button left of the locate button, its card (in the route card's place,
          which waits meanwhile) and "Saved … · Undo" (placed above whatever is at the bottom, see
          saveHere.ts). */
-      #map .save-here-button { display: grid; place-items: center; color: var(--ink); border-radius: inherit; }
-      #map .maplibregl-ctrl-group[hidden], body.navigating #map .save-here { display: none; }
+      #map :is(.save-here-button, .photo-here-button) { display: grid; place-items: center; color: var(--ink); border-radius: inherit; }
+      #map .maplibregl-ctrl-group[hidden], body.navigating #map :is(.save-here, .photo-here) { display: none; }
       body.saving-here #route-card, body.track-card-open #route-card { display: none !important; }
       #here-card, #track-card, #trip-card { position: absolute; z-index: 4; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; padding: 4px 16px 16px; background: #fff; border-radius: 18px; box-shadow: 0 8px 28px #1e283c38; display: grid; gap: 10px; }
       #here-card[hidden], #track-card[hidden], #trip-card[hidden] { display: none; }
@@ -164,6 +164,7 @@
       .check-photo span { padding: 4px 6px; background: #1b2230; color: #fff; font-size: calc(13 * var(--px)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .check-more { display: grid; place-items: center; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-size: calc(15 * var(--px)); font-weight: 700; text-align: center; }
       .dialog-row { display: flex; gap: 8px; }
+      .dialog-row[hidden] { display: none; }
       .dialog-row button { flex: 1; min-height: 50px; border: 1.5px solid #d4d9e1; border-radius: 14px; background: #fff; color: var(--ink); font-size: calc(16 * var(--px)); font-weight: 700; cursor: pointer; }
       .dialog-row button.primary { flex: 1.4; border-color: var(--accent); background: var(--accent); color: #fff; }
       #sync-photos-box { display: grid; gap: 2px; margin-top: 4px; border-top: 1px solid #0001; }
@@ -635,6 +636,7 @@
       <h2 id="photo-check-title"></h2>
       <p id="photo-check-text"></p>
       <div id="photo-check-grid"></div>
+      <div class="dialog-row" id="photo-check-here-row" hidden><button id="photo-check-here" type="button"></button></div>
       <div class="dialog-row"><button id="photo-check-cancel" type="button">Cancel</button><button id="photo-check-go" type="button" class="primary"></button></div>
     </section>
     <section id="sync-photos-ask" role="alertdialog" aria-modal="true" aria-labelledby="sync-photos-ask-title" aria-describedby="sync-photos-ask-text" hidden>
