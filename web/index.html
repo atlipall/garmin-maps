@@ -226,6 +226,16 @@
       #pe-text::placeholder { color: #8393ad; }
       #photo-edit #pe-text { box-shadow: inset 0 0 0 0 transparent; }
       #pe-note { flex: 1; margin: 0; padding: 12px calc(env(safe-area-inset-right) + 18px) 18px calc(env(safe-area-inset-left) + 18px); color: #9aaac4; font-size: calc(14 * var(--px)); }
+      /* A desktop or head unit: a card in the middle with the text in a box, not a phone sheet. */
+      @media (min-width: 700px) and (min-height: 420px) {
+        #photo-edit { padding: 24px; justify-content: center; align-items: center; }
+        #photo-edit > :not(.sr-only) { width: min(560px, 100%); box-sizing: border-box; }
+        #pe-head { padding: 8px 8px 4px; border-radius: 16px 16px 0 0; }
+        #pe-photo { padding: 8px 20px 0; }
+        #photo-edit #pe-text { flex: none; height: 9.5em; padding: 12px 14px; border: solid #161c28; border-width: 14px 20px 0; background: #0e131d; border-radius: 0; box-shadow: inset 0 0 0 1px #34425e; }
+        #photo-edit #pe-text:focus { box-shadow: inset 0 0 0 2px #7f9fe8; }
+        #pe-note { flex: none; padding: 12px 20px 20px; border-radius: 0 0 16px 16px; }
+      }
       /* "A new version is ready": under the top row, below its search results, the menu and panels; hidden while navigating
          (see updateNotice.ts) and under the import screen, where a reload would lose an import. */
       #update { position: absolute; z-index: 2; top: calc(var(--top) + var(--btn) + var(--gap)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; max-width: calc(100% - 2 * var(--gap)); box-sizing: border-box; padding: 4px 4px 4px 14px; font-size: calc(14 * var(--px)); white-space: nowrap; }
