@@ -6,6 +6,7 @@ import { withDescription } from '../photos/xmp';
 import { deletions, noteDeleted, setDeletions } from '../saved/deleted';
 import { newId } from '../saved/saved';
 import { readSetting, writeSetting } from '../ui/settings';
+import { diag } from './diagnostics';
 import { PhotoLayer } from './photoLayer';
 import { PhotoViewer } from './photoViewer';
 
@@ -72,11 +73,17 @@ export class Photos {
       this.layer.show(on);
     };
     $('photos-close').onclick = () => this.show(false);
-    $('photos-add').onclick = () => $<HTMLInputElement>('photo-files').click();
+    let opened = 0;
+    $('photos-add').onclick = () => {
+      opened = Date.now();
+      $<HTMLInputElement>('photo-files').click();
+    };
     $<HTMLInputElement>('photo-files').onchange = () => {
       const input = $<HTMLInputElement>('photo-files');
       const files = [...(input.files ?? [])];
       input.value = '';
+      // What the picker handed over and how long it took, for when it's slow (Diagnostics).
+      if (files.length) diag(pickedText(files, opened ? Date.now() - opened : null));
       if (files.length) void this.add(files);
     };
     $('photo-note-undo').onclick = () => {
@@ -430,4 +437,17 @@ export class Photos {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
+}
+
+/** "Picker: 5 photos (3 HEIC, 2 JPEG, 11.2 MB) after 14.3 s": the time is from tapping Add
+ *  photos, so it includes the picking itself. */
+function pickedText(files: File[], ms: number | null): string {
+  const kinds = new Map<string, number>();
+  for (const f of files) {
+    const k = (f.type.replace(/^image\//, '') || f.name.split('.').pop() || '?').toUpperCase();
+    kinds.set(k, (kinds.get(k) ?? 0) + 1);
+  }
+  const bytes = files.reduce((n, f) => n + f.size, 0);
+  const what = [...kinds].map(([k, n]) => `${n} ${k}`).join(', ');
+  return `Picker: ${files.length} photo${files.length === 1 ? '' : 's'} (${what}, ${(bytes / 1e6).toFixed(1)} MB)${ms == null ? '' : ` after ${(ms / 1000).toFixed(1)} s`}`;
 }
