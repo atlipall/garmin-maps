@@ -250,6 +250,12 @@ export class Photos {
       // A photo just taken (the picker's Take Photo) with no location of its own goes where you
       // are without asking: you took it here.
       const now = this.deps.here();
+      // What each photo says about itself, for when one isn't placed as expected (Diagnostics).
+      const ago = (t: number) => `${Math.round((Date.now() - t) / 1000)} s ago`;
+      for (const x of read.slice(0, 10)) {
+        const t = x.info?.taken ? new Date(x.info.taken).getTime() : NaN;
+        diag(`Photo ${x.file.name}: ${x.info ? 'EXIF' : 'no EXIF'}, taken ${x.info?.taken ? `${x.info.taken} (${Number.isFinite(t) ? ago(t) : '?'})` : 'unknown'}, ${hasLocation(x) ? 'has a location' : 'no location'}, file ${ago(x.file.lastModified)}; your position ${now ? 'known' : 'unknown'}`);
+      }
       const justTaken = now ? read.filter((x) => !spots.has(x) && takenJustNow(x)) : [];
       for (const x of justTaken) spots.set(x, now!);
       if (justTaken.length) diag(`Photos: ${justTaken.length} just taken without a location, put where you are`);
