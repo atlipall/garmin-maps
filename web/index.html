@@ -549,7 +549,7 @@
         <button id="photos-close" class="close" type="button" aria-label="Close photos"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       </div>
       <button id="photos-add" type="button"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>Add photos</button>
-      <input id="photo-files" type="file" accept="image/*" multiple hidden />
+      <!-- Naming HEIC lets Safari hand over the originals: with only image/* it converts each to JPEG first, which keeps the picker up for seconds. --><input id="photo-files" type="file" accept="image/*,image/heic,image/heif" multiple hidden />
       <button id="photos-show" class="item" role="switch" aria-checked="true">Show photos on the map</button>
       <p id="photos-empty">No photos yet. Add photos from your phone: the ones with a location show on the map where they were taken.</p>
       <div id="photo-days"></div>
