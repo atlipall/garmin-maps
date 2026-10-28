@@ -965,8 +965,8 @@ try {
   await page.keyboard.press('Escape');
   if (!(await page.$eval('#photo-viewer', (e) => e.hidden))) fail('Escape did not close the viewer');
   await page.evaluate(() => (document.querySelector('#photo-note').hidden = true));
-  // The map's photo button (left of save-a-pin, while location is on). Photos without a location
-  // go where you are only when you choose it in the "no location" step.
+  // The map's photo button (left of save-a-pin, while location is on). A photo just taken without a
+  // location goes where you are at once; an older one only when you choose it in the "no location" step.
   const locWas = await page.$eval('.locate-button', (b) => b.dataset.state);
   if (locWas === 'off') await page.click('.locate-button');
   await new Promise((r) => setTimeout(r, 1500)); // still at Selfoss (63.936, -21.0) from the routing steps
@@ -985,14 +985,16 @@ try {
   const [chooser] = await Promise.all([page.waitForFileChooser({ timeout: 5_000 }), page.click('#map .photo-here-button')]);
   await chooser.accept([camera, old]);
   await page.waitForFunction(() => !document.querySelector('#photo-check').hidden, { timeout: 15_000 }).catch(() => fail('photo button: no "no location" step'));
-  const hereCheck = await page.evaluate(() => ({ here: document.querySelector('#photo-check-here').closest('[hidden]') ? null : document.querySelector('#photo-check-here').textContent, go: document.querySelector('#photo-check-go').textContent }));
+  const hereCheck = await page.evaluate(() => ({ here: document.querySelector('#photo-check-here').closest('[hidden]') ? null : document.querySelector('#photo-check-here').textContent, go: document.querySelector('#photo-check-go').textContent, tiles: [...document.querySelectorAll('#photo-check-grid .check-photo span')].map((e) => e.textContent) }));
   await page.screenshot({ path: `${OUT}photos-check-here.png` });
-  if (hereCheck.here !== 'Put both where I am' || hereCheck.go !== 'Choose other photos') fail(`photo button: check offers ${JSON.stringify(hereCheck)}`);
+  if (hereCheck.here !== 'Put it where I am' || hereCheck.go !== 'Add the other one' || hereCheck.tiles.join() !== '12 Aug 09:20') fail(`photo button: check offers ${JSON.stringify(hereCheck)}`);
   await page.click('#photo-check-here');
   await page.waitForFunction(() => window.__app.photos.all.length === 5, { timeout: 15_000 }).catch(() => fail('photo button: the photos were not added where you are'));
   const placedHere = await page.evaluate(() => window.__app.photos.all.filter((p) => p.name === 'CAMERA.jpg' || p.name === 'OLD.jpg').map((p) => [p.lat, p.lon]));
   if (placedHere.length !== 2 || placedHere.some(([lat, lon]) => Math.abs(lat - 63.936) > 1e-5 || Math.abs(lon + 21.0) > 1e-5)) fail(`photo button: placed at ${JSON.stringify(placedHere)}`);
   await page.waitForFunction(() => document.querySelector('#photo-note-text').textContent === 'Added 2 photos', { timeout: 10_000 }).catch(() => {});
+  const hereSub = await page.$eval('#photo-note-sub', (e) => e.textContent);
+  if (hereSub !== '1 just taken, so put where you are') fail(`photo button: note says ${hereSub}`);
   await page.click('#photo-note-undo');
   await page.waitForFunction(() => window.__app.photos.all.length === 3, { timeout: 5_000 }).catch(() => fail('photo button: Undo did not take the photo back'));
   for (let i = 0; i < 4 && (await page.$eval('.locate-button', (b) => b.dataset.state)) !== locWas; i++) await page.click('.locate-button');

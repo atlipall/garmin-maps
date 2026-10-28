@@ -27,6 +27,15 @@ export interface Spot {
   alt: number | null;
 }
 
+/** Taken in the last 3 minutes by its own clock (EXIF keeps local time, which JavaScript reads
+ *  as local). A photo with no time isn't counted: it could be anything. */
+function takenJustNow(x: Inspected, now = Date.now()): boolean {
+  const taken = x.info?.taken;
+  if (!taken) return false;
+  const t = new Date(taken).getTime();
+  return Number.isFinite(t) && Math.abs(now - t) < 3 * 60_000;
+}
+
 export interface PhotosDeps {
   map: maplibregl.Map;
   /** "Near Landmannalaugar" for a spot. */
@@ -238,6 +247,12 @@ export class Photos {
       for (const x of read) {
         if (hasLocation(x)) spots.set(x, { lon: x.info!.lon!, lat: x.info!.lat!, alt: x.info!.alt });
       }
+      // A photo just taken (the picker's Take Photo) with no location of its own goes where you
+      // are without asking: you took it here.
+      const now = this.deps.here();
+      const justTaken = now ? read.filter((x) => !spots.has(x) && takenJustNow(x)) : [];
+      for (const x of justTaken) spots.set(x, now!);
+      if (justTaken.length) diag(`Photos: ${justTaken.length} just taken without a location, put where you are`);
       // Already here: the same original (name, time and place).
       const key = (name: string, taken: string | null, lat: number, lon: number) => `${name}|${taken}|${lat.toFixed(6)}|${lon.toFixed(6)}`;
       const have = new Set(this.photos.map((p) => key(p.name, p.taken, p.lat, p.lon)));
@@ -263,6 +278,7 @@ export class Photos {
       }
       this.fit(fresh.map((x) => spots.get(x)!));
       const added: Photo[] = [];
+      let putHere = 0;
       const failed: string[] = [];
       for (const [i, x] of fresh.entries()) {
         this.note('Adding photos', { count: `${i + 1} of ${fresh.length}`, progress: i / fresh.length, sub: i === 0 ? "You can keep using the map. They show on it as they're added." : undefined, stay: true });
@@ -283,6 +299,7 @@ export class Photos {
           await putFiles({ id: p.id, full: copy.full, thumb: copy.thumb });
           await putPhoto(p);
           added.push(p);
+          if (justTaken.includes(x)) putHere++;
           this.photos = [...this.photos, p];
           this.changedList();
         } catch (err) {
@@ -292,9 +309,10 @@ export class Photos {
       }
       if (added.length) this.deps.changed();
       const extra = [already ? `${already} ${already === 1 ? 'was' : 'were'} already here` : null, failed.length ? `${failed.length} couldn't be opened` : null].filter(Boolean).join(' · ');
+      const extraHere = putHere ? `${putHere === 1 && added.length === 1 ? 'Just taken' : `${putHere} just taken`}, so put where you are` : null;
       if (!added.length) return this.note(`Couldn't add ${failed.length === 1 ? 'the photo' : 'the photos'}`, { sub: `${failed.length === 1 ? "It couldn't" : "They couldn't"} be opened in this browser.` });
       this.note(`Added ${plural(added.length, 'photo')}`, {
-        sub: extra || undefined,
+        sub: [extraHere, extra].filter(Boolean).join(' · ') || undefined,
         undo: async () => {
           for (const p of added) {
             await deletePhoto(p.id);
