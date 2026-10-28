@@ -65,7 +65,7 @@ npm run shots                           # retake the guide's screenshots (web/si
 
 ## Open work (update this when it changes)
 
-- **`photos` branch** (2026-10-28, on the dev site for a phone test): photos on the map (⋯ →
+- **Shipped 2026-10-28** (merged from `photos` before a full phone test): photos on the map (⋯ →
   Photos). Copies at most 2048 px with all the original's metadata (`web/src/photos/`: JPEG
   segments, HEIC boxes, EXIF; orientation and size updated in place, MPF dropped, the colour
   profile kept where the copy is drawn in its space); round thumbnails grouped on screen
@@ -74,7 +74,8 @@ npm run shots                           # retake the guide's screenshots (web/si
   deleting. Sync is a per-device switch ("Sync photos too"): details in the sync file, each
   picture a file `garmin-map-photo-<id>.jpg` in the app folder. Mockups:
   claude.ai/artifact/95UsMjnreFrPQTAvNcyPNH. Safari's Photos picker keeps the location (tested
-  on the owner's iPhone).
+  on the owner's iPhone). Still to check on the iPhone: P3 colours, Share's caption, gestures,
+  memory when adding 20–30 photos, sync with a second device. Not in the guide's screenshots yet.
 - **Shipped 2026-10-16** (an Apple HIG review): one accent colour (`--accent #1d3f8f`; the icon,
   guide and Android bar keep #2c5a85); every button at least 44 pt; End shows "Guidance ended ·
   Undo" for 8 s (`TrackNav.resume` brings a track's guidance back); a Settings panel (⋯ →
