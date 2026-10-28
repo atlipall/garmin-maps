@@ -27,14 +27,21 @@ export interface Spot {
   alt: number | null;
 }
 
-/** Taken in the last 3 minutes by its own clock (EXIF keeps local time, which JavaScript reads
- *  as local). A photo with no time isn't counted: it could be anything. */
+/** Taken in the last 3 minutes: by its own clock (EXIF keeps local time, which JavaScript reads
+ *  as local), or, with no time in it, by the file's age. The iPhone's camera through Safari gives
+ *  a file seconds old with neither a time nor a location in it ("image.jpg"); a photo from the
+ *  library always has its time. */
 function takenJustNow(x: Inspected, now = Date.now()): boolean {
   const taken = x.info?.taken;
-  if (!taken) return false;
-  const t = new Date(taken).getTime();
+  const t = taken ? new Date(taken).getTime() : x.file.lastModified;
   return Number.isFinite(t) && Math.abs(now - t) < 3 * 60_000;
 }
+
+/** A photo's own clock time ("2026-10-28T15:55:30"), as EXIF keeps it: local, no time zone. */
+const localTime = (t: number) => {
+  const d = new Date(t);
+  return new Date(t - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 19);
+};
 
 export interface PhotosDeps {
   map: maplibregl.Map;
@@ -294,7 +301,8 @@ export class Photos {
             id: newId(),
             added: Date.now(),
             ...spots.get(x)!,
-            taken: x.info?.taken ?? null,
+            // A photo just taken without a time in it: when its file was made.
+            taken: x.info?.taken ?? (justTaken.includes(x) ? localTime(x.file.lastModified) : null),
             camera: cameraOf(x),
             width: copy.width,
             height: copy.height,

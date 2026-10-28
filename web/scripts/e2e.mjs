@@ -853,7 +853,7 @@ try {
     };
     const gps = at ? { 1: { type: 2, text: at[1] >= 0 ? 'N' : 'S' }, 2: { type: 5, r: dms(at[1]) }, 3: { type: 2, text: at[0] >= 0 ? 'E' : 'W' }, 4: { type: 5, r: dms(at[0]) }, 6: { type: 5, r: [[590, 1]] } } : undefined;
     const exif = tiff({ 0x010f: { type: 2, text: 'Apple' }, 0x0110: { type: 2, text: 'iPhone 13' }, 0x0112: { type: 3, n: [orientation] } },
-      { 0x829a: { type: 5, r: [[1, 1200]] }, 0x829d: { type: 5, r: [[8, 5]] }, 0x9003: { type: 2, text: taken }, 0xa002: { type: 4, n: [w] }, 0xa003: { type: 4, n: [h] }, 0xa405: { type: 3, n: [26] } }, gps);
+      { 0x829a: { type: 5, r: [[1, 1200]] }, 0x829d: { type: 5, r: [[8, 5]] }, ...(taken ? { 0x9003: { type: 2, text: taken } } : {}), 0xa002: { type: 4, n: [w] }, 0xa003: { type: 4, n: [h] }, 0xa405: { type: 3, n: [26] } }, gps);
     const bytes = withSegments(new Uint8Array(Buffer.from(b64, 'base64')), [exifSegment(exif)]);
     await writeFile(photoDir + name, bytes);
     return photoDir + name;
@@ -977,10 +977,8 @@ try {
     return { photo: p && { x: p.x, w: p.width }, save: s && { x: s.x, w: s.width } };
   });
   if (!buttons.photo || !buttons.save || buttons.photo.x >= buttons.save.x || buttons.photo.w !== buttons.save.w) fail(`photo button: ${JSON.stringify(buttons)}`);
-  const clock = new Date();
-  const two = (n) => String(n).padStart(2, '0');
-  const nowExif = `${clock.getFullYear()}:${two(clock.getMonth() + 1)}:${two(clock.getDate())} ${two(clock.getHours())}:${two(clock.getMinutes())}:${two(clock.getSeconds())}`;
-  const camera = await makePhoto('CAMERA.jpg', 1200, 900, null, nowExif, 1, 60);
+  // Like the iPhone's camera through Safari: EXIF with neither a time nor a location, a new file.
+  const camera = await makePhoto('CAMERA.jpg', 1200, 900, null, null, 1, 60);
   const old = await makePhoto('OLD.jpg', 800, 600, null, '2026:08:12 09:20:00', 1, 90);
   const [chooser] = await Promise.all([page.waitForFileChooser({ timeout: 5_000 }), page.click('#map .photo-here-button')]);
   await chooser.accept([camera, old]);
@@ -995,6 +993,8 @@ try {
   await page.waitForFunction(() => document.querySelector('#photo-note-text').textContent === 'Added 2 photos', { timeout: 10_000 }).catch(() => {});
   const hereSub = await page.$eval('#photo-note-sub', (e) => e.textContent);
   if (hereSub !== '1 just taken, so put where you are') fail(`photo button: note says ${hereSub}`);
+  const cameraTaken = await page.evaluate(() => window.__app.photos.all.find((p) => p.name === 'CAMERA.jpg')?.taken);
+  if (!cameraTaken || Math.abs(new Date(cameraTaken).getTime() - Date.now()) > 5 * 60_000) fail(`photo button: the photo just taken has time ${cameraTaken}`);
   await page.click('#photo-note-undo');
   await page.waitForFunction(() => window.__app.photos.all.length === 3, { timeout: 5_000 }).catch(() => fail('photo button: Undo did not take the photo back'));
   for (let i = 0; i < 4 && (await page.$eval('.locate-button', (b) => b.dataset.state)) !== locWas; i++) await page.click('.locate-button');
