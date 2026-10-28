@@ -6,7 +6,7 @@ import { descriptionOf } from './xmp';
 /** The longest side of the copy the app keeps (px). */
 export const MAX_SIDE = 2048;
 /** The thumbnail's side (px): a square for the map and the lists, sharp at 3x for 52 pt. */
-const THUMB = 192;
+export const THUMB = 192;
 const QUALITY = 0.85;
 
 /** What a picked photo says about itself, read before any decoding (cheap: a photo with no
@@ -99,7 +99,7 @@ const toBlob = (c: HTMLCanvasElement, q: number) =>
   new Promise<Blob>((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not make a copy of the photo.'))), 'image/jpeg', q));
 
 /** Decodes the photo the way the browser shows it (turned upright by its orientation). */
-async function decode(file: File): Promise<HTMLImageElement> {
+async function decode(file: Blob, name = file instanceof File ? file.name : 'The photo'): Promise<HTMLImageElement> {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
@@ -107,7 +107,7 @@ async function decode(file: File): Promise<HTMLImageElement> {
     await img.decode();
     return img;
   } catch {
-    throw new Error(`${file.name} can't be opened in this browser.`);
+    throw new Error(`${name} can't be opened in this browser.`);
   } finally {
     // The decoded picture stays with the element.
     setTimeout(() => URL.revokeObjectURL(url), 0);
@@ -175,13 +175,15 @@ export async function makeCopy(x: Inspected, max = MAX_SIDE): Promise<Copy> {
   return { full, thumb, width, height };
 }
 
-/** A small picture of a photo for the "no location" list (no metadata needed). */
-export async function preview(file: File, side = 160): Promise<Blob | null> {
+/** A small square picture of a photo: for the "no location" list, and the thumbnail of a synced
+ *  photo whose picture just arrived (no metadata needed). */
+export async function preview(file: Blob, side = 160): Promise<Blob | null> {
   try {
     const img = await decode(file);
     const c = document.createElement('canvas');
     c.width = c.height = side;
     const g = c.getContext('2d')!;
+    g.imageSmoothingQuality = 'high';
     const s = Math.min(img.naturalWidth, img.naturalHeight);
     g.drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, side, side);
     const b = await toBlob(c, 0.8);

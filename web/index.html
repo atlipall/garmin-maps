@@ -29,7 +29,7 @@
       /* Keyboard focus (on a Mac): a ring in the accent colour, white on the dark panels. Headings
          are focused by the app when a panel opens, not by the user: no ring. */
       :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      :is(#nav-panel, #nav-banner, #here-toast, #nav-undo, #route-card.routed #route-head, #route-card.min) :focus-visible { outline-color: #fff; }
+      :is(#nav-panel, #nav-banner, #here-toast, #nav-undo, #photo-note, #photo-viewer, #photo-edit, #route-card.routed #route-head, #route-card.min) :focus-visible { outline-color: #fff; }
       [tabindex="-1"]:focus-visible { outline: none; }
       /* A round close button with an ✕ (cards and panels alike). */
       .close { width: var(--btn); height: var(--btn); flex: none; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: #eef0f3; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -72,9 +72,9 @@
       #map-dem { font-size: calc(13 * var(--px)); color: #667; }
       #map-dem:empty { display: none; }
       #app-version { padding: 12px 0 2px; font-size: calc(12 * var(--px)); color: #667; font-variant-numeric: tabular-nums; }
-      #settings .item[role="switch"] { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
-      #settings .item[role="switch"]::after { content: ""; flex: none; width: 40px; height: 24px; border-radius: 12px; background: #c9ccd1 radial-gradient(circle at 12px 12px, #fff 9px, transparent 10px); transition: background-position 0.15s; }
-      #settings .item[role="switch"][aria-checked="true"]::after { background: #1f7ae0 radial-gradient(circle at 28px 12px, #fff 9px, transparent 10px); }
+      #settings .item[role="switch"], #photos-show[role="switch"], #sync-photos[role="switch"] { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+      #settings .item[role="switch"]::after, #photos-show[role="switch"]::after, #sync-photos[role="switch"]::after { content: ""; flex: none; width: 40px; height: 24px; border-radius: 12px; background: #c9ccd1 radial-gradient(circle at 12px 12px, #fff 9px, transparent 10px); transition: background-position 0.15s; }
+      #settings .item[role="switch"][aria-checked="true"]::after, #photos-show[role="switch"][aria-checked="true"]::after, #sync-photos[role="switch"][aria-checked="true"]::after { background: #1f7ae0 radial-gradient(circle at 28px 12px, #fff 9px, transparent 10px); }
       #badge { position: absolute; z-index: 3; left: calc(env(safe-area-inset-left) + var(--gap)); bottom: calc(var(--bottom) + 64px); right: calc(env(safe-area-inset-right) + var(--btn) + 2 * var(--gap)); width: fit-content; padding: 6px 10px; font-size: calc(13 * var(--px)); color: #8a3b00; }
       /* Save my location: the button left of the locate button, its card (in the route card's place,
          which waits meanwhile) and "Saved … · Undo" (placed above whatever is at the bottom, see
@@ -126,6 +126,105 @@
       #here-toast-text, #nav-undo-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
       #here-undo, #nav-undo-button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: #ffffff1f; color: #fff; font-size: calc(15 * var(--px)); font-weight: 600; cursor: pointer; }
       #here-undo[hidden] { display: none; }
+      /* Photos (⋯ → Photos, src/app/photos.ts): thumbnails on the map, the panel, the viewer. */
+      .photo-pin { position: relative; width: 52px; height: 52px; padding: 0; border: 3px solid #fff; border-radius: 50%; background: #c9d2e3 center / cover no-repeat; box-shadow: 0 3px 10px #0a142859; cursor: pointer; box-sizing: border-box; }
+      .photo-pin .count { position: absolute; top: -6px; right: -8px; min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box; border: 2px solid #fff; border-radius: 11px; background: var(--accent); color: #fff; font: 700 13px/18px -apple-system, system-ui, sans-serif; text-align: center; }
+      #photos-add { width: 100%; min-height: 50px; margin: 6px 0 4px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 14px; background: var(--accent); color: #fff; font-size: calc(17 * var(--px)); font-weight: 700; cursor: pointer; }
+      #photos-add:disabled { opacity: 0.6; }
+      #photos .item, #sync-photos { display: flex; align-items: center; width: 100%; min-height: 48px; padding: 0; border: 0; background: none; font-size: calc(16 * var(--px)); text-align: left; color: var(--ink); cursor: pointer; }
+      #photos-empty, #photos-foot { margin: 6px 0; color: #556; font-size: calc(14 * var(--px)); }
+      #photos-foot:empty, #photos-error:empty { display: none; }
+      #photos-error { color: #b3261e; font-size: calc(14 * var(--px)); }
+      .photo-day { margin-top: 10px; }
+      .photo-day h3 { display: flex; gap: 8px; margin: 0 0 6px; font-size: calc(13 * var(--px)); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #5b6476; }
+      .photo-day h3 span { margin-left: auto; font-weight: 400; letter-spacing: 0; text-transform: none; }
+      .photo-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+      .photo-grid button { aspect-ratio: 1; padding: 0; border: 0; border-radius: 8px; background: #e3e7ee center / cover no-repeat; cursor: pointer; }
+      #photo-note { position: absolute; z-index: 6; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(max(0px, env(safe-area-inset-bottom) - 14px) + 64px); max-width: 420px; box-sizing: border-box; padding: 6px 6px 6px 16px; min-height: 52px; border-radius: 14px; background: #1d2a38; color: #fff; font-size: calc(15 * var(--px)); box-shadow: 0 6px 20px #0a142859; display: grid; gap: 8px; align-content: center; }
+      /* Over the viewer (after a delete there), at the top, clear of its buttons. */
+      body.photo-open #photo-note { z-index: 8; top: calc(env(safe-area-inset-top) + 64px); bottom: auto; }
+      #photo-note[hidden], #photo-note-bar[hidden], #photo-note-sub[hidden], #photo-note-undo[hidden] { display: none; }
+      #photo-note-row { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+      #photo-note-text { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+      #photo-note-count { padding-right: 10px; color: #c9d2e3; font-variant-numeric: tabular-nums; }
+      #photo-note-count:empty { display: none; }
+      #photo-note-undo { min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: #ffffff1f; color: #fff; font-size: calc(15 * var(--px)); font-weight: 600; cursor: pointer; }
+      #photo-note-bar { height: 6px; margin-right: 10px; border-radius: 3px; background: #ffffff26; overflow: hidden; }
+      #photo-note-bar div { width: 0; height: 100%; background: #7f9be0; transition: width 0.2s; }
+      #photo-note-sub { margin: 0 10px 6px 0; color: #c9d2e3; font-size: calc(14 * var(--px)); }
+      #photo-scrim { position: fixed; inset: 0; z-index: 8; background: #0a142852; }
+      #photo-scrim[hidden] { display: none; }
+      #photo-check, #sync-photos-ask { position: fixed; z-index: 9; left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); bottom: calc(env(safe-area-inset-bottom) + 16px); max-width: 420px; margin: 0 auto; box-sizing: border-box; padding: 18px 16px 16px; background: #fff; color: var(--ink); border-radius: 20px; box-shadow: 0 8px 28px #0000004d; display: grid; gap: 14px; }
+      #photo-check[hidden], #sync-photos-ask[hidden] { display: none; }
+      #photo-check h2, #sync-photos-ask h2 { margin: 0; font-size: calc(20 * var(--px)); font-weight: 800; }
+      #photo-check p, #sync-photos-ask p { margin: -8px 0 0; font-size: calc(15 * var(--px)); color: #4b5466; }
+      #photo-check-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+      .check-photo { display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; background: #e3e7ee; }
+      .check-photo div { aspect-ratio: 4 / 3; background: #c9d2e3 center / cover no-repeat; }
+      .check-photo span { padding: 4px 6px; background: #1b2230; color: #fff; font-size: calc(13 * var(--px)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .check-more { display: grid; place-items: center; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-size: calc(15 * var(--px)); font-weight: 700; text-align: center; }
+      .dialog-row { display: flex; gap: 8px; }
+      .dialog-row button { flex: 1; min-height: 50px; border: 1.5px solid #d4d9e1; border-radius: 14px; background: #fff; color: var(--ink); font-size: calc(16 * var(--px)); font-weight: 700; cursor: pointer; }
+      .dialog-row button.primary { flex: 1.4; border-color: var(--accent); background: var(--accent); color: #fff; }
+      #sync-photos-box { display: grid; gap: 2px; margin-top: 4px; border-top: 1px solid #0001; }
+      #sync-photos-box[hidden] { display: none; }
+      #sync-photos-text { margin: 0; }
+      /* The viewer: the photo on black, the details in a sheet at the bottom (beside it on a wide
+         landscape screen); a tap on the photo hides them. */
+      #photo-viewer { position: fixed; inset: 0; z-index: 7; background: #000; color: #fff; overflow: hidden; touch-action: none; }
+      #photo-viewer[hidden] { display: none; }
+      #pv-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+      #pv-img { max-width: 100%; max-height: 100%; transform-origin: 0 0; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+      #pv-top { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px; padding: calc(env(safe-area-inset-top) + 8px) calc(env(safe-area-inset-right) + 12px) 8px calc(env(safe-area-inset-left) + 16px); background: linear-gradient(#0009, #0000); }
+      #pv-count { flex: 1; font-size: calc(15 * var(--px)); font-weight: 600; color: #e3e8f1; }
+      #pv-close { width: 44px; height: 44px; border: 0; border-radius: 50%; background: #ffffff26; color: #fff; display: grid; place-items: center; cursor: pointer; }
+      .pv-step { position: absolute; top: 50%; width: 44px; height: 44px; margin-top: -22px; border: 0; border-radius: 50%; background: #0000004d; color: #fff; display: grid; place-items: center; cursor: pointer; }
+      .pv-step:disabled { color: #ffffff59; cursor: default; }
+      #pv-prev { left: calc(env(safe-area-inset-left) + 8px); }
+      #pv-next { right: calc(env(safe-area-inset-right) + 8px); }
+      #pv-sheet { position: absolute; left: 0; right: 0; bottom: 0; box-sizing: border-box; max-height: 60%; overflow-y: auto; padding: 8px calc(env(safe-area-inset-right) + 18px) calc(env(safe-area-inset-bottom) + 18px) calc(env(safe-area-inset-left) + 18px); background: #161c28; border-radius: 20px 20px 0 0; display: grid; gap: 12px; }
+      #pv-grip { justify-self: center; width: 36px; height: 5px; border-radius: 3px; background: #ffffff40; }
+      #pv-info { display: grid; gap: 3px; }
+      #pv-when { margin: 0; font-size: calc(19 * var(--px)); font-weight: 700; }
+      #pv-where { font-size: calc(15 * var(--px)); color: #c9d2e3; }
+      #pv-camera { font-size: calc(13 * var(--px)); color: #9aaac4; }
+      #pv-camera:empty { display: none; }
+      #pv-desc { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; padding: 10px 12px; border: 0; border-radius: 12px; background: #ffffff12; color: #fff; text-align: left; font: inherit; font-size: calc(16 * var(--px)); line-height: 1.35; cursor: pointer; }
+      #pv-desc span { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
+      #pv-desc svg { flex: none; margin-top: 2px; color: #aab4c6; }
+      #pv-desc.empty { align-items: center; border: 1.5px dashed #ffffff40; background: none; color: #c9d2e3; }
+      #pv-desc.empty svg { display: none; }
+      #pv-actions { display: flex; gap: 8px; }
+      #pv-actions button { flex: 1; min-height: 50px; border: 0; border-radius: 14px; background: #ffffff1f; color: #fff; font-size: calc(16 * var(--px)); font-weight: 700; cursor: pointer; }
+      #pv-route { background: var(--accent) !important; }
+      #pv-delete { flex: none !important; width: 50px; display: grid; place-items: center; background: #ff8a8029 !important; color: #ff8a80 !important; }
+      #pv-error { color: #ff8a80; font-size: calc(14 * var(--px)); }
+      #pv-error:empty { display: none; }
+      #photo-viewer.bare :is(#pv-top, #pv-sheet, .pv-step) { display: none; }
+      @media (min-width: 900px) and (orientation: landscape) {
+        #pv-stage { right: 400px; }
+        #pv-top { right: 400px; }
+        #pv-next { right: calc(400px + 12px); }
+        #pv-sheet { left: auto; top: 0; width: 400px; max-height: none; border-radius: 0; padding-top: calc(env(safe-area-inset-top) + 72px); align-content: start; }
+        #pv-grip { display: none; }
+        #pv-sheet { display: flex; flex-direction: column; }
+        #pv-actions { margin-top: auto; }
+      }
+      #photo-edit { position: fixed; inset: 0; z-index: 9; box-sizing: border-box; margin: 0; padding: calc(env(safe-area-inset-top) + 40px) 0 0; background: #0009; display: flex; flex-direction: column; }
+      #photo-edit[hidden] { display: none; }
+      #photo-edit > * { background: #161c28; color: #fff; }
+      #pe-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px calc(env(safe-area-inset-right) + 8px) 6px calc(env(safe-area-inset-left) + 8px); border-radius: 14px 14px 0 0; }
+      #pe-head h2 { margin: 0; font-size: calc(17 * var(--px)); }
+      #pe-head button { min-height: 44px; padding: 0 10px; border: 0; background: none; color: #a9c0f5; font-size: calc(17 * var(--px)); cursor: pointer; }
+      #pe-cancel { justify-self: start; }
+      #pe-save { justify-self: end; font-weight: 700 !important; }
+      #pe-photo { display: flex; gap: 12px; align-items: center; padding: 8px calc(env(safe-area-inset-right) + 18px) 0 calc(env(safe-area-inset-left) + 18px); font-size: calc(15 * var(--px)); }
+      #pe-thumb { width: 56px; height: 56px; border-radius: 6px; object-fit: cover; flex: none; }
+      #pe-where { color: #c9d2e3; font-size: calc(14 * var(--px)); }
+      #pe-text { display: block; margin: 0; padding: 16px calc(env(safe-area-inset-right) + 18px) 0 calc(env(safe-area-inset-left) + 18px); border: 0; outline: 0; resize: none; font: max(16px, calc(17 * var(--px)))/1.4 -apple-system, system-ui, sans-serif; }
+      #pe-text::placeholder { color: #8393ad; }
+      #photo-edit #pe-text { box-shadow: inset 0 0 0 0 transparent; }
+      #pe-note { flex: 1; margin: 0; padding: 12px calc(env(safe-area-inset-right) + 18px) 18px calc(env(safe-area-inset-left) + 18px); color: #9aaac4; font-size: calc(14 * var(--px)); }
       /* "A new version is ready": under the top row, below its search results, the menu and panels; hidden while navigating
          (see updateNotice.ts) and under the import screen, where a reload would lose an import. */
       #update { position: absolute; z-index: 2; top: calc(var(--top) + var(--btn) + var(--gap)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; max-width: calc(100% - 2 * var(--gap)); box-sizing: border-box; padding: 4px 4px 4px 14px; font-size: calc(14 * var(--px)); white-space: nowrap; }
@@ -158,7 +257,7 @@
       #map .locate-button.unavailable { opacity: 0.45; }
       #map .height-pill { padding: 3px 10px; border-radius: 999px; background: #fff; box-shadow: 0 1px 4px #0003; font: 600 calc(13 * var(--px))/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink); }
       /* Tracks panel (⋯ → Tracks): below the top row, scrolls when long. */
-      #tracks, #saved, #sync-panel, #diag-panel, #settings { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
+      #tracks, #saved, #photos, #sync-panel, #diag-panel, #settings { position: absolute; z-index: 4; top: calc(var(--top) + var(--btn) + 6px); left: calc(env(safe-area-inset-left) + var(--gap)); right: calc(env(safe-area-inset-right) + var(--gap)); max-width: 420px; max-height: calc(100% - var(--top) - var(--btn) - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px 12px; background: #fff; }
       .tracks-head { display: flex; align-items: center; justify-content: space-between; }
       .tracks-head h2 { margin: 0; font-size: calc(18 * var(--px)); }
       /* Settings (⋯ → Settings): groups of rows, each group under a small heading. */
@@ -344,11 +443,11 @@
          while driving), the controls over the map are drawn 1.5 times bigger (buttons 66 px; Android
          Auto asks for 76 dp) and the cards 1.25 times. The map itself isn't scaled. */
       @media (min-width: 600px) and (min-height: 600px) {
-        body.android-app :is(#topbar, #menu-button, #menu, #badge, #update, #tracks, #saved, #sync-panel, #diag-panel, #settings, #trip-pill, #import .card),
+        body.android-app :is(#topbar, #menu-button, #menu, #badge, #update, #tracks, #saved, #photos, #sync-panel, #diag-panel, #settings, #trip-pill, #import .card),
         body.android-app #map :is(.maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left, .place-menu .maplibregl-popup-content) { zoom: 1.5; }
         /* The cards beside the map less so (at 1.5 the route and guidance cards took half the screen),
            and the notes that show in their place at the same size, so neither covers the other. */
-        body.android-app :is(#route-card, #nav-banner, #nav-bottom, #here-card, #track-card, #trip-card, #here-toast, #nav-undo, #trip-note) { zoom: 1.25; }
+        body.android-app :is(#route-card, #nav-banner, #nav-bottom, #here-card, #track-card, #trip-card, #here-toast, #nav-undo, #trip-note, #photo-note, #photo-check, #sync-photos-ask, #pv-sheet, #pv-top, .pv-step) { zoom: 1.25; }
       }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {
@@ -402,6 +501,7 @@
     <div id="menu" class="panel" hidden>
       <button id="tracks-open">Tracks</button>
       <button id="saved-open">Saved places</button>
+      <button id="photos-open">Photos</button>
       <button id="sync-open">Sync and backup<span id="sync-menu-status"></span></button>
       <button id="settings-open">Settings</button>
     </div>
@@ -443,6 +543,19 @@
       <ul id="saved-list"></ul>
       <div id="saved-error" role="alert"></div>
     </section>
+    <section id="photos" class="panel" aria-labelledby="photos-title" hidden>
+      <div class="tracks-head">
+        <h2 id="photos-title" tabindex="-1">Photos</h2>
+        <button id="photos-close" class="close" type="button" aria-label="Close photos"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      </div>
+      <button id="photos-add" type="button"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>Add photos</button>
+      <input id="photo-files" type="file" accept="image/*" multiple hidden />
+      <button id="photos-show" class="item" role="switch" aria-checked="true">Show photos on the map</button>
+      <p id="photos-empty">No photos yet. Add photos from your phone: the ones with a location show on the map where they were taken.</p>
+      <div id="photo-days"></div>
+      <p id="photos-foot"></p>
+      <div id="photos-error" role="alert"></div>
+    </section>
     <section id="sync-panel" class="panel" aria-labelledby="sync-title" hidden>
       <div class="tracks-head">
         <h2 id="sync-title" tabindex="-1">Sync and backup</h2>
@@ -452,6 +565,10 @@
         <h3>Google Drive</h3>
         <p id="sync-text" role="status"></p>
         <div class="backup-buttons"><button id="sync-connect" type="button">Sync with Google Drive</button><button id="sync-now" type="button" hidden>Sync now</button><button id="sync-stop" type="button" hidden>Stop syncing</button></div>
+        <div id="sync-photos-box" hidden>
+          <button id="sync-photos" class="item" role="switch" aria-checked="false" aria-describedby="sync-photos-text">Sync photos too</button>
+          <p id="sync-photos-text"></p>
+        </div>
       </div>
       <div id="backup">
         <h3>Backup file</h3>
@@ -512,6 +629,39 @@
     </section>
     <div id="here-toast" role="status" hidden><span id="here-toast-text"></span><button id="here-undo" type="button">Undo</button></div>
     <div id="nav-undo" role="status" hidden><span id="nav-undo-text">Guidance ended</span><button id="nav-undo-button" type="button">Undo</button></div>
+    <div id="photo-note" role="status" hidden><div id="photo-note-row"><span id="photo-note-text"></span><span id="photo-note-count"></span><button id="photo-note-undo" type="button" hidden>Undo</button></div><div id="photo-note-bar" hidden><div></div></div><p id="photo-note-sub" hidden></p></div>
+    <div id="photo-scrim" hidden></div>
+    <section id="photo-check" role="alertdialog" aria-modal="true" aria-labelledby="photo-check-title" aria-describedby="photo-check-text" hidden>
+      <h2 id="photo-check-title"></h2>
+      <p id="photo-check-text"></p>
+      <div id="photo-check-grid"></div>
+      <div class="dialog-row"><button id="photo-check-cancel" type="button">Cancel</button><button id="photo-check-go" type="button" class="primary"></button></div>
+    </section>
+    <section id="sync-photos-ask" role="alertdialog" aria-modal="true" aria-labelledby="sync-photos-ask-title" aria-describedby="sync-photos-ask-text" hidden>
+      <h2 id="sync-photos-ask-title"></h2>
+      <p id="sync-photos-ask-text"></p>
+      <div class="dialog-row"><button id="sync-photos-later" type="button">Not now</button><button id="sync-photos-go" type="button" class="primary">Upload</button></div>
+    </section>
+    <section id="photo-viewer" role="dialog" aria-modal="true" aria-labelledby="pv-when" hidden>
+      <div id="pv-stage"><img id="pv-img" alt="" draggable="false" /></div>
+      <div id="pv-top"><span id="pv-count"></span><button id="pv-close" type="button" aria-label="Close photo"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button></div>
+      <button id="pv-prev" class="pv-step" type="button" aria-label="Previous photo"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button id="pv-next" class="pv-step" type="button" aria-label="Next photo"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div id="pv-sheet">
+        <div id="pv-grip" aria-hidden="true"></div>
+        <div id="pv-info"><h2 id="pv-when"></h2><div id="pv-where"></div><div id="pv-camera"></div></div>
+        <button id="pv-desc" type="button"><span id="pv-desc-text"></span><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z M14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
+        <div id="pv-actions"><button id="pv-route" type="button">Route here</button><button id="pv-share" type="button">Share</button><button id="pv-delete" type="button" aria-label="Delete photo"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button></div>
+        <div id="pv-error" role="alert"></div>
+      </div>
+    </section>
+    <form id="photo-edit" role="dialog" aria-modal="true" aria-labelledby="pe-title" hidden>
+      <div id="pe-head"><button id="pe-cancel" type="button">Cancel</button><h2 id="pe-title">Description</h2><button id="pe-save" type="submit">Save</button></div>
+      <div id="pe-photo"><img id="pe-thumb" alt="" /><div><div id="pe-when"></div><div id="pe-where"></div></div></div>
+      <label for="pe-text" class="sr-only">Description</label>
+      <textarea id="pe-text" rows="5" maxlength="2000" placeholder="What's in the photo?"></textarea>
+      <p id="pe-note">Shows under the photo. Goes with it to Drive, and into the photo's details when you share it.</p>
+    </form>
     <div id="trip-pill" role="status" hidden><span class="trip-dot" aria-hidden="true"></span><b>Recording</b><span id="trip-pill-text"></span></div>
     <section id="trip-card" aria-labelledby="trip-title" hidden>
       <div id="trip-head">

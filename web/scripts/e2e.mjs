@@ -2,6 +2,10 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 import { preview } from 'vite';
+import { exifOf, readSegments, xmpOf, metadataSegments, withSegments, exifSegment } from '../src/photos/jpeg.ts';
+import { readExif } from '../src/photos/exif.ts';
+import { descriptionOf } from '../src/photos/xmp.ts';
+import { tiff } from '../test/helpers/photoBytes.ts';
 
 const WEB = fileURLToPath(new URL('..', import.meta.url));
 const REPO = fileURLToPath(new URL('../../', import.meta.url));
@@ -820,6 +824,149 @@ try {
   await page.click('#route-close');
   console.log('saving ok:', savedInfo, '· saved as a track with', savedTrack.segs, 'road stretches');
 
+  // 3f. Photos: picked photos with a location are copied (at most 2048 px, upright, their metadata
+  // kept) and shown as thumbnails; those without one are shown first and left out.
+  const photoDir = OUT + 'photos/';
+  await mkdir(photoDir, { recursive: true });
+  /** A JPEG w×h drawn by the browser, with an EXIF block (GPS when `at` is given). */
+  const makePhoto = async (name, w, h, at, taken, orientation = 1, hue = 200) => {
+    const b64 = await page.evaluate(async (w, h, hue) => {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      const g = c.getContext('2d');
+      g.fillStyle = `hsl(${hue} 50% 70%)`;
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = '#334';
+      g.fillRect(0, h * 0.6, w, h * 0.4); // ground at the bottom of the stored pixels
+      const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.8));
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let s = '';
+      for (const b of bytes) s += String.fromCharCode(b);
+      return btoa(s);
+    }, w, h, hue);
+    const dms = (v) => {
+      const a = Math.abs(v);
+      const d = Math.floor(a);
+      const m = Math.floor((a - d) * 60);
+      return [[d, 1], [m, 1], [Math.round(((a - d) * 60 - m) * 60 * 10000), 10000]];
+    };
+    const gps = at ? { 1: { type: 2, text: at[1] >= 0 ? 'N' : 'S' }, 2: { type: 5, r: dms(at[1]) }, 3: { type: 2, text: at[0] >= 0 ? 'E' : 'W' }, 4: { type: 5, r: dms(at[0]) }, 6: { type: 5, r: [[590, 1]] } } : undefined;
+    const exif = tiff({ 0x010f: { type: 2, text: 'Apple' }, 0x0110: { type: 2, text: 'iPhone 13' }, 0x0112: { type: 3, n: [orientation] } },
+      { 0x829a: { type: 5, r: [[1, 1200]] }, 0x829d: { type: 5, r: [[8, 5]] }, 0x9003: { type: 2, text: taken }, 0xa002: { type: 4, n: [w] }, 0xa003: { type: 4, n: [h] }, 0xa405: { type: 3, n: [26] } }, gps);
+    const bytes = withSegments(new Uint8Array(Buffer.from(b64, 'base64')), [exifSegment(exif)]);
+    await writeFile(photoDir + name, bytes);
+    return photoDir + name;
+  };
+  const photoFiles = [
+    // Turned on its side as stored (orientation 6): the copy comes out upright, taller than wide.
+    await makePhoto('IMG_0001.jpg', 3000, 2000, [-19.0612, 63.9909], '2026:08:14 15:42:10', 6, 200),
+    await makePhoto('IMG_0002.jpg', 1600, 1200, [-19.0610, 63.9910], '2026:08:14 15:50:00', 1, 30),
+    await makePhoto('IMG_0003.jpg', 1600, 1200, [-19.67, 63.99], '2026:08:13 18:02:00', 1, 120),
+    await makePhoto('IMG_0004.jpg', 800, 600, null, '2026:08:12 09:14:00', 1, 300),
+    await makePhoto('IMG_0005.jpg', 800, 600, null, '2026:08:12 09:15:00', 1, 330),
+  ];
+  await page.click('#menu-button');
+  await page.click('#photos-open');
+  if (await page.$eval('#photos-empty', (e) => e.hidden)) fail('photos panel: no "no photos yet" text');
+  await (await page.$('#photo-files')).uploadFile(...photoFiles);
+  await page.waitForFunction(() => !document.querySelector('#photo-check').hidden, { timeout: 30_000 }).catch(() => fail('no "no location" step'));
+  await page.waitForFunction(() => [...document.querySelectorAll('#photo-check-grid .check-photo div')].every((d) => d.style.backgroundImage), { timeout: 10_000 }).catch(() => {});
+  const check = await page.evaluate(() => ({ title: document.querySelector('#photo-check-title').textContent, go: document.querySelector('#photo-check-go').textContent, tiles: [...document.querySelectorAll('#photo-check-grid .check-photo span')].map((e) => e.textContent) }));
+  await page.screenshot({ path: `${OUT}photos-no-location.png` });
+  if (check.title !== "2 photos don't have a location" || check.go !== 'Add the other 3' || check.tiles.join() !== '12 Aug 09:14,12 Aug 09:15') fail(`no-location step: ${JSON.stringify(check)}`);
+  await page.click('#photo-check-go');
+  await page.waitForFunction(() => document.querySelector('#photo-note-text').textContent === 'Added 3 photos' && !document.querySelector('#photo-note-undo').hidden, { timeout: 60_000 })
+    .catch(async () => fail(`adding photos: ${await page.$eval('#photo-note', (e) => e.textContent)}`));
+  // The copy: upright and at most 2048 px, its EXIF kept with orientation 1 and the new size.
+  const copied = await page.evaluate(async () => {
+    const p = window.__app.photos.all.find((x) => x.name === 'IMG_0001.jpg');
+    const db = await new Promise((r) => { const q = indexedDB.open('garmin-map'); q.onsuccess = () => r(q.result); });
+    const f = await new Promise((r) => { const q = db.transaction('photoFiles').objectStore('photoFiles').get(p.id); q.onsuccess = () => r(q.result); });
+    db.close();
+    const bytes = new Uint8Array(await f.full.arrayBuffer());
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    const bm = await createImageBitmap(f.full, { imageOrientation: 'none' });
+    return { p, b64: btoa(s), w: bm.width, h: bm.height, thumb: f.thumb.size };
+  });
+  const copyExif = readExif(exifOf(readSegments(new Uint8Array(Buffer.from(copied.b64, 'base64')))));
+  if (copied.w !== 1365 || copied.h !== 2048 || copied.p.width !== 1365 || copied.p.height !== 2048 || copyExif.orientation !== 1 || Math.abs(copyExif.lat - 63.9909) > 1e-4 || copyExif.taken !== '2026-08-14T15:42:10' || copyExif.model !== 'iPhone 13' || !copied.thumb)
+    fail(`stored copy: ${copied.w}×${copied.h} ${JSON.stringify({ ...copied.p, b64: undefined })} ${JSON.stringify(copyExif)}`);
+  if (copied.p.camera !== 'iPhone 13 · 26 mm · f/1.6 · 1/1200 s' || copied.p.taken !== '2026-08-14T15:42:10' || copied.p.alt !== 590) fail(`photo record: ${JSON.stringify(copied.p)}`);
+  // On the map: the two at Landmannalaugar as one thumbnail with a count, the third on its own.
+  await page.evaluate(() => new Promise((r) => { const m = window.__app.map; m.jumpTo({ center: [-19.3, 63.99], zoom: 9, bearing: 0 }); m.once('idle', r); }));
+  await new Promise((r) => setTimeout(r, 300));
+  const pins = await page.$$eval('.photo-pin', (els) => els.map((e) => ({ count: e.querySelector('.count')?.textContent ?? '1', bg: !!e.style.backgroundImage })));
+  if (pins.length !== 2 || pins.map((p) => p.count).sort().join() !== '1,2' || !pins.every((p) => p.bg)) fail(`photos on the map: ${JSON.stringify(pins)}`);
+  await page.screenshot({ path: `${OUT}photos-map.png` });
+  // The same photo again: already there.
+  await (await page.$('#photo-files')).uploadFile(photoFiles[1]);
+  await page.waitForFunction(() => document.querySelector('#photo-note-text').textContent === 'That photo is already on the map', { timeout: 20_000 }).catch(async () => fail(`a photo added twice: ${await page.$eval('#photo-note', (e) => e.textContent)}`));
+  // A tap on the group: the viewer, the first of the two.
+  await page.click('.photo-pin .count');
+  await page.waitForFunction(() => !document.querySelector('#photo-viewer').hidden && document.querySelector('#pv-img').src, { timeout: 10_000 }).catch(() => fail('viewer did not open'));
+  let viewer = await page.evaluate(() => ({ count: document.querySelector('#pv-count').textContent, when: document.querySelector('#pv-when').textContent, camera: document.querySelector('#pv-camera').textContent, desc: document.querySelector('#pv-desc-text').textContent, prev: document.querySelector('#pv-prev').disabled }));
+  if (viewer.count !== '1 of 2' || viewer.when !== 'Fri 14 Aug 2026 · 15:42' || viewer.camera !== 'iPhone 13 · 26 mm · f/1.6 · 1/1200 s' || viewer.desc !== '+ Add a description' || !viewer.prev) fail(`viewer: ${JSON.stringify(viewer)}`);
+  await page.setViewport({ width: 390, height: 844 }); // (isMobile would reload the page)
+  await new Promise((r) => setTimeout(r, 300));
+  await page.screenshot({ path: `${OUT}photos-viewer.png` });
+  await page.setViewport({ width: 1024, height: 1024 });
+  await page.keyboard.press('ArrowRight');
+  if (await page.$eval('#pv-count', (e) => e.textContent) !== '2 of 2') fail('the arrow key did not go to the next photo');
+  await page.click('#pv-prev');
+  // A description: Cancel keeps what was typed for next time; Save keeps it on the photo.
+  await page.click('#pv-desc');
+  await page.type('#pe-text', 'Lunch by the hot spring');
+  await page.click('#pe-cancel');
+  await page.click('#pv-desc');
+  if (await page.$eval('#pe-text', (e) => e.value) !== 'Lunch by the hot spring') fail('a cancelled description was not kept as a draft');
+  await page.type('#pe-text', ' & a swim');
+  await page.screenshot({ path: `${OUT}photos-describe.png` });
+  await page.click('#pe-save');
+  await page.waitForFunction(() => document.querySelector('#pv-desc-text').textContent === 'Lunch by the hot spring & a swim', { timeout: 5_000 }).catch(() => fail('description not shown after Save'));
+  const described = await page.evaluate(() => window.__app.photos.all.find((x) => x.name === 'IMG_0001.jpg'));
+  if (described.description !== 'Lunch by the hot spring & a swim' || !described.updated) fail(`description not stored: ${JSON.stringify(described)}`);
+  // Shared, the copy carries the description in its XMP, and its EXIF as before.
+  const shared = await page.evaluate(async () => {
+    const p = window.__app.photos.all.find((x) => x.name === 'IMG_0001.jpg');
+    const f = await window.__app.photos.shareFile(p);
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return { name: f.name, b64: btoa(s) };
+  });
+  const sharedSegs = metadataSegments(new Uint8Array(Buffer.from(shared.b64, 'base64')));
+  if (shared.name !== 'IMG_0001.jpg' || descriptionOf(xmpOf(sharedSegs)) !== 'Lunch by the hot spring & a swim' || readExif(exifOf(sharedSegs)).taken !== '2026-08-14T15:42:10') fail(`shared copy: ${shared.name} ${xmpOf(sharedSegs)}`);
+  // Delete, with Undo: on to the other photo; Undo brings it back.
+  await page.click('#pv-delete');
+  await page.waitForFunction(() => window.__app.photos.all.length === 2, { timeout: 5_000 }).catch(() => {});
+  viewer = await page.evaluate(() => ({ count: document.querySelector('#pv-count').textContent, when: document.querySelector('#pv-when').textContent, note: document.querySelector('#photo-note-text').textContent, n: window.__app.photos.all.length }));
+  if (viewer.count !== '' || viewer.when !== 'Fri 14 Aug 2026 · 15:50' || viewer.note !== 'Photo deleted' || viewer.n !== 2) fail(`delete: ${JSON.stringify(viewer)}`);
+  await page.click('#photo-note-undo');
+  await page.waitForFunction(() => window.__app.photos.all.length === 3, { timeout: 5_000 }).catch(() => fail('Undo did not bring the photo back'));
+  await page.click('#pv-close');
+  // The panel: by day, newest first; a tap opens the photo with the map moved there.
+  await page.click('#menu-button');
+  await page.click('#photos-open');
+  const panel = await page.evaluate(() => ({ days: [...document.querySelectorAll('.photo-day h3')].map((h) => h.firstChild.textContent), thumbs: document.querySelectorAll('.photo-grid button').length, foot: document.querySelector('#photos-foot').textContent }));
+  await page.screenshot({ path: `${OUT}photos-panel.png` });
+  if (panel.days.join() !== 'Fri 14 Aug 2026,Thu 13 Aug 2026' || panel.thumbs !== 3 || !/^3 photos · \d+ (kB|MB) on this device\./.test(panel.foot)) fail(`photos panel: ${JSON.stringify(panel)}`);
+  await page.click('.photo-day:nth-child(2) .photo-grid button');
+  const opened = await page.evaluate(() => ({ when: document.querySelector('#pv-when').textContent, center: window.__app.map.getCenter() }));
+  if (opened.when !== 'Thu 13 Aug 2026 · 18:02' || Math.abs(opened.center.lng + 19.67) > 1e-3) fail(`photo from the panel: ${JSON.stringify(opened)}`);
+  // On a head unit: the details beside the photo.
+  await page.setViewport({ width: 1280, height: 720 });
+  await new Promise((r) => setTimeout(r, 300));
+  const side = await page.evaluate(() => ({ sheet: document.querySelector('#pv-sheet').getBoundingClientRect().left, stage: document.querySelector('#pv-stage').getBoundingClientRect().right }));
+  await page.screenshot({ path: `${OUT}photos-headunit.png` });
+  if (side.sheet < 800 || side.stage > side.sheet + 1) fail(`head-unit viewer: ${JSON.stringify(side)}`);
+  await page.setViewport({ width: 1024, height: 1024 });
+  await page.keyboard.press('Escape');
+  if (!(await page.$eval('#photo-viewer', (e) => e.hidden))) fail('Escape did not close the viewer');
+  await page.evaluate(() => (document.querySelector('#photo-note').hidden = true));
+  console.log('photos ok:', panel.foot.split('.')[0]);
+
   // 4. reload opens straight from storage, where the app was: view, location mode and route
   await page.evaluate(() => window.__app.routePlanner.pick({ name: 'Landmannalaugar', lon: -19.06, lat: 63.991 }));
   await page.click('#route-go');
@@ -959,12 +1106,12 @@ try {
   // and the helper answered here; signing in starts as the return from Google's page, with a code).
   // Needs a build with VITE_GOOGLE_CLIENT_ID set.
   if (await page.$eval('#sync', (e) => e.hidden)) fail('no Google Drive sync section (build with VITE_GOOGLE_CLIENT_ID=e2e)');
-  const fakeDrive = { file: null, status: 200 };
+  const fakeDrive = { file: null, status: 200, photos: new Map(), deletedPhotos: [] };
   const remotePin = { id: 'remote-1', kind: 'pin', name: 'Remote hut', added: 1, lon: -19.3, lat: 64.2 };
   const remoteTrack = { id: 'remote-t', name: 'Remote track', color: '#0891b2', visible: true, added: 2, stats: { distance: 1200, climb: 30, duration: null }, gpx: { name: 'Remote track', lines: [{ kind: 'track', name: 'Remote track', points: [{ lon: -19.1, lat: 63.99, ele: 600, time: null }, { lon: -19.09, lat: 64.0, ele: 630, time: null }] }], waypoints: [] } };
   fakeDrive.file = JSON.stringify({ app: 'garmin-map', kind: 'backup', version: 1, exported: new Date().toISOString(), saved: [remotePin], tracks: [remoteTrack], deleted: {} });
   const tracksBefore = await page.evaluate(() => window.__app.tracks.count);
-  const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS' };
+  const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS' };
   const fakeHelper = { calls: [], refresh: 200 };
   const onRequest = (req) => {
     const url = new URL(req.url());
@@ -982,6 +1129,36 @@ try {
     if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: cors });
     if (fakeDrive.status !== 200) return req.respond({ status: fakeDrive.status, headers: cors, body: '' });
     const json = (o) => req.respond({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(o) });
+    // Photo pictures: files of their own, listed by name.
+    if (req.method() === 'GET' && url.pathname === '/drive/v3/files' && (url.searchParams.get('q') ?? '').includes('garmin-map-photo-')) return json({ files: [...fakeDrive.photos].map(([name, f]) => ({ id: f.id, name })) });
+    const photoId = url.pathname.match(/^\/drive\/v3\/files\/(p-[\w-]+)$/)?.[1];
+    if (photoId) {
+      const entry = [...fakeDrive.photos].find(([, f]) => f.id === photoId);
+      if (req.method() === 'DELETE') {
+        if (entry) fakeDrive.photos.delete(entry[0]);
+        fakeDrive.deletedPhotos.push(photoId);
+        return req.respond({ status: 204, headers: cors, body: '' });
+      }
+      return entry ? req.respond({ status: 200, headers: cors, contentType: 'image/jpeg', body: entry[1].body }) : req.respond({ status: 404, headers: cors, body: '' });
+    }
+    if (req.method() === 'POST' && url.pathname === '/upload/drive/v3/files' && (req.headers()['content-type'] ?? '').startsWith('multipart/related')) {
+      // A picture's upload is a Blob, whose body Chrome doesn't hand over: the page names it in a
+      // header (see the fetch wrapper below).
+      return Promise.resolve(req.postData() ?? '').then((body) => {
+        const name = req.headers()['x-e2e-name'] ?? /"name":"(garmin-map-photo-[^"]+)"/.exec(body)?.[1];
+        if (!name) return null;
+        const id = `p-${fakeDrive.photos.size + 1}-${Date.now()}`;
+        fakeDrive.photos.set(name, { id, body: Buffer.from('') });
+        return json({ id });
+      }).then((done) => {
+        if (done !== null) return;
+        return Promise.resolve(req.postData() ?? '').then((body) => {
+          const parts = body.split(/--garmin-map-[a-z0-9]+/);
+          fakeDrive.file = parts[2].slice(parts[2].indexOf('\r\n\r\n') + 4).trim();
+          return json({ id: 'f1' });
+        });
+      });
+    }
     if (req.method() === 'GET' && url.pathname === '/drive/v3/files') return json({ files: fakeDrive.file ? [{ id: 'f1' }] : [] });
     if (req.method() === 'GET' && url.pathname === '/drive/v3/files/f1') return req.respond({ status: 200, headers: cors, contentType: 'application/json', body: fakeDrive.file ?? '' });
     if (req.method() === 'PATCH' && url.pathname === '/upload/drive/v3/files/f1') { fakeDrive.file = req.postData(); return json({ id: 'f1' }); }
@@ -994,6 +1171,16 @@ try {
   };
   await page.setRequestInterception(true);
   page.on('request', onRequest);
+  await page.evaluateOnNewDocument(() => {
+    const raw = window.fetch;
+    window.fetch = async (url, init) => {
+      if (init?.body instanceof Blob && String(url).includes('/upload/drive/v3/files')) {
+        const name = /"name":"([^"]+)"/.exec(await init.body.slice(0, 600).text())?.[1];
+        if (name) init = { ...init, headers: { ...init.headers, 'x-e2e-name': name } };
+      }
+      return raw(url, init);
+    };
+  });
   const remote = () => JSON.parse(fakeDrive.file);
   // Back from Google's sign-in page with a code: the helper trades it, the address is tidied, it syncs.
   await page.evaluate(() => localStorage.setItem('google-sync-signin', 'e2e-state'));
@@ -1027,6 +1214,43 @@ try {
   fakeDrive.file = JSON.stringify(other);
   await page.evaluate(() => window.__app.sync.syncNow());
   if ((await page.evaluate(() => window.__app.saved.count)) !== 1) fail('a deletion on another device did not reach this one');
+  // Photos sync only when switched on: asked first (how many, how big), then each picture goes up.
+  if (remote().photos?.length) fail('photos synced before being switched on');
+  await syncPanel(true);
+  if (await page.$eval('#sync-photos', (e) => e.getAttribute('aria-checked')) !== 'false') fail('photo sync on before being asked for');
+  await page.click('#sync-photos');
+  await page.waitForFunction(() => !document.querySelector('#sync-photos-ask').hidden, { timeout: 5_000 }).catch(() => {});
+  const ask = await page.evaluate(() => ({ shown: !document.querySelector('#sync-photos-ask').hidden, title: document.querySelector('#sync-photos-ask-title').textContent }));
+  if (!ask.shown || ask.title !== 'Upload 3 photos to Drive?') fail(`photo sync question: ${JSON.stringify(ask)}`);
+  await page.screenshot({ path: `${OUT}sync-photos-ask.png` });
+  await page.click('#sync-photos-go');
+  await page.waitForFunction(() => document.querySelector('#sync-photos').getAttribute('aria-checked') === 'true', { timeout: 5_000 });
+  for (let t = 0; t < 100 && !(fakeDrive.photos.size === 3 && remote().photos?.length === 3); t++) await new Promise((r) => setTimeout(r, 100));
+  if (fakeDrive.photos.size !== 3 || remote().photos?.length !== 3 || remote().photos.find((p) => p.name === 'IMG_0001.jpg')?.description !== 'Lunch by the hot spring & a swim') fail(`photos to Drive: ${fakeDrive.photos.size} pictures, ${remote().photos?.length} in the sync file`);
+  // A photo from another device: its details in the sync file, its picture a file; it comes down
+  // and shows on the map with a thumbnail made here.
+  const otherPhoto = { id: 'remote-photo', added: Date.now(), lon: -19.5, lat: 64.1, alt: null, taken: '2026-08-20T12:00:00', camera: 'Pixel 8', width: 1600, height: 1200, bytes: 200000, name: 'PXL_1.jpg' };
+  fakeDrive.photos.set('garmin-map-photo-remote-photo.jpg', { id: 'p-remote', body: await readFile(photoFiles[2]) });
+  const withPhoto = remote();
+  withPhoto.photos.push(otherPhoto);
+  fakeDrive.file = JSON.stringify(withPhoto);
+  await page.evaluate(() => window.__app.sync.syncNow());
+  await page.waitForFunction(() => window.__app.photos.all.some((p) => p.id === 'remote-photo'), { timeout: 10_000 }).catch(() => fail('a photo from another device did not come'));
+  const arrived = await page.evaluate(async () => {
+    const db = await new Promise((r) => { const q = indexedDB.open('garmin-map'); q.onsuccess = () => r(q.result); });
+    const f = await new Promise((r) => { const q = db.transaction('photoFiles').objectStore('photoFiles').get('remote-photo'); q.onsuccess = () => r(q.result); });
+    db.close();
+    return f ? { full: f.full.size, thumb: f.thumb.size } : null;
+  });
+  if (!arrived?.full || !arrived.thumb) fail(`picture from another device: ${JSON.stringify(arrived)}`);
+  // Deleted here (and the Undo let go of): gone from Drive, its picture too.
+  await page.evaluate(() => { const p = window.__app.photos.all.find((x) => x.id === 'remote-photo'); return window.__app.photos.remove(p); });
+  await page.evaluate(() => window.__app.sync.syncNow());
+  for (let t = 0; t < 50 && !fakeDrive.deletedPhotos.includes('p-remote'); t++) await new Promise((r) => setTimeout(r, 100));
+  if (!fakeDrive.deletedPhotos.includes('p-remote') || remote().photos.some((p) => p.id === 'remote-photo')) fail(`photo deleted here not gone from Drive: ${fakeDrive.deletedPhotos}`);
+  await page.evaluate(() => document.querySelector('#photo-note').hidden = true);
+  await syncPanel(false);
+  console.log('photo sync ok:', fakeDrive.photos.size, 'pictures in Drive');
   // Offline (or a connection that doesn't answer): the app carries on; sync says it'll try later.
   await page.setOfflineMode(true);
   await page.evaluate(() => window.__app.sync.syncNow());

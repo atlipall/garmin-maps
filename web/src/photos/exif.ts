@@ -40,9 +40,11 @@ interface Entry {
 }
 
 class Tiff {
+  readonly bytes: Uint8Array;
   readonly view: DataView;
   readonly le: boolean;
-  constructor(readonly bytes: Uint8Array) {
+  constructor(bytes: Uint8Array) {
+    this.bytes = bytes;
     this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const bom = this.view.getUint16(0);
     if (bom !== 0x4949 && bom !== 0x4d4d) throw new Error('Not an EXIF block.');

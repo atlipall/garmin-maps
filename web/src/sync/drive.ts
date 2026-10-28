@@ -6,8 +6,8 @@ import { DEV } from '../channel';
  *  app can see it; the user's own files stay out of reach: scope drive.appdata). */
 /** The sync file in Drive's hidden app folder (the development version keeps its own). */
 export const SYNC_FILE = DEV ? 'garmin-map-sync-dev.json' : 'garmin-map-sync.json';
-const API = 'https://www.googleapis.com/drive/v3';
-const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
+export const API = 'https://www.googleapis.com/drive/v3';
+export const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 
 /** A Drive request that failed; `status` 401 means the sign-in has expired. */
 export class DriveError extends Error {
@@ -16,7 +16,7 @@ export class DriveError extends Error {
   }
 }
 
-async function call(token: string, url: string, init: RequestInit = {}): Promise<Response> {
+export async function call(token: string, url: string, init: RequestInit = {}): Promise<Response> {
   const res = await fetch(url, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new DriveError(res.status, res.status === 401 ? 'The Google sign-in has expired.' : `Google Drive answered ${res.status}.`);
   return res;

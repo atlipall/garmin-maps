@@ -6,6 +6,11 @@ import { finishSignIn, freshToken, GOOGLE_CLIENT_ID, prepareSignIn, setSyncState
 import { AUTH_HELPER, HelperError, helperReachable } from '../sync/helper';
 import { planSync } from '../sync/merge';
 import { changedAt } from '../saved/backup';
+import { preview, THUMB } from '../photos/copy';
+import { deletePhoto, filesHere, getFiles, listPhotos, putFiles, putPhoto } from '../photos/photo';
+import { deletePhotoFile, downloadPhotoFile, listPhotoFiles, uploadPhotoFile } from '../sync/photoFiles';
+import { readSetting, writeSetting } from '../ui/settings';
+import { mb } from './photos';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 /** A change here is synced this long after the last one (ms), so a burst of edits is one sync. */
@@ -31,6 +36,10 @@ export class DriveSync {
   private helperDown = !AUTH_HELPER;
   /** A Drive refusal already led to a new token once in a row (don't loop on it). */
   private retried = false;
+  /** The photos on the map: told when a sync brings photos in or a picture arrives. */
+  photos: { reload(): Promise<void>; arrived(id: string): void } | null = null;
+  /** Photos are synced too (a switch in the sync panel, per device). */
+  private photosOn = readSetting('syncPhotos', false);
 
   /** `reload` reads the saved items and tracks again after a sync changed them here. */
   constructor(private readonly reload: () => Promise<void>) {
@@ -42,6 +51,7 @@ export class DriveSync {
       signOut();
       this.render();
     };
+    $('sync-photos').onclick = () => void this.togglePhotos();
     this.render();
     void this.start();
     window.addEventListener('online', () => this.schedule(0));
@@ -131,10 +141,12 @@ export class DriveSync {
       const dirty = localChange !== undefined && localChange !== start.syncedAt;
       const file = await readSyncFile(token, dirty ? null : start.version ?? null);
       if (file.unchanged) {
+        if (this.photosOn) await this.syncPictures(token);
         setSyncState({ ...syncState(), lastSync: Date.now() });
         return this.render();
       }
-      const plan = planSync({ saved: await listSaved(), tracks: await listTracks(), deleted: deletions() }, file.data);
+      const photosOn = this.photosOn;
+      const plan = planSync({ saved: await listSaved(), tracks: await listTracks(), deleted: deletions(), photos: photosOn ? await listPhotos() : null }, file.data);
       // Something edited or deleted here while this sync ran wins over what it brings in.
       const nowSaved = new Map((await listSaved()).map((x) => [x.id, x]));
       const nowTracks = new Map((await listTracks()).map((x) => [x.id, x]));
@@ -147,6 +159,10 @@ export class DriveSync {
       for (const t of putTracks_) await putTrack(t);
       for (const i of plan.removeSaved) await deleteSaved(i);
       for (const i of plan.removeTracks) await deleteTrack(i);
+      const nowPhotos = new Map((await listPhotos()).map((x) => [x.id, x]));
+      const putPhotos_ = plan.putPhotos.filter((x) => !newer(nowPhotos.get(x.id), x));
+      for (const x of putPhotos_) await putPhoto(x);
+      for (const i of plan.removePhotos) await deletePhoto(i);
       // Deletions made here meanwhile are kept: merge, don't overwrite.
       const gone = deletions();
       for (const [id, at] of Object.entries(plan.deleted)) gone[id] = Math.max(at, gone[id] ?? 0);
@@ -154,8 +170,10 @@ export class DriveSync {
       let { id, version } = file;
       if (plan.upload) ({ id, version } = await writeSyncFile(token, id, plan.upload));
       for (const extra of file.extra) await deleteSyncFile(token, extra).catch(() => {});
+      if (putPhotos_.length || plan.removePhotos.length) await this.photos?.reload();
+      if (photosOn) await this.syncPictures(token);
       // A change here during the sync, or one not sent (kept over what came in): sync again.
-      const skipped = putSaved_.length !== plan.putSaved.length || putTracks_.length !== plan.putTracks.length;
+      const skipped = putSaved_.length !== plan.putSaved.length || putTracks_.length !== plan.putTracks.length || putPhotos_.length !== plan.putPhotos.length;
       setSyncState({ ...syncState(), lastSync: Date.now(), fileId: id ?? undefined, version: version ?? undefined, syncedAt: skipped ? undefined : localChange });
       if (skipped || syncState().changedAt !== localChange) this.schedule();
       if (putSaved_.length || putTracks_.length || plan.removeSaved.length || plan.removeTracks.length) await this.reload();
@@ -181,6 +199,77 @@ export class DriveSync {
     }
   }
 
+  /** The pictures of synced photos: those only here go up, those only in Drive come down (their
+   *  thumbnails made here), and those of deleted photos are removed from Drive. */
+  private async syncPictures(token: string): Promise<void> {
+    const remote = await listPhotoFiles(token);
+    const list = await listPhotos();
+    const ids = new Set(list.map((p) => p.id));
+    const gone = deletions();
+    for (const [id, fileId] of remote) {
+      if (!ids.has(id) && gone[id] !== undefined) {
+        await deletePhotoFile(token, fileId).catch(() => {});
+        remote.delete(id);
+      }
+    }
+    const here = await filesHere();
+    const up = list.filter((p) => here.has(p.id) && !remote.has(p.id));
+    for (const [i, p] of up.entries()) {
+      this.render(`Uploading photos · ${i + 1} of ${up.length}`);
+      const f = await getFiles(p.id);
+      if (f) await uploadPhotoFile(token, p.id, f.full);
+    }
+    const down = list.filter((p) => !here.has(p.id) && remote.has(p.id));
+    for (const [i, p] of down.entries()) {
+      this.render(`Downloading photos · ${i + 1} of ${down.length}`);
+      const full = await downloadPhotoFile(token, remote.get(p.id)!);
+      const thumb = await preview(full, THUMB);
+      if (!thumb) continue; // not a picture this browser can open: try again next time
+      await putFiles({ id: p.id, full, thumb });
+      this.photos?.arrived(p.id);
+    }
+  }
+
+  /** The "Sync photos too" switch: turning it on asks first when there's something to upload. */
+  private async togglePhotos(): Promise<void> {
+    if (this.photosOn) {
+      this.photosOn = false;
+      writeSetting('syncPhotos', false);
+      return this.render();
+    }
+    const list = await listPhotos().catch(() => []);
+    if (list.length) {
+      const bytes = list.reduce((n, p) => n + p.bytes, 0);
+      $('sync-photos-ask-title').textContent = `Upload ${list.length === 1 ? 'the photo' : `${list.length} photos`} to Drive?`;
+      $('sync-photos-ask-text').textContent = `About ${mb(bytes)}. On mobile data that comes out of your plan; you can also wait for Wi-Fi and turn this on then.`;
+      $('photo-scrim').hidden = false;
+      $('sync-photos-ask').hidden = false;
+      $('sync-photos-go').focus();
+      const ok = await new Promise<boolean>((resolve) => {
+        const done = (v: boolean) => {
+          $('photo-scrim').hidden = true;
+          $('sync-photos-ask').hidden = true;
+          $('sync-photos').focus();
+          resolve(v);
+        };
+        $('sync-photos-go').onclick = () => done(true);
+        $('sync-photos-later').onclick = () => done(false);
+        $('sync-photos-ask').onkeydown = (e) => e.key === 'Escape' && done(false);
+      });
+      if (!ok) return;
+    }
+    this.photosOn = true;
+    writeSetting('syncPhotos', true);
+    this.render();
+    this.changed();
+    this.schedule(0);
+  }
+
+  /** The photos changed (count, size): the switch's text says so. */
+  photosChanged(): void {
+    this.render();
+  }
+
   private render(message?: string): void {
     const s = syncState();
     // Signed in: a token now, or the sealed key while the helper answers.
@@ -189,8 +278,17 @@ export class DriveSync {
     $('sync-connect').textContent = s.on ? 'Sign in to Google' : 'Sync with Google Drive';
     $('sync-now').hidden = !ready;
     $('sync-stop').hidden = !s.on;
+    $('sync-photos-box').hidden = !s.on;
+    $('sync-photos').setAttribute('aria-checked', String(this.photosOn));
+    void listPhotos().then((list) => {
+      const bytes = list.reduce((n, p) => n + p.bytes, 0);
+      const count = `${list.length === 1 ? '1 photo' : `${list.length} photos`} · ${mb(bytes)}`;
+      $('sync-photos-text').textContent = this.photosOn
+        ? `The app's copies go up (2048 px, with the time, place, camera details and descriptions kept), not your originals. ${count}. Turning this off stops new uploads; the photos already in Drive stay there, and on your other devices.`
+        : `Photos stay on this device${list.length ? ` (${count})` : ''}. Turn this on to have them on your other devices too.`;
+    }).catch(() => {});
     // A short state under the menu item.
-    $('sync-menu-status').textContent = !s.on ? '' : message === 'Syncing…' ? 'Syncing…' : !ready ? 'Sign-in needed' : message?.startsWith('Offline') ? 'Offline' : message ? 'Not synced' : s.lastSync ? `Synced ${timeText(s.lastSync)}` : '';
+    $('sync-menu-status').textContent = !s.on ? '' : message === 'Syncing…' ? 'Syncing…' : /^(Uploading|Downloading) photos/.test(message ?? '') ? 'Syncing photos…' : !ready ? 'Sign-in needed' : message?.startsWith('Offline') ? 'Offline' : message ? 'Not synced' : s.lastSync ? `Synced ${timeText(s.lastSync)}` : '';
     $('sync-text').textContent = message
       ?? (!s.on
         ? 'Keep your saved places and routes and your GPX tracks the same on all your devices, through your Google Drive (in a hidden folder only this app can see).'

@@ -12,6 +12,7 @@ import { versionLabel } from '../buildInfo';
 import { DEV } from '../channel';
 import { featureNameAt } from '../map/featureName';
 import { conventionsFor } from '../map/conventions';
+import { takenText } from '../photos/photo';
 import { SaveHere } from './saveHere';
 import { TrackCard } from './trackCard';
 import { Dialogs } from '../ui/dialogs';
@@ -23,6 +24,7 @@ import { HeightControl, LocationControl } from './location';
 import { RoutePlanner } from './route';
 import { SavedPanel } from './savedPanel';
 import { DriveSync } from './driveSync';
+import { Photos } from './photos';
 import { androidApp, DiagnosticsPanel } from './diagnostics';
 import { TripRecorder } from './tripRecorder';
 import { Navigator } from './navigation';
@@ -240,7 +242,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: Viewe
   });
   // The panels opened from the menu: focus their heading; Escape or × closes them and focus goes
   // back to the menu button.
-  for (const [panel, close] of [['tracks', 'tracks-close'], ['saved', 'saved-close'], ['sync-panel', 'sync-close'], ['diag-panel', 'diag-close'], ['settings', 'settings-close']]) {
+  for (const [panel, close] of [['tracks', 'tracks-close'], ['saved', 'saved-close'], ['photos', 'photos-close'], ['sync-panel', 'sync-close'], ['diag-panel', 'diag-close'], ['settings', 'settings-close']]) {
     $(panel).addEventListener('keydown', (e) => e.key === 'Escape' && $(close).click());
     $(close).addEventListener('click', () => $('menu-button').focus());
   }
@@ -285,7 +287,7 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: Viewe
     showImport('', { hasMap: true, canCancel: true });
   };
 
-  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, trackCard: null as TrackCard | null, trip: null as TripRecorder | null, lastIntent: null as string | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, sync: null as DriveSync | null, navigator: null as Navigator | null, screenAwake: awake };
+  const app = { map, perf, ready: false, placesReady: false, search: (_q: string): Place[] | null => null, samples: SAMPLES, tracks: null as TracksPanel | null, trackCard: null as TrackCard | null, trip: null as TripRecorder | null, lastIntent: null as string | null, routePlanner: null as RoutePlanner | null, saved: null as SavedPanel | null, photos: null as Photos | null, sync: null as DriveSync | null, navigator: null as Navigator | null, screenAwake: awake };
   window.__app = app;
   // F-road/track classes from the place-index pass, keyed by tile id and NET offset. Resolved
   // once `loadPlaces` finishes; a route requested before then awaits this instead. Rejected if
@@ -412,6 +414,30 @@ function mountViewer(stored: Stored, pool: TilePool, meta: OpenMeta, opts: Viewe
     });
     saved.onChanged = tracks.onChanged = () => sync.changed();
     app.sync = sync;
+    const nearCache = new Map<string, string | null>();
+    // Photos (⋯ → Photos): thumbnails where they were taken; synced with the rest when that's on.
+    const photos = new Photos({
+      map,
+      near: (lon, lat) => {
+        // A scan of every named place: once per spot.
+        if (!places.length) return null;
+        const k = `${lon},${lat}`;
+        if (!nearCache.has(k)) nearCache.set(k, nearName(places, [lon, lat]) ?? null);
+        return nearCache.get(k)!;
+      },
+      routeTo: (p) => routePlanner.pick({ name: `Photo, ${takenText(p.taken, true)}`, lon: p.lon, lat: p.lat }),
+      changed: () => sync.changed(),
+    });
+    photos.onList = () => sync.photosChanged();
+    sync.photos = photos;
+    app.photos = photos;
+    $('photos-open').onclick = () => {
+      setMenu(false);
+      photos.show(true);
+      focusPanel('photos');
+    };
+    dialogs.add('photos', () => photos.show(false));
+    dialogs.add('photo-viewer', () => photos.viewer.close());
     routePlanner.onSave = (item) => saved.add(item);
     routePlanner.onSaveTrack = async (t) => {
       await tracks.addTrack(t);
