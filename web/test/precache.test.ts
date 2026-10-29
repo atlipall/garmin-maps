@@ -16,7 +16,7 @@ const BUILD = { version: 'abc1234', builtAt: '2026-10-01T12:00:00.000Z' };
 /** Evaluates the service worker's top-level constants with a stubbed `self`. */
 function constants(src: string): { CACHE: string; PRECACHE: string[]; BUILD: unknown } {
   const body = src.slice(0, src.indexOf("self.addEventListener('install'"));
-  return new Function('self', `${body}; return { CACHE, PRECACHE, BUILD };`)({ location: { origin: 'x', pathname: '/garmin-maps/app/sw.js' } });
+  return new Function('self', `${body}; return { CACHE, PRECACHE, BUILD };`)({ location: { origin: 'x', pathname: '/app/sw.js' } });
 }
 
 describe('injectPrecache', () => {
@@ -100,14 +100,14 @@ describe('activate', () => {
   const ALL = ['garmin-app-dev', 'garmin-app-prev', 'garmin-app-older', 'garmin-app-order-v1', 'garmin-appdev-dev', 'garmin-appdev-prev', 'garmin-appdev-older', 'garmin-appdev-order-v1', 'garmin-map-0123456789ab', 'other-project-v1'];
 
   test("keeps this version's cache and the one before; deletes older ones of this app only", async () => {
-    const r = await activate('/garmin-maps/app/sw.js', ALL, ['garmin-app-older', 'garmin-app-prev']);
+    const r = await activate('/app/sw.js', ALL, ['garmin-app-older', 'garmin-app-prev']);
     // 'garmin-app-dev' is this (unbuilt) version's cache; the development version's are left alone.
     expect(r.deleted).toEqual(['garmin-app-older']);
     expect(r.order).toEqual(['garmin-app-prev', 'garmin-app-dev']);
   });
 
   test('the development version (/app-dev/) has caches of its own and leaves the app\'s alone', async () => {
-    const r = await activate('/garmin-maps/app-dev/sw.js', ALL, ['garmin-appdev-older', 'garmin-appdev-prev']);
+    const r = await activate('/app-dev/sw.js', ALL, ['garmin-appdev-older', 'garmin-appdev-prev']);
     expect(r.deleted).toEqual(['garmin-appdev-older']);
     expect(r.orderName).toBe('garmin-appdev-order-v1');
     expect(r.order).toEqual(['garmin-appdev-prev', 'garmin-appdev-dev']);

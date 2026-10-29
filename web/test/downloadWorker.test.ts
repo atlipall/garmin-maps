@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { handle, SOURCE, type Env } from '../download-worker/worker';
 
-const env: Env = { ALLOWED_ORIGINS: 'https://atlipall.github.io, http://localhost:5173' };
-const APP = 'https://atlipall.github.io';
+const env: Env = { ALLOWED_ORIGINS: 'https://vardamaps.app, http://localhost:5173' };
+const APP = 'https://vardamaps.app';
 const call = (path: string, init: { method?: string; origin?: string; range?: string } = {}) =>
-  handle(new Request(`https://garmin-maps-download.example.workers.dev${path}`, {
+  handle(new Request(`https://download.vardamaps.app${path}`, {
     method: init.method ?? 'GET',
     headers: { ...(init.origin !== '' ? { Origin: init.origin ?? APP } : {}), ...(init.range ? { Range: init.range } : {}) },
   }), env);

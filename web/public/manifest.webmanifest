@@ -1,6 +1,6 @@
 {
-  "name": "Garmin Map",
-  "short_name": "Map",
+  "name": "Varda",
+  "short_name": "Varda",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

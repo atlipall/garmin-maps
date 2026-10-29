@@ -32,7 +32,7 @@ export function routeGpx(r: RouteExport, now = new Date()): string {
   const label = (p: { name: string | null; near?: string }, fallback: string) => p.name ?? p.near ?? fallback;
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<gpx version="1.1" creator="Garmin Map" xmlns="http://www.topografix.com/GPX/1/1">',
+    '<gpx version="1.1" creator="Varda" xmlns="http://www.topografix.com/GPX/1/1">',
     `  <metadata><name>${esc(r.name)}</name><desc>${esc(r.summary)}</desc><time>${now.toISOString()}</time></metadata>`,
     wpt(r.start, 'Start'),
     ...r.vias.map((v, i) => wpt([v.lon, v.lat], `Waypoint ${i + 1}${v.name ?? v.near ? `: ${label(v, '')}` : ''}`)),
@@ -51,7 +51,7 @@ export function trackGpx(g: Gpx, name: string, now = new Date()): string {
   const time = (t: number | null) => (t === null ? '' : `<time>${new Date(t).toISOString()}</time>`);
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<gpx version="1.1" creator="Garmin Map" xmlns="http://www.topografix.com/GPX/1/1">',
+    '<gpx version="1.1" creator="Varda" xmlns="http://www.topografix.com/GPX/1/1">',
     `  <metadata><name>${esc(name)}</name><time>${now.toISOString()}</time></metadata>`,
     ...g.waypoints.map((w) => `  <wpt ${pt([w.lon, w.lat])}>${ele(w.ele)}${w.name ? `<name>${esc(w.name)}</name>` : ''}</wpt>`),
     ...g.lines.flatMap((l) => [

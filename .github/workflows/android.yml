@@ -1,6 +1,6 @@
 # Builds the Android app (android/: the web app in a full-screen WebView, for car head units) and
-# publishes it as a GitHub release: GarminMap.apk (the app) and GarminMapDev.apk (the development
-# version), always at https://github.com/atlipall/garmin-maps/releases/latest/download/GarminMap.apk.
+# publishes it as a GitHub release: Varda.apk (the app) and VardaDev.apk (the development
+# version), always at https://github.com/atlipall/varda/releases/latest/download/Varda.apk.
 # Signed with the same key every time (secrets ANDROID_KEYSTORE, base64 of a PKCS12 file, and
 # ANDROID_KEYSTORE_PASSWORD), so a new version installs over the old one and keeps its data.
 name: Android app
@@ -43,13 +43,13 @@ jobs:
         run: |
           # Plain names for the "latest" links, and with the version so a downloads folder tells them apart.
           V=1.${{ github.run_number }}
-          cp android/app/build/outputs/apk/live/release/app-live-release.apk GarminMap.apk
-          cp android/app/build/outputs/apk/dev/release/app-dev-release.apk GarminMapDev.apk
-          cp GarminMap.apk "GarminMap-$V.apk"
-          cp GarminMapDev.apk "GarminMapDev-$V.apk"
+          cp android/app/build/outputs/apk/live/release/app-live-release.apk Varda.apk
+          cp android/app/build/outputs/apk/dev/release/app-dev-release.apk VardaDev.apk
+          cp Varda.apk "Varda-$V.apk"
+          cp VardaDev.apk "VardaDev-$V.apk"
           # A build of another branch (run by hand) is a pre-release: the "latest" links stay on main's.
           PRE=""; [ "${{ github.ref_name }}" = main ] || PRE="--prerelease"
-          gh release create "android-$V" GarminMap.apk GarminMapDev.apk "GarminMap-$V.apk" "GarminMapDev-$V.apk" $PRE \
+          gh release create "android-$V" Varda.apk VardaDev.apk "Varda-$V.apk" "VardaDev-$V.apk" $PRE \
             --target "$GITHUB_SHA" \
             --title "Android app 1.${{ github.run_number }}${PRE:+ (${{ github.ref_name }})}" \
-            --notes "Garmin Map for Android head units: GarminMap.apk loads the app, GarminMapDev.apk the development version (both can be installed). Built from ${GITHUB_SHA::7}."
+            --notes "Varda for Android head units: Varda.apk loads the app, VardaDev.apk the development version (both can be installed). Built from ${GITHUB_SHA::7}."

@@ -1,12 +1,11 @@
-# Garmin Map
+# Varda
 
 A web app that shows Garmin `.img` maps (such as GPSmap.is Iceland) on iPhone, Mac and Android car head units,
 drawn straight from the map file in the browser and fully offline: hillshading from SRTM `.hgt` files, place
 search, GPS follow with heading-up and ground height, GPX tracks, route planning by road with turn-by-turn
 navigation, saved places, and optional Google Drive sync.
 
-Live at <https://atlipall.github.io/garmin-maps/> (instructions) and <https://atlipall.github.io/garmin-maps/app/>
-(the app). The map and elevation files stay on the user's device; nothing is uploaded.
+Live at <https://vardamaps.app/> (instructions) and <https://vardamaps.app/app/> (the app). The map and elevation files stay on the user's device; nothing is uploaded.
 
 ## Development
 
@@ -26,7 +25,7 @@ Tests that need real data look for the GPSmap.is package in `GPSmap.is 2024.21 A
 root and the app under `app/`.
 
 Pushing to `main` deploys to GitHub Pages (`.github/workflows/pages.yml`) after typecheck, tests and build. The
-`dev` branch is deployed alongside as a development version at `/garmin-maps/app-dev/`, and the Android app and
+`dev` branch is deployed alongside as a development version at `/app-dev/`, and the Android app and
 the sign-in helper have their own deployments: see CLAUDE.md for all of them and for working notes.
 
 ## Layout

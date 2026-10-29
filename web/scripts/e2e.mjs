@@ -1101,7 +1101,7 @@ try {
   await page.click('#route-close');
   await page.click('#route-confirm-yes');
   // Back up (a download here) with both items and the GPX track; delete them; restore brings them back.
-  const backupName = `Garmin Map backup ${new Date().toISOString().slice(0, 10)}.json`;
+  const backupName = `Varda backup ${new Date().toISOString().slice(0, 10)}.json`;
   await rm(`${dl}${backupName}`, { force: true });
   const syncPanel = async (open) => {
     if (open === (await page.$eval('#sync-panel', (e) => !e.hidden))) return;
@@ -1149,7 +1149,7 @@ try {
   const onRequest = (req) => {
     const url = new URL(req.url());
     if (url.hostname === 'accounts.google.com') return req.respond({ status: 200, contentType: 'text/javascript', body: '' });
-    if (url.hostname === 'garmin-maps-auth.atlipall.workers.dev') {
+    if (url.hostname === 'auth.vardamaps.app') {
       const h = { ...cors, 'Access-Control-Allow-Origin': `http://localhost:${PORT}` };
       if (req.method() === 'OPTIONS') return req.respond({ status: 204, headers: h });
       fakeHelper.calls.push({ path: url.pathname, body: req.postData() ? JSON.parse(req.postData()) : null });

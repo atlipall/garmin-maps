@@ -16,15 +16,15 @@ describe('backup files', () => {
   });
 
   test('other files are refused with a message; damaged items are left out', () => {
-    expect(() => parseBackup('not json')).toThrow("This isn't a Garmin Map backup file.");
-    expect(() => parseBackup('{"app":"other"}')).toThrow("This isn't a Garmin Map backup file.");
+    expect(() => parseBackup('not json')).toThrow("This isn't a Varda backup file.");
+    expect(() => parseBackup('{"app":"other"}')).toThrow("This isn't a Varda backup file.");
     expect(() => parseBackup(JSON.stringify({ ...makeBackup([], []), version: 2 }))).toThrow('newer version');
     const b = parseBackup(JSON.stringify({ ...makeBackup([pin('a', 1)], [track]), saved: [pin('a', 1), { id: 'x' }], tracks: [track, { id: 'y' }] }));
     expect([b.saved.length, b.tracks.length]).toEqual([1, 1]);
   });
 
   test('file name carries the date', () => {
-    expect(backupFileName(new Date('2026-09-30T12:00:00Z'))).toBe('Garmin Map backup 2026-09-30.json');
+    expect(backupFileName(new Date('2026-09-30T12:00:00Z'))).toBe('Varda backup 2026-09-30.json');
   });
 });
 

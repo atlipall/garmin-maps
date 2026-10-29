@@ -7,7 +7,7 @@
  * (src/app/updates.ts). The defaults keep an unbuilt copy (dev) working. */
 /** Caches this app owns: `garmin-app-*`, or `garmin-appdev-*` for the development version at
  *  /app-dev/ (on the same site, so its caches must not be taken for the app's). Others on the
- *  origin (other sites under atlipall.github.io, and the pre-/app/ root app's `garmin-map-*` caches,
+ *  origin (other sites on the same host, and the pre-/app/ root app's `garmin-map-*` caches,
  *  which the root sw.js retires) are left alone. */
 const OWN = /\/app-dev\//.test(self.location.pathname) ? 'garmin-appdev-' : 'garmin-app-';
 const CACHE = (self.__CACHE__ || 'garmin-app-dev').replace(/^garmin-app-/, OWN);

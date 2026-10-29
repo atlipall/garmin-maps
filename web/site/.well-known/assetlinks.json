@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": { "namespace": "android_app", "package_name": "is.atlipall.garminmap", "sha256_cert_fingerprints": ["15:92:12:A2:99:C2:5F:E6:A1:2A:FE:50:5A:13:A3:7C:8E:0D:F4:9D:9E:A5:A7:F0:AB:C6:84:8A:3A:00:A6:E6"] }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": { "namespace": "android_app", "package_name": "is.atlipall.garminmap.dev", "sha256_cert_fingerprints": ["15:92:12:A2:99:C2:5F:E6:A1:2A:FE:50:5A:13:A3:7C:8E:0D:F4:9D:9E:A5:A7:F0:AB:C6:84:8A:3A:00:A6:E6"] }
+  }
+]

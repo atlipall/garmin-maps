@@ -1,4 +1,7 @@
-# Garmin Map: notes for working on this repo
+# Varda: notes for working on this repo
+
+(Called Garmin Map until the October 2026 move to vardamaps.app; internal storage names, the Drive
+files, the Android package id and the `garminmap://` links keep the old name on purpose.)
 
 A web app (TypeScript, Vite, MapLibre) that draws Garmin `.img` maps offline in the browser, used as an
 iPhone Home Screen app, on a Mac, and on an Android car head unit. See README.md for the layout. The owner
@@ -40,13 +43,13 @@ npm run shots                           # retake the guide's screenshots (web/si
 
 | What | Where | How |
 |---|---|---|
-| The app + guide | atlipall.github.io/garmin-maps/ (`/app/`) | push `main` → `.github/workflows/pages.yml` |
-| Development version | `/garmin-maps/app-dev/` ("Map Dev") | `git push --force origin <branch>:dev`; `dev.yml` re-runs Pages from main, which builds both |
-| Android app | GitHub Releases, `releases/latest/download/GarminMap.apk` | push `main` touching `android/` → `android.yml` |
-| Sign-in helper | garmin-maps-auth.atlipall.workers.dev | `wrangler deploy` in `web/auth-worker/` |
-| Free-map download helper | garmin-maps-download.atlipall.workers.dev | `wrangler deploy` in `web/download-worker/` (passes the Freizeitkarte Iceland zip on with CORS; no secrets) |
-| Asset links | atlipall.github.io/.well-known/assetlinks.json | repo `atlipall/atlipall.github.io` |
-| Development page | atlipall.github.io/garmin-maps/dev/ (APK downloads, short to type on the head unit) | `web/site/dev/index.html`, deployed with the site; update its pinned APK version |
+| The app + guide | vardamaps.app (`/app/`; custom domain on GitHub Pages, DNS on Cloudflare) | push `main` → `.github/workflows/pages.yml` |
+| Development version | `/app-dev/` ("Varda Dev") | `git push --force origin <branch>:dev`; `dev.yml` re-runs Pages from main, which builds both |
+| Android app | GitHub Releases, `releases/latest/download/Varda.apk` | push `main` touching `android/` → `android.yml` |
+| Sign-in helper | auth.vardamaps.app (worker `garmin-maps-auth`, kept so its secrets stay) | `wrangler deploy` in `web/auth-worker/` |
+| Free-map download helper | download.vardamaps.app (worker `garmin-maps-download`) | `wrangler deploy` in `web/download-worker/` (passes the Freizeitkarte Iceland zip on with CORS; no secrets) |
+| Asset links | vardamaps.app/.well-known/assetlinks.json | `web/site/.well-known/assetlinks.json`, deployed with the site |
+| Development page | vardamaps.app/dev/ (APK downloads, short to type on the head unit) | `web/site/dev/index.html`, deployed with the site; update its pinned APK version |
 
 - Only `main` may deploy to Pages (environment rule): never loosen it; dev deploys go through `dev.yml`.
 - **The development version keeps its own storage** (`web/src/channel.ts`, build flag `VITE_CHANNEL=dev`):
@@ -64,6 +67,11 @@ npm run shots                           # retake the guide's screenshots (web/si
   copy in `.android-signing/` (git-ignored; never lose it, or updates stop installing over the old app).
 
 ## Open work (update this when it changes)
+
+- **`varda` branch** (2026-10-29): the rename to Varda and the move to vardamaps.app. Code done; the
+  switch waits for the owner's DNS and Google Cloud steps. Checklist (tick items there):
+  claude.ai/artifact/Wxis6khp5D2Amqj7jnH3mh. Rename the repo (`gh repo rename varda`) only at the
+  switch: a renamed repo's Pages address moves with no redirect.
 
 - **Shipped 2026-10-28** (merged from `photos` before a full phone test): photos on the map (⋯ →
   Photos). Copies at most 2048 px with all the original's metadata (`web/src/photos/`: JPEG

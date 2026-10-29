@@ -1,7 +1,7 @@
 import { clearStored, downloadMap, importFiles, requestPersistence } from '../storage/store';
 
 /** The free OpenStreetMap-based map of Iceland, through the download pass-through (web/download-worker). */
-export const FREE_MAP_URL = 'https://garmin-maps-download.atlipall.workers.dev/iceland.zip';
+export const FREE_MAP_URL = 'https://download.vardamaps.app/iceland.zip';
 const FREE_MAP_NAME = 'Freizeitkarte Iceland (OpenStreetMap).img';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;

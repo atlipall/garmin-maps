@@ -5,9 +5,9 @@ const env: Env = {
   GOOGLE_CLIENT_ID: 'client',
   GOOGLE_CLIENT_SECRET: 'secret',
   SEAL_KEY: Buffer.from(new Uint8Array(32).fill(7)).toString('base64'),
-  ALLOWED_ORIGINS: 'https://atlipall.github.io, http://localhost:5173',
+  ALLOWED_ORIGINS: 'https://vardamaps.app, http://localhost:5173',
 };
-const APP = 'https://atlipall.github.io';
+const APP = 'https://vardamaps.app';
 
 /** A fake Google token endpoint: answers with `reply`, records the form posted. */
 function google(reply: { status: number; body: object }) {
@@ -20,7 +20,7 @@ function google(reply: { status: number; body: object }) {
 }
 
 const call = (path: string, body?: object, origin = APP, method = 'POST') =>
-  handle(new Request(`https://garmin-maps-auth.example.workers.dev${path}`, { method, headers: { Origin: origin, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }), env);
+  handle(new Request(`https://auth.vardamaps.app${path}`, { method, headers: { Origin: origin, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }), env);
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -48,13 +48,13 @@ describe('the helper', () => {
 
   test('a code becomes a token and a sealed refresh key, with the secret added here', async () => {
     const posted = google({ status: 200, body: { access_token: 'at', expires_in: 3599, refresh_token: 'rt' } });
-    const res = await call('/token', { code: 'c0de', redirect_uri: `${APP}/garmin-maps/app/` });
+    const res = await call('/token', { code: 'c0de', redirect_uri: `${APP}/app/` });
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.access_token).toBe('at');
     expect(body.expires_in).toBe(3599);
     expect(await unseal(env, body.sealed)).toBe('rt');
-    expect(posted[0]).toMatchObject({ grant_type: 'authorization_code', code: 'c0de', client_id: 'client', client_secret: 'secret', redirect_uri: `${APP}/garmin-maps/app/` });
+    expect(posted[0]).toMatchObject({ grant_type: 'authorization_code', code: 'c0de', client_id: 'client', client_secret: 'secret', redirect_uri: `${APP}/app/` });
     expect(JSON.stringify(body)).not.toContain('secret');
   });
 

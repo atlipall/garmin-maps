@@ -1,5 +1,5 @@
 # A push to the dev branch redeploys the site from main (only main may deploy to Pages), which
-# builds the dev branch into /garmin-maps/app-dev/ alongside the app (see pages.yml).
+# builds the dev branch into vardamaps.app/app-dev/ alongside the app (see pages.yml).
 name: Deploy the development version
 on:
   push:

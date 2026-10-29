@@ -18,7 +18,7 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string;
   /** 32 bytes, base64. */
   SEAL_KEY: string;
-  /** Comma-separated origins, e.g. "https://atlipall.github.io". */
+  /** Comma-separated origins, e.g. "https://vardamaps.app". */
   ALLOWED_ORIGINS: string;
 }
 

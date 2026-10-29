@@ -1,6 +1,6 @@
 /**
- * Which deployment this build is: the app (/garmin-maps/app/), or the development version
- * (/garmin-maps/app-dev/, built with VITE_CHANNEL=dev from the `dev` branch) for trying changes on
+ * Which deployment this build is: the app (/app/), or the development version
+ * (/app-dev/, built with VITE_CHANNEL=dev from the `dev` branch) for trying changes on
  * a phone before they ship. Both are on the same site, where browsers share storage, so the
  * development version keeps everything apart: its own database, settings, stored map, caches and
  * Drive sync file. A newer storage format in it can then never break the app.

@@ -69,9 +69,9 @@ export function parseBackup(text: string): Backup {
   try {
     b = JSON.parse(text);
   } catch {
-    throw new Error("This isn't a Garmin Map backup file.");
+    throw new Error("This isn't a Varda backup file.");
   }
-  if (!b || b.app !== 'garmin-map' || b.kind !== 'backup') throw new Error("This isn't a Garmin Map backup file.");
+  if (!b || b.app !== 'garmin-map' || b.kind !== 'backup') throw new Error("This isn't a Varda backup file.");
   if (b.version !== 1) throw new Error('This backup is from a newer version of the app.');
   const deleted: Record<string, number> = {};
   for (const [id, at] of Object.entries(b.deleted ?? {})) if (isNum(at)) deleted[id] = at;
@@ -96,4 +96,4 @@ export function toStore<T extends { id: string; added: number; updated?: number 
   });
 }
 
-export const backupFileName = (now = new Date()) => `Garmin Map backup ${now.toISOString().slice(0, 10)}.json`;
+export const backupFileName = (now = new Date()) => `Varda backup ${now.toISOString().slice(0, 10)}.json`;

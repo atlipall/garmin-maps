@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { AUTH_HELPER, authUrl, exchangeCode, HelperError, refreshToken, signInReturn, withoutSignInReturn } from '../src/sync/helper';
 
-const APP = 'https://atlipall.github.io/garmin-maps/app/';
+const APP = 'https://vardamaps.app/app/';
 
 /** A fake helper: answers each path with a status and body; records the calls. */
 function helper(replies: Record<string, { status: number; body?: object } | 'down'>) {

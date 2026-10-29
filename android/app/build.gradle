@@ -22,16 +22,16 @@ android {
     productFlavors {
         live {
             dimension "site"
-            resValue "string", "app_name", "Garmin Map"
-            resValue "string", "start_url", "https://atlipall.github.io/garmin-maps/app/"
-            buildConfigField "String", "START_URL", "\"https://atlipall.github.io/garmin-maps/app/\""
+            resValue "string", "app_name", "Varda"
+            resValue "string", "start_url", "https://vardamaps.app/app/"
+            buildConfigField "String", "START_URL", "\"https://vardamaps.app/app/\""
         }
         dev {
             dimension "site"
             applicationIdSuffix ".dev"
-            resValue "string", "app_name", "Map Dev"
-            resValue "string", "start_url", "https://atlipall.github.io/garmin-maps/app-dev/"
-            buildConfigField "String", "START_URL", "\"https://atlipall.github.io/garmin-maps/app-dev/\""
+            resValue "string", "app_name", "Varda Dev"
+            resValue "string", "start_url", "https://vardamaps.app/app-dev/"
+            buildConfigField "String", "START_URL", "\"https://vardamaps.app/app-dev/\""
         }
     }
 

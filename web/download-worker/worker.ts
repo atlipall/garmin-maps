@@ -9,7 +9,7 @@
  */
 
 export interface Env {
-  /** Comma-separated origins, e.g. "https://atlipall.github.io". */
+  /** Comma-separated origins, e.g. "https://vardamaps.app". */
   ALLOWED_ORIGINS: string;
 }
 

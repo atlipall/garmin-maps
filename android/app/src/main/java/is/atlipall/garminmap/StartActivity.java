@@ -76,8 +76,8 @@ public class StartActivity extends Activity {
         page.setBackgroundColor(Color.WHITE);
         TextView title = new TextView(this);
         title.setText(looped
-            ? "Garmin Map kept starting over, so it stopped here. Take a photo of this screen and send it on."
-            : "Garmin Map stopped the last time it started. Take a photo of this screen and send it on.");
+            ? "Varda kept starting over, so it stopped here. Take a photo of this screen and send it on."
+            : "Varda stopped the last time it started. Take a photo of this screen and send it on.");
         title.setTextSize(20);
         title.setTextColor(Color.BLACK);
         page.addView(title);
