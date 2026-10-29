@@ -8,8 +8,13 @@ import { startViewer } from './viewer';
 
 export async function startApp(): Promise<void> {
   diag('page loaded');
-  // In the Android app (made for car head units) a big screen gets car-sized controls (index.html).
-  document.body.classList.toggle('android-app', androidApp() !== null);
+  // In the Android app (made for car head units) a big screen gets car-sized controls (index.html):
+  // judged by the screen, which the on-screen keyboard doesn't shrink as it does the page.
+  const inApp = androidApp() !== null;
+  document.body.classList.toggle('android-app', inApp);
+  const carSize = () => document.body.classList.toggle('car-size', inApp && Math.min(screen.width, screen.height) >= 600);
+  carSize();
+  screen.orientation?.addEventListener('change', carSize);
   const updates = 'serviceWorker' in navigator && import.meta.env.PROD
     ? new UpdateWatcher(BUILD, showUpdateNotice, browserEnv(new URL('./sw.js', document.baseURI)))
     : null;

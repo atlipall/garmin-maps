@@ -5,7 +5,9 @@
     <!-- Only this site's own code runs; the network is reached only for Google sign-in and Drive sync
          (optional, after the user turns it on). ws: is the dev server's live reload. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://auth.vardamaps.app https://download.vardamaps.app ws:; frame-src https://accounts.google.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://accounts.google.com; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <!-- resizes-content: an on-screen keyboard (Android) shrinks the page to the space above it, so
+         nothing is under the keyboard and Chrome never slides the view up past the search box. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#2c5a85" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <!-- Not black-translucent: iOS then gives the Home Screen app a view that is short by the status
@@ -453,13 +455,15 @@
       .place-menu button:first-of-type { border-color: var(--accent); background: var(--accent); color: #fff; }
       /* Car-sized controls: in the Android app on a big screen (a head unit, read at arm's length
          while driving), the controls over the map are drawn 1.5 times bigger (buttons 66 px; Android
-         Auto asks for 76 dp) and the cards 1.25 times. The map itself isn't scaled. */
-      @media (min-width: 600px) and (min-height: 600px) {
-        body.android-app :is(#topbar, #menu-button, #menu, #badge, #update, #tracks, #saved, #photos, #sync-panel, #diag-panel, #settings, #trip-pill, #import .card),
-        body.android-app #map :is(.maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left, .place-menu .maplibregl-popup-content) { zoom: 1.5; }
+         Auto asks for 76 dp) and the cards 1.25 times. The map itself isn't scaled. `car-size` is set
+         from the screen's size (startup.ts), not the window's, so the keyboard shrinking the page
+         doesn't shrink the controls. */
+      body.car-size {
+        & :is(#topbar, #menu-button, #menu, #badge, #update, #tracks, #saved, #photos, #sync-panel, #diag-panel, #settings, #trip-pill, #import .card),
+        & #map :is(.maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left, .place-menu .maplibregl-popup-content) { zoom: 1.5; }
         /* The cards beside the map less so (at 1.5 the route and guidance cards took half the screen),
            and the notes that show in their place at the same size, so neither covers the other. */
-        body.android-app :is(#route-card, #nav-banner, #nav-bottom, #here-card, #track-card, #trip-card, #here-toast, #nav-undo, #trip-note, #photo-note, #photo-check, #sync-photos-ask, #pv-sheet, #pv-top, .pv-step) { zoom: 1.25; }
+        & :is(#route-card, #nav-banner, #nav-bottom, #here-card, #track-card, #trip-card, #here-toast, #nav-undo, #trip-note, #photo-note, #photo-check, #sync-photos-ask, #pv-sheet, #pv-top, .pv-step) { zoom: 1.25; }
       }
       /* Finger-sized buttons on touch screens. */
       @media (pointer: coarse) {
