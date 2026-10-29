@@ -68,11 +68,14 @@ npm run shots                           # retake the guide's screenshots (web/si
 
 ## Open work (update this when it changes)
 
-- **`varda` branch** (2026-10-29): the rename to Varda and the move to vardamaps.app. Code done; the
-  switch waits for the owner's DNS and Google Cloud steps. Checklist (tick items there):
-  claude.ai/artifact/Wxis6khp5D2Amqj7jnH3mh. Rename the repo (`gh repo rename varda`) only at the
-  switch: a renamed repo's Pages address moves with no redirect.
-
+- **Switched 2026-10-29: Garmin Map is now Varda at vardamaps.app** (repo `atlipall/varda`). DNS on
+  Cloudflare (zone `vardamaps.app`; Pages A/AAAA/www records DNS-only; the wrangler login can't edit
+  DNS, a DNS-only API token was used and deleted). Old `atlipall.github.io/garmin-maps/…` addresses
+  redirect through pages in the `atlipall/atlipall.github.io` repo. Android app 1.20 is the first
+  Varda build. Still to do, per the checklist (claude.ai/artifact/Wxis6khp5D2Amqj7jnH3mh): the
+  owner's devices (new Home Screen app, map files, sign in), and a clean-up in a week or two (old
+  origins out of the helpers and the Google client, helpers' workers.dev addresses off, the old
+  assetlinks.json in the atlipall.github.io repo).
 - **Shipped 2026-10-28** (merged from `photos` before a full phone test): photos on the map (⋯ →
   Photos). Copies at most 2048 px with all the original's metadata (`web/src/photos/`: JPEG
   segments, HEIC boxes, EXIF; orientation and size updated in place, MPF dropped, the colour
