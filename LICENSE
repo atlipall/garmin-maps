@@ -19,13 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-The MIT License above covers the source code. It does not cover:
-
-- The name "Varda" and the logo (the files in brand/ and the icons drawn from
-  them). Please give a copy or fork its own name and icon.
-- Map data. None is included in this repository. Maps loaded into the app
-  (GPSmap.is, Freizeitkarte and others) and elevation files belong to their
-  publishers and are used under their own terms.
