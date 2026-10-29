@@ -573,9 +573,10 @@ function wireSearch(
   // (the first when none is chosen), Escape clears.
   let active = -1;
   const options = () => [...list.querySelectorAll<HTMLLIElement>('li')];
+  /** Selects result `i` (wrapping past either end), or none when `i` is -1. */
   const setActive = (i: number) => {
     const all = options();
-    active = all.length ? (i + all.length) % all.length : -1;
+    active = i === -1 || !all.length ? -1 : (i + all.length) % all.length;
     all.forEach((li, k) => li.setAttribute('aria-selected', String(k === active)));
     if (active >= 0) {
       input.setAttribute('aria-activedescendant', all[active].id);
@@ -589,7 +590,8 @@ function wireSearch(
   input.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      setActive(active + (e.key === 'ArrowDown' ? 1 : -1));
+      // Up from no selection goes to the last result.
+      setActive(e.key === 'ArrowDown' ? active + 1 : active === -1 ? options().length - 1 : active - 1);
     } else if (e.key === 'Enter') {
       const li = options()[active >= 0 ? active : 0];
       if (li) {

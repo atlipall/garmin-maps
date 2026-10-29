@@ -122,6 +122,10 @@ try {
   await page.click('#search-open');
   await page.keyboard.type('hekla');
   await page.waitForFunction(() => document.querySelectorAll('#results li[role="option"]').length > 0);
+  // Nothing chosen yet, and the list from its top (choosing the last one scrolled to it, and on the
+  // head unit slid the page past the search box).
+  const fresh = await page.evaluate(() => ({ selected: document.querySelectorAll('#results li[aria-selected="true"]').length, scroll: document.querySelector('#results').scrollTop }));
+  if (fresh.selected || fresh.scroll) fail(`new search results: ${JSON.stringify(fresh)}`);
   await page.keyboard.press('ArrowDown');
   const activeOption = await page.evaluate(() => document.querySelector('#search').getAttribute('aria-activedescendant'));
   await page.keyboard.press('Enter');
