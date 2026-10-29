@@ -47,3 +47,8 @@ the sign-in helper have their own deployments: see CLAUDE.md for all of them and
 - `web/site/`: the instructions page served at the site root
 - `android/`: the Android app for head units (opens the app in Chrome as a Trusted Web Activity, with a
   WebView fallback), built on GitHub by `.github/workflows/android.yml`
+
+## License
+
+The code is under the [MIT License](LICENSE). The name "Varda" and the logo in `brand/` are not part of
+it, and no map data is included.

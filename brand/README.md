@@ -4,6 +4,9 @@ A map pin holding a cairn: a *varða* is the pile of stones that marks a route a
 highlands. Chosen 30 October 2026 (option 4c of the logo canvas,
 claude.ai/artifact/VmyrLiyh1cgd3vfEMRXfLx).
 
+The logo and the name are not covered by the code's MIT License (see `LICENSE`): a copy or fork of the
+app should get its own name and icon.
+
 | File | What it is | Use it for |
 |---|---|---|
 | `varda-icon.svg` | The app icon, rounded corners | The logo anywhere it stands alone: the guide, the browser tab, documents |
