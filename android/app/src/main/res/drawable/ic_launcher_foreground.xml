@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The pin and cairn of brand/varda-icon.svg (its 100-unit drawing), scaled to 0.68 around the
+     middle so it stays inside the adaptive icon's safe circle (66 of 108 dp). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <group
+        android:scaleX="0.68"
+        android:scaleY="0.68"
+        android:translateX="16"
+        android:translateY="16">
+        <path
+            android:fillColor="#3d6b50"
+            android:pathData="M50,8 C30,8 17,23 17,40 C17,63 50,93 50,93 C50,93 83,63 83,40 C83,23 70,8 50,8 Z" />
+        <path
+            android:fillColor="#f4efe2"
+            android:pathData="M34,53 A16,5.5 0 1,0 66,53 A16,5.5 0 1,0 34,53 Z" />
+        <group
+            android:pivotX="49"
+            android:pivotY="40.5"
+            android:rotation="-4">
+            <path
+                android:fillColor="#f4efe2"
+                android:pathData="M37.5,40.5 A11.5,5 0 1,0 60.5,40.5 A11.5,5 0 1,0 37.5,40.5 Z" />
+        </group>
+        <path
+            android:fillColor="#f4efe2"
+            android:pathData="M43.5,29 A7,4 0 1,0 57.5,29 A7,4 0 1,0 43.5,29 Z" />
+    </group>
+</vector>

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="bar">#2c5a85</color>
+    <!-- The launcher icon's background: the cream of brand/varda-icon.svg. -->
+    <color name="ic_launcher_background">#f4efe2</color>
 </resources>

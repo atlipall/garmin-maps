@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Varda's launcher icon on Android 8 and later: the launcher cuts it to its own shape. The pin is
+     drawn from brand/varda-icon.svg; older launchers use the PNGs in mipmap-*dpi (npm run icons). -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
